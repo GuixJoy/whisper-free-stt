@@ -172,9 +172,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     has_cuda = _has_cuda()
     profile_name = args.asr_profile
     if profile_name == "auto":
-        # Strongest default for general users:
-        # GPU -> distil-large-v3, CPU -> small.en
-        profile_name = "distil" if has_cuda else "accuracy"
+        profile_name = "turbo" if has_cuda else "accuracy"
 
     profile = _ASR_PROFILES[profile_name]
     model_name = args.model if args.model is not None else profile.model_name
