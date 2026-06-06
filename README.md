@@ -98,12 +98,12 @@ Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
 | Profile | Model | Backend | Best for |
 |---|---|---|---|
-| `auto` | turbo / base.en | auto-detect | Hands-off default |
+| `auto` | distil-large-v3 / small.en | auto-detect | Strongest default |
 | `speed` | tiny.en | whisper.cpp | Lowest latency |
 | `balanced` | base.en | whisper.cpp | Good balance |
 | `accuracy` | small.en | whisper.cpp | Better accuracy on CPU |
 | `distil` | distil-large-v3 | faster-whisper | High quality (GPU) |
-| `turbo` | large-v3-turbo | faster-whisper | Best quality (GPU) |
+| `turbo` | large-v3-turbo | faster-whisper | Lower latency on GPU |
 
 ```bash
 stt --asr-profile speed     # fastest

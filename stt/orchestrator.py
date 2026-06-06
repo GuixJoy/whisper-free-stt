@@ -185,7 +185,10 @@ def run(config: AppConfig) -> None:
 
     # Apply fast-commit overrides on the detector directly
     if config.vad.fast_commit:
-        detector._min_silence_blocks = max(1, int(config.vad.fast_silence_duration_sec * sr / block_size))
+        detector.set_fast_commit(
+            silence_duration_sec=config.vad.fast_silence_duration_sec,
+            detrigger_ratio=config.vad.fast_detrigger_ratio,
+        )
 
     # Warm the selected ASR backend in parallel with calibration.
     warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
@@ -391,11 +394,10 @@ def _transcribe_with_partials(
         # --- whisper.cpp with partial callback ---
         model = _get_cpp_model(tcfg)
 
-        def _cpp_callback(ctx, seg, n_new, user_data):
-            """pywhispercpp new_segment_callback — called as segments decode."""
+        def _cpp_callback(seg):
+            """pywhispercpp user callback receives one Segment."""
             text = seg.text.decode("utf-8") if isinstance(seg.text, bytes) else str(seg.text)
             on_partial(text)
-            return 0  # continue
 
         raw_segments = model.transcribe(
             audio,
@@ -404,16 +406,14 @@ def _transcribe_with_partials(
             single_segment=True,
             language=tcfg.language or "",
             new_segment_callback=_cpp_callback,
-            params={
-                "temperature": 0.0,
-                "temperature_inc": 0.2,
-                "no_speech_thold": tcfg.whisper_no_speech_thold,
-                "entropy_thold": tcfg.whisper_entropy_thold,
-                "logprob_thold": tcfg.whisper_logprob_thold,
-                "suppress_non_speech_tokens": True,
-                "suppress_blank": True,
-                "greedy": {"best_of": 5},
-            },
+            temperature=0.0,
+            temperature_inc=0.2,
+            no_speech_thold=tcfg.whisper_no_speech_thold,
+            entropy_thold=tcfg.whisper_entropy_thold,
+            logprob_thold=tcfg.whisper_logprob_thold,
+            suppress_non_speech_tokens=True,
+            suppress_blank=True,
+            greedy={"best_of": 5},
         )
 
         segments: list[TranscriptionSegment] = []

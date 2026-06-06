@@ -44,6 +44,7 @@ class StreamingEndpointDetector:
         self._speech_start_sample = 0
         self._consecutive_unvoiced = 0
         self._min_silence_blocks = max(1, int(config.silence_duration_sec * sample_rate / block_size))
+        self._detrigger_ratio = config.detrigger_ratio
         self._min_speech_samples = int(config.min_recording_sec * sample_rate)
         self._max_speech_samples = int(config.max_recording_sec * sample_rate)
 
@@ -60,6 +61,11 @@ class StreamingEndpointDetector:
 
     def set_noise_floor(self, floor: float) -> None:
         self._noise_floor = max(1e-6, floor)
+
+    def set_fast_commit(self, silence_duration_sec: float, detrigger_ratio: float) -> None:
+        """Apply faster endpointing settings for lower turn latency."""
+        self._min_silence_blocks = max(1, int(silence_duration_sec * self._sample_rate / self._block_size))
+        self._detrigger_ratio = detrigger_ratio
 
     def update(self, rms: float, chunk_start_sample: int, chunk_end_sample: int) -> VADEvent | None:
         start_th, end_th = self.thresholds()
@@ -94,7 +100,7 @@ class StreamingEndpointDetector:
         unvoiced_ratio = 1.0 - voiced_ratio
         should_end = (
             len(self._history) == self._history.maxlen
-            and unvoiced_ratio >= self._config.detrigger_ratio
+            and unvoiced_ratio >= self._detrigger_ratio
             and self._consecutive_unvoiced >= self._min_silence_blocks
             and speech_samples >= self._min_speech_samples
         )
