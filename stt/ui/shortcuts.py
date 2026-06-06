@@ -79,8 +79,13 @@ class ShortcutManager:
                 continue
             self._handlers_by_sequence[seq] = handler
             self.root.unbind(seq)
-            # Bind loop var via default arg to avoid late-binding closure bugs.
-            self.root.bind(seq, lambda _event, key=seq: self._dispatch(key))
+            try:
+                # Bind loop var via default arg to avoid late-binding closure bugs.
+                self.root.bind(seq, lambda _event, key=seq: self._dispatch(key))
+            except tk.TclError:
+                self._handlers_by_sequence.pop(seq, None)
+                statuses.append(ShortcutStatus(action=action, sequence=seq, scope="unsupported"))
+                continue
             self._bound_sequences.add(seq)
             statuses.append(ShortcutStatus(action=action, sequence=seq, scope="app-focused"))
         return statuses
