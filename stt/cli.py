@@ -55,17 +55,24 @@ def _has_cuda() -> bool:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() == 0:
             return False
-        # Verify the runtime library is loadable — some installs have CUDA
-        # compiled in but missing libcublas.so at runtime.
-        import ctypes
-        try:
-            ctypes.CDLL("libcublas.so.12")
-        except OSError:
+        import ctypes as _ct
+        import os as _os
+        # Try known absolute paths first (Ollama bundles), then system search
+        for d in ["/usr/local/lib/ollama/cuda_v12", "/usr/local/lib/ollama/cuda_v13"]:
+            lib = _os.path.join(d, "libcublas.so.12")
+            if _os.path.isfile(lib):
+                try:
+                    _ct.CDLL(lib, _ct.RTLD_GLOBAL)
+                    return True
+                except OSError:
+                    continue
+        for lib in ("libcublas.so.12", "libcublas.so.11"):
             try:
-                ctypes.CDLL("libcublas.so.11")
+                _ct.CDLL(lib, _ct.RTLD_GLOBAL)
+                return True
             except OSError:
-                return False
-        return True
+                continue
+        return False
     except Exception:
         return False
 
@@ -215,18 +222,37 @@ def build_config(args: argparse.Namespace) -> AppConfig:
 
 
 def _ensure_cuda_libs() -> None:
-    """Add Ollama's CUDA 12 libs to LD_LIBRARY_PATH if they exist."""
-    cuda_paths = [
+    """Pre-load CUDA libraries from known Ollama paths.
+
+    Setting os.environ['LD_LIBRARY_PATH'] after process start has no effect on
+    the Linux dynamic linker — we must load the library ourselves via ctypes
+    so the symbols are available when ctranslate2 tries to use them.
+    """
+    import ctypes as _ct
+    import os as _os
+    candidate_dirs = [
         "/usr/local/lib/ollama/cuda_v12",
         "/usr/local/lib/ollama/cuda_v13",
     ]
-    import os as _os
-    ld_path = _os.environ.get("LD_LIBRARY_PATH", "")
-    for p in cuda_paths:
-        if _os.path.isdir(p) and p not in ld_path:
-            ld_path = f"{p}:{ld_path}" if ld_path else p
-    if ld_path != _os.environ.get("LD_LIBRARY_PATH", ""):
-        _os.environ["LD_LIBRARY_PATH"] = ld_path
+    for d in candidate_dirs:
+        lib_path = _os.path.join(d, "libcublas.so.12")
+        if _os.path.isfile(lib_path):
+            try:
+                _ct.CDLL(lib_path, _ct.RTLD_GLOBAL)
+                # Also add the dir to LD_LIBRARY_PATH for subprocesses
+                ld = _os.environ.get("LD_LIBRARY_PATH", "")
+                if d not in ld:
+                    _os.environ["LD_LIBRARY_PATH"] = f"{d}:{ld}" if ld else d
+                return
+            except OSError:
+                continue
+    # Fallback: try system ld path
+    for lib in ("libcublas.so.12", "libcublas.so.11"):
+        try:
+            _ct.CDLL(lib, _ct.RTLD_GLOBAL)
+            return
+        except OSError:
+            continue
 
 
 def main(argv: list[str] | None = None) -> None:

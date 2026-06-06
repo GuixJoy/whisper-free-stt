@@ -6,6 +6,8 @@ faster-whisper supports more models (distil-large-v3, turbo) and GPU.
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 
 from stt.config import TranscriptionConfig, TranscriptionBackend
@@ -16,6 +18,7 @@ from stt.types import TranscriptionResult, TranscriptionSegment
 # ---------------------------------------------------------------------------
 
 _whisper_cpp_cache: dict[str, "object"] = {}  # pywhispercpp.Model
+_whisper_cpp_lock = threading.Lock()             # whisper.cpp is NOT thread-safe
 _faster_whisper_cache: dict[str, "object"] = {}  # faster_whisper.WhisperModel
 
 
@@ -166,25 +169,26 @@ def _transcribe_cpp(
         raise RuntimeError(f"Failed to load whisper.cpp model '{config.model_name}': {exc}") from exc
 
     try:
-        raw_segments = model.transcribe(
-            audio,
-            n_threads=config.cpu_threads,
-            no_context=not config.condition_on_previous_text,
-            single_segment=True,
-            print_progress=False,
-            print_realtime=False,
-            language=config.language or "",
-            # --- Quality tuning ---
-            initial_prompt=_OUTPUT_PROMPT,
-            temperature=0.0,                    # greedy decode — most accurate
-            temperature_inc=0.2,                # fallback with slight randomness
-            no_speech_thold=config.whisper_no_speech_thold,      # aggressive non-speech reject
-            entropy_thold=config.whisper_entropy_thold,          # stricter than default 2.4
-            logprob_thold=config.whisper_logprob_thold,          # reject low-confidence
-            suppress_non_speech_tokens=True,
-            suppress_blank=True,
-            greedy={"best_of": 5},               # slight quality boost in greedy mode
-        )
+        with _whisper_cpp_lock:  # serialise — whisper.cpp is not thread-safe
+            raw_segments = model.transcribe(
+                audio,
+                n_threads=config.cpu_threads,
+                no_context=not config.condition_on_previous_text,
+                single_segment=True,
+                print_progress=False,
+                print_realtime=False,
+                language=config.language or "",
+                # --- Quality tuning ---
+                initial_prompt=_OUTPUT_PROMPT,
+                temperature=0.0,
+                temperature_inc=0.2,
+                no_speech_thold=config.whisper_no_speech_thold,
+                entropy_thold=config.whisper_entropy_thold,
+                logprob_thold=config.whisper_logprob_thold,
+                suppress_non_speech_tokens=True,
+                suppress_blank=True,
+                greedy={"best_of": 5},
+            )
     except Exception as exc:
         raise RuntimeError(f"whisper.cpp transcription failed: {exc}") from exc
 
