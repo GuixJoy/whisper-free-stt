@@ -1,0 +1,16 @@
+[project]
+name = "stt"
+version = "0.1.0"
+description = "Local-first speech-to-text assistant for Linux Wayland"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "sounddevice>=0.4.6",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+stt = "stt.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["stt*"]
