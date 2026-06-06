@@ -138,22 +138,7 @@ body::before {
   padding: 0.5rem; overflow-y: auto;
 }
 
-/* ── Transcript panel ── */
-.transcript-toggle {
-  display: flex; gap: 0.5rem; padding: 0.5rem;
-}
-.transcript-toggle button {
-  font-family: var(--font-sketch); font-size: 0.95rem;
-  border: none; background: transparent; color: var(--pencil-light);
-  cursor: pointer; padding: 0.2em 0.5em;
-  border-bottom: 2px solid transparent;
-}
-.transcript-toggle button.active {
-  color: var(--pencil);
-  border-bottom-color: var(--accent);
-}
-
-.transcript-card {
+.sketch-card {
   background: var(--paper);
   border: 1.5px solid var(--pencil-light);
   border-radius: 10px 12px 9px 11px;
@@ -217,24 +202,3 @@ body::before {
 .compact .main-area { overflow: hidden; }
 .compact .app-header h1 { font-size: 1.2rem; }
 
-/* ── Settings panel ── */
-.settings-panel {
-  background: var(--paper);
-  border: 2px solid var(--pencil);
-  border-radius: 12px 14px 11px 13px;
-  box-shadow: var(--sketch-shadow);
-  padding: 1rem; margin: 0.5rem;
-  max-height: 60vh; overflow-y: auto;
-}
-.settings-section {
-  margin: 0.8rem 0;
-  padding-bottom: 0.6rem;
-  border-bottom: 1px dashed var(--pencil-light);
-}
-.settings-section label {
-  display: block; font-family: var(--font-sketch); font-size: 0.95rem;
-  margin-bottom: 0.3rem;
-}
-.settings-section select, .settings-section input {
-  width: 100%; font-family: var(--font-hand);
-}
