@@ -71,9 +71,23 @@ function App() {
     localStorage.setItem("stt-transcripts", JSON.stringify(updated));
   }, [transcripts]);
 
-  // ── Detect Tauri vs browser dev mode ──
+  // ── Detect Tauri vs browser mode ──
   const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-  const _devTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // ── Shared event handler ──
+  const handleSTTEvent = useCallback((event: any, saveTranscript: (r: string, p: string) => void) => {
+    switch (event.type) {
+      case "state": setStatus(event.state); break;
+      case "raw": setRawText(event.text); break;
+      case "processed":
+        setProcessedText(event.text);
+        saveTranscript(event.text, event.text);
+        break;
+      case "mic": setMicLevel(event.level); break;
+      case "error": console.error(event.message); break;
+    }
+  }, []);
 
   // ── Start/Stop STT ──
   const startListening = useCallback(async () => {
@@ -81,65 +95,33 @@ function App() {
     setRawText(""); setProcessedText("");
 
     if (isTauri) {
-      // Real: spawn stt --json-mode via Tauri shell plugin
       let backendPath = "stt";
       try { backendPath = await invoke("get_backend_path"); } catch { /* use default */ }
       try {
         const { Command } = await import("@tauri-apps/plugin-shell");
         const cmd = Command.create("stt-json-spawn", [backendPath, "--json-mode"]);
         cmd.stdout.on("data", (line: string) => {
-          try {
-            const event = JSON.parse(line);
-            switch (event.type) {
-              case "state": setStatus(event.state); break;
-              case "raw": setRawText(event.text); break;
-              case "processed":
-                setProcessedText(event.text);
-                saveTranscript(rawText, event.text);
-                break;
-              case "mic": setMicLevel(event.level); break;
-              case "error": console.error(event.message); break;
-            }
-          } catch { /* partial line */ }
+          try { handleSTTEvent(JSON.parse(line), saveTranscript); } catch { }
         });
         await cmd.spawn();
-      } catch { /* Tauri shell unavailable */ }
+      } catch { }
     } else {
-      // Dev mode: simulate STT pipeline in browser
-      const demos = [
-        { raw: "um so I think we should refactor the config module",
-          processed: "I think we should refactor the config module." },
-        { raw: "hello this is a test of the speech to text system",
-          processed: "Hello, this is a test of the speech-to-text system." },
-        { raw: "please make sure to commit the changes before the deadline",
-          processed: "Please make sure to commit the changes before the deadline." },
-      ];
-      let i = 0;
-      _devTimer.current && clearInterval(_devTimer.current);
-      _devTimer.current = setInterval(() => {
-        setMicLevel(0.01 + Math.random() * 0.08);
-      }, 250);
-      // Simulate: listening → transcribing → processed
-      setTimeout(() => setStatus("transcribing"), 1500);
-      setTimeout(() => {
-        const d = demos[i % demos.length]; i++;
-        setRawText(d.raw);
-        setStatus("rewriting");
-      }, 2500);
-      setTimeout(() => {
-        const d = demos[i > 0 ? (i-1) % demos.length : 0];
-        setProcessedText(d.processed);
-        setStatus("idle");
-        saveTranscript(d.raw, d.processed);
-        _devTimer.current && clearInterval(_devTimer.current);
-      }, 3500);
+      // Browser mode: connect to stt --ws-port 8765
+      const ws = new WebSocket("ws://127.0.0.1:8765");
+      wsRef.current = ws;
+      ws.onmessage = (msg) => {
+        try { handleSTTEvent(JSON.parse(msg.data), saveTranscript); } catch { }
+      };
+      ws.onopen = () => setStatus("listening");
+      ws.onclose = () => { setStatus("idle"); setMicLevel(0); };
+      ws.onerror = () => setStatus("error");
     }
-  }, [rawText, saveTranscript, isTauri]);
+  }, [isTauri, handleSTTEvent, saveTranscript]);
 
   const stopListening = useCallback(() => {
     setStatus("idle");
     setMicLevel(0);
-    if (_devTimer.current) { clearInterval(_devTimer.current); _devTimer.current = null; }
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
   }, []);
 
   // ── Toggle favorite ──

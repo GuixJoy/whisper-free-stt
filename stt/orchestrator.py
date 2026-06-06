@@ -52,11 +52,25 @@ def _debug(config: AppConfig, *args, **kwargs) -> None:
         print("[debug]", *args, **kwargs, flush=True)
 
 
+# WebSocket broadcast list (populated when --ws-port is set)
+_ws_clients: list = []
+
+
 def _json_emit(config: AppConfig, event: dict) -> None:
-    """Emit a JSON event to stdout if json_mode is enabled."""
+    """Emit a JSON event to stdout and/or WebSocket clients."""
+    import json as _json
+    payload = _json.dumps(event)
     if config.json_mode:
-        import json as _json
-        print(_json.dumps(event), flush=True)
+        print(payload, flush=True)
+    if _ws_clients:
+        dead: list = []
+        for client in _ws_clients:
+            try:
+                client.send(payload)
+            except Exception:
+                dead.append(client)
+        for d in dead:
+            _ws_clients.remove(d)
 
 
 # ---------------------------------------------------------------------------
@@ -64,6 +78,37 @@ def _json_emit(config: AppConfig, event: dict) -> None:
 # ---------------------------------------------------------------------------
 
 _llm_semaphore = threading.Semaphore(2)  # max 2 concurrent LLM calls
+
+
+# ---------------------------------------------------------------------------
+# WebSocket server (for browser UI integration)
+# ---------------------------------------------------------------------------
+
+def start_ws_server(port: int = 8765) -> None:
+    """Start a WebSocket server in a daemon thread.  Connected clients receive
+    all JSON events emitted by the orchestrator."""
+    import asyncio as _asyncio
+    import websockets as _ws
+
+    async def _handler(websocket):
+        _ws_clients.append(websocket)
+        try:
+            await websocket.wait_closed()
+        finally:
+            if websocket in _ws_clients:
+                _ws_clients.remove(websocket)
+
+    async def _serve():
+        async with _ws.serve(_handler, "127.0.0.1", port):
+            await _asyncio.get_running_loop().create_future()  # run forever
+
+    def _run():
+        loop = _asyncio.new_event_loop()
+        _asyncio.set_event_loop(loop)
+        loop.run_until_complete(_serve())
+
+    threading.Thread(target=_run, daemon=True).start()
+    print(f"[ws] listening on ws://127.0.0.1:{port}", flush=True)
 
 
 # ---------------------------------------------------------------------------

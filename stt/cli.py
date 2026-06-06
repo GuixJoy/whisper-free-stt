@@ -21,7 +21,7 @@ from stt.config import (
     VADConfig,
     load_dotenv,
 )
-from stt.orchestrator import run, run_file
+from stt.orchestrator import run, run_file, start_ws_server
 
 
 @dataclass(frozen=True)
@@ -143,6 +143,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
     parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
+    parser.add_argument("--ws-port", type=int, default=None, help="Start WebSocket server on this port for browser UI")
     parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
 
     return parser
@@ -267,6 +268,10 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
+
+    if args.ws_port:
+        start_ws_server(args.ws_port)
+        object.__setattr__(config, "json_mode", True)  # ws implies json
 
     if args.input_file:
         run_file(config, args.input_file)
