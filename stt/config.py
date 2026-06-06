@@ -24,6 +24,11 @@ class LLMProvider(str, Enum):
     DEEPSEEK = "deepseek"
 
 
+class TranscriptionBackend(str, Enum):
+    WHISPER_CPP = "whisper_cpp"
+    FASTER_WHISPER = "faster_whisper"
+
+
 class ComputeType(str, Enum):
     INT8 = "int8"
     INT8_FLOAT16 = "int8_float16"
@@ -59,12 +64,14 @@ class VADConfig:
 
 @dataclass(frozen=True)
 class TranscriptionConfig:
-    model_name: str = "base"
+    backend: TranscriptionBackend = TranscriptionBackend.WHISPER_CPP
+    model_name: str = "base.en"
     compute_type: ComputeType = ComputeType.INT8
     device: str = "cpu"
     cpu_threads: int = 4
     language: str | None = None
     beam_size: int = 1
+    condition_on_previous_text: bool = True
 
 
 def _env_default(key: str, fallback: str) -> str:
