@@ -48,8 +48,32 @@ sudo apt install wl-clipboard wtype    # Debian/Ubuntu
 
 ```bash
 cp .env.example .env
-# Edit .env — paste your OpenRouter key
+# Edit .env — set your LLM provider below
 ```
+
+### LLM Providers
+
+Two providers supported, auto-detected from which API key you set:
+
+**DeepSeek** (faster, cheaper — recommended):
+```bash
+# .env
+DEEPSEEK_API_KEY=sk-ea99...
+STT_LLM_MODEL=deepseek-v4-flash
+```
+
+**OpenRouter** (multi-model, fallback chain):
+```bash
+# .env
+OPENROUTER_API_KEY=sk-or-v1-...
+STT_LLM_MODEL=openai/gpt-4o-mini
+STT_LLM_FALLBACK=anthropic/claude-3-5-haiku-latest
+```
+
+DeepSeek takes priority if both keys are set. Provider is selected at startup:
+`LLM: cleanup (deepseek:deepseek-v4-flash)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`
+
+Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
 ## Run
 
