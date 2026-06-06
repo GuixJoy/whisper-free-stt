@@ -587,10 +587,12 @@ class STTDesktopApp:
             self._append_activity("Enable LLM first to re-run cleanup")
             return
 
+        # Capture Tkinter values on the main thread before spawning worker
+        runtime_llm = self._build_runtime_config().llm
+        rewrite_mode = LLMMode(self.llm_mode_var.get())
+
         def _worker() -> None:
             try:
-                runtime_llm = self._build_runtime_config().llm
-                rewrite_mode = LLMMode(self.llm_mode_var.get())
                 updated = rewrite(item.raw, replace(runtime_llm, mode=rewrite_mode))
                 self.root.after(0, lambda: self._apply_rerun_cleanup(item.id, updated))
             except Exception as exc:
