@@ -56,11 +56,12 @@ class ShortcutManager:
         self._bound_sequences.clear()
         self._handlers_by_sequence.clear()
 
-    def _dispatch(self, sequence: str) -> None:
+    def _dispatch(self, sequence: str) -> str | None:
         handler = self._handlers_by_sequence.get(sequence)
-        if handler is not None:
-            handler()
-
+        if handler is None:
+            return None
+        handler()
+        return "break"
     def bind_focused(
         self,
         shortcuts: dict[str, str],
