@@ -50,29 +50,44 @@ _ASR_PROFILES: dict[str, _ASRProfile] = {
 
 
 def _has_cuda() -> bool:
-    """Check if CUDA is actually usable (not just compiled in)."""
+    """Check if CUDA is actually usable — library load + real inference test."""
     try:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() == 0:
             return False
-        import ctypes as _ct
-        import os as _os
-        # Try known absolute paths first (Ollama bundles), then system search
+        import ctypes as _ct, os as _os, numpy as _np, time as _time
+        # 1. Load libcublas
+        loaded = False
         for d in ["/usr/local/lib/ollama/cuda_v12", "/usr/local/lib/ollama/cuda_v13"]:
             lib = _os.path.join(d, "libcublas.so.12")
             if _os.path.isfile(lib):
                 try:
                     _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-                    return True
+                    loaded = True
+                    break
                 except OSError:
                     continue
-        for lib in ("libcublas.so.12", "libcublas.so.11"):
-            try:
-                _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-                return True
-            except OSError:
-                continue
-        return False
+        if not loaded:
+            for lib in ("libcublas.so.12", "libcublas.so.11"):
+                try: _ct.CDLL(lib, _ct.RTLD_GLOBAL); loaded = True; break
+                except OSError: continue
+        if not loaded:
+            return False
+        # 2. Actually run a tiny inference on GPU to verify it works
+        from faster_whisper import WhisperModel
+        import sys as _sys, io as _io
+        _old = _sys.stderr; _sys.stderr = _io.StringIO()  # suppress init noise
+        try:
+            model = WhisperModel("base", device="cuda", compute_type="float16")
+            audio = _np.zeros(16000, dtype=_np.float32)
+            t0 = _time.monotonic()
+            list(model.transcribe(audio, beam_size=1))
+            elapsed = _time.monotonic() - t0
+            return elapsed < 5.0  # GPU should be <1s, CPU takes 5-15s
+        except Exception:
+            return False
+        finally:
+            _sys.stderr = _old
     except Exception:
         return False
 
