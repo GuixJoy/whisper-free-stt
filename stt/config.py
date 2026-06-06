@@ -43,21 +43,21 @@ class AudioConfig:
     sample_rate: int = 16_000
     channels: int = 1
     dtype: str = "float32"
-    blocksize: int = 2048
+    blocksize: int = 1024
     device_index: int | None = None
 
 
 @dataclass(frozen=True)
 class VADConfig:
     silence_threshold_rms: float = 0.005
-    silence_duration_sec: float = 1.5
+    silence_duration_sec: float = 0.9
     min_recording_sec: float = 0.5
     pre_speech_padding_sec: float = 0.2
     max_recording_sec: float = 15.0
     start_threshold_multiplier: float = 1.3
     trigger_ratio: float = 0.8
     detrigger_ratio: float = 0.9
-    decision_window_sec: float = 0.3
+    decision_window_sec: float = 0.2
     noise_floor_alpha: float = 0.95
     noise_floor_margin: float = 3.0
 

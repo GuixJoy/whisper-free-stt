@@ -86,7 +86,7 @@ stt --help
 | `--sample-rate` | 16000 | Audio sample rate (Hz) |
 | `--device-index` | auto | Force specific mic |
 | `--silence-threshold` | 0.005 | Base RMS floor for adaptive VAD |
-| `--silence-duration` | 1.5 | Seconds of silence to end utterance |
+| `--silence-duration` | 0.9 | Seconds of silence to end utterance |
 | `--min-duration` | 0.5 | Ignore utterances shorter than this |
 | `--model` | profile-dependent | model name override |
 | `--asr-profile` | auto | auto / speed / balanced / accuracy / distil / turbo |

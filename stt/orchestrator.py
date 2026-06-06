@@ -16,7 +16,7 @@ import numpy as np
 from stt.config import AppConfig, LLMMode
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
 from stt.vad import compute_rms, StreamingEndpointDetector
-from stt.transcription import transcribe
+from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite
 from stt.clipboard import copy_to_clipboard
 from stt.typing import type_to_focused_input
@@ -85,6 +85,10 @@ def run(config: AppConfig) -> None:
     ring = _RingBuffer(int(30 * sr))
     detector = StreamingEndpointDetector(config.vad, sr, block_size)
 
+    # Warm the selected ASR backend in parallel with calibration.
+    warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
+    warmup_thread.start()
+
     # --- Noise floor calibration ---
     _debug(config, "calibrating noise floor (1.5s)...")
     calib_rms: list[float] = []
@@ -106,11 +110,16 @@ def run(config: AppConfig) -> None:
         _debug(config, f"calibration: p10={p10:.4f}, start_th={st:.4f}, end_th={et:.4f}")
 
     running = True
-    signal.signal(signal.SIGINT, lambda s, f: _stop())
+    def _stop(_sig, _frame):
+        nonlocal running
+        running = False
+    signal.signal(signal.SIGINT, _stop)
 
     chunk_count = 0
     try:
         for chunk in stream_iter:
+            if not running:
+                break
             chunk_start = ring.total_samples()
             ring.extend(chunk)
             chunk_end = ring.total_samples()
@@ -195,6 +204,3 @@ def _copy_and_sep(config: AppConfig, text: str) -> None:
         _echo("[clipboard] ✓")
     _echo("-" * 40)
 
-
-def _stop():
-    pass  # signal handler placeholder

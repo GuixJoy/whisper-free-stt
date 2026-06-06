@@ -25,7 +25,12 @@ def _get_cpp_model(config: TranscriptionConfig):
 
     key = config.model_name
     if key not in _whisper_cpp_cache:
-        _whisper_cpp_cache[key] = CppModel(key)
+        _whisper_cpp_cache[key] = CppModel(
+            config.model_name,
+            print_progress=False,
+            print_realtime=False,
+            n_threads=config.cpu_threads,
+        )
     return _whisper_cpp_cache[key]
 
 
@@ -98,6 +103,14 @@ def transcribe(
         return _transcribe_fw(audio_data, sample_rate, config)
 
 
+def warm_up_backend(config: TranscriptionConfig) -> None:
+    """Preload model weights to avoid first-utterance cold-start latency."""
+    if config.backend is TranscriptionBackend.WHISPER_CPP:
+        _get_cpp_model(config)
+    else:
+        _get_fw_model(config)
+
+
 # ---------------------------------------------------------------------------
 # Backend implementations
 # ---------------------------------------------------------------------------
@@ -114,7 +127,15 @@ def _transcribe_cpp(
         raise RuntimeError(f"Failed to load whisper.cpp model '{config.model_name}': {exc}") from exc
 
     try:
-        raw_segments = model.transcribe(audio)
+        raw_segments = model.transcribe(
+            audio,
+            n_threads=config.cpu_threads,
+            no_context=not config.condition_on_previous_text,
+            single_segment=True,
+            print_progress=False,
+            print_realtime=False,
+            language=config.language or "",
+        )
     except Exception as exc:
         raise RuntimeError(f"whisper.cpp transcription failed: {exc}") from exc
 
@@ -124,6 +145,8 @@ def _transcribe_cpp(
 
     for seg in raw_segments:
         text = seg.text.strip()
+        if not text or text in {"[BLANK_AUDIO]", "[MUSIC]", "[NOISE]"}:
+            continue
         # pywhispercpp segment t0/t1 are 10ms ticks -> seconds
         segments.append(TranscriptionSegment(text=text, start=seg.t0 * 0.01, end=seg.t1 * 0.01))
         text_parts.append(text)
