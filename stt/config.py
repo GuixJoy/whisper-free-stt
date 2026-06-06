@@ -54,12 +54,12 @@ class VADConfig:
     min_recording_sec: float = 0.5
     pre_speech_padding_sec: float = 0.2
     max_recording_sec: float = 15.0
-    start_threshold_multiplier: float = 1.3
-    trigger_ratio: float = 0.8
+    start_threshold_multiplier: float = 1.15
+    trigger_ratio: float = 0.6
     detrigger_ratio: float = 0.9
     decision_window_sec: float = 0.2
     noise_floor_alpha: float = 0.95
-    noise_floor_margin: float = 3.0
+    noise_floor_margin: float = 2.0
     # Fast-commit: when set, use lower silence duration + higher detrigger ratio
     # for ~40% faster endpointing. Trades occasional mid-sentence cuts for speed.
     fast_commit: bool = False
@@ -161,12 +161,24 @@ class AppConfig:
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
     typing: TypingConfig = field(default_factory=TypingConfig)
     debug: bool = False
+    json_mode: bool = False
 
 
 def load_dotenv(path: str | Path | None = None) -> None:
     """Load KEY=value pairs from a .env file into os.environ."""
     if path is None:
-        path = Path.cwd() / ".env"
+        # Try cwd first, then project root, then home
+        candidates = [
+            Path.cwd() / ".env",
+            Path(__file__).resolve().parent.parent / ".env",
+            Path.home() / ".stt.env",
+        ]
+        for p in candidates:
+            if p.exists():
+                path = p
+                break
+        else:
+            return
     elif isinstance(path, str):
         path = Path(path)
     if not path.exists():

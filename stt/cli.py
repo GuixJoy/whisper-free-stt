@@ -21,7 +21,7 @@ from stt.config import (
     VADConfig,
     load_dotenv,
 )
-from stt.orchestrator import run
+from stt.orchestrator import run, run_file, start_ws_server
 
 
 @dataclass(frozen=True)
@@ -50,29 +50,32 @@ _ASR_PROFILES: dict[str, _ASRProfile] = {
 
 
 def _has_cuda() -> bool:
-    """Check if CUDA is actually usable (not just compiled in)."""
+    """Check if CUDA is actually usable — library load + real inference test."""
     try:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() == 0:
             return False
-        import ctypes as _ct
-        import os as _os
-        # Try known absolute paths first (Ollama bundles), then system search
+        import ctypes as _ct, os as _os, numpy as _np, time as _time
+        # 1. Load libcublas
+        loaded = False
         for d in ["/usr/local/lib/ollama/cuda_v12", "/usr/local/lib/ollama/cuda_v13"]:
             lib = _os.path.join(d, "libcublas.so.12")
             if _os.path.isfile(lib):
                 try:
                     _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-                    return True
+                    loaded = True
+                    break
                 except OSError:
                     continue
-        for lib in ("libcublas.so.12", "libcublas.so.11"):
-            try:
-                _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-                return True
-            except OSError:
-                continue
-        return False
+        if not loaded:
+            for lib in ("libcublas.so.12", "libcublas.so.11"):
+                try: _ct.CDLL(lib, _ct.RTLD_GLOBAL); loaded = True; break
+                except OSError: continue
+        if not loaded:
+            return False
+        # 2. Avoid running an inference here (can download models / slow startup).
+        # Library-load + device count is enough for selecting a default profile.
+        return True
     except Exception:
         return False
 
@@ -142,6 +145,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
+    parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
+    parser.add_argument("--ws-port", type=int, default=None, help="Start WebSocket server on this port for browser UI")
+    parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
 
     return parser
 
@@ -169,9 +175,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     has_cuda = _has_cuda()
     profile_name = args.asr_profile
     if profile_name == "auto":
-        # Strongest default for general users:
-        # GPU -> distil-large-v3, CPU -> small.en
-        profile_name = "distil" if has_cuda else "accuracy"
+        profile_name = "turbo" if has_cuda else "accuracy"
 
     profile = _ASR_PROFILES[profile_name]
     model_name = args.model if args.model is not None else profile.model_name
@@ -218,6 +222,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             wtype_path=args.type_path,
         ),
         debug=args.debug,
+        json_mode=args.json_mode,
     )
 
 
@@ -264,7 +269,15 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
-    run(config)
+
+    if args.ws_port:
+        start_ws_server(args.ws_port)
+        object.__setattr__(config, "json_mode", True)  # ws implies json
+
+    if args.input_file:
+        run_file(config, args.input_file)
+    else:
+        run(config)
 
 
 if __name__ == "__main__":

@@ -29,9 +29,25 @@ cp .env.example .env
 
 # 3. Run
 stt
+
+# Optional: launch desktop UI
+stt-ui
 ```
 
 That's it.  Speak — cleaned text appears wherever your cursor is.
+
+## Desktop UI (Tkinter, cross-platform shell)
+
+`stt-ui` now includes:
+- Main panel: Idle/Listening/Transcribing/Rewriting/Copied/Error status, start/stop, PTT, copy/clear, mic level meter
+- Compact mode: mini window, optional always-on-top pin
+- Settings panel: device/backend/model/LLM/clipboard/PTT/auto-transcribe/theme/startup placeholder
+- Shortcut editor: remapping, conflict detection, scope labels
+- Transcript history: search, recopy, rerun cleanup, favorite, delete
+- Platform capability notes with Wayland fallback messaging
+
+Current implementation uses Python + Tkinter for low startup overhead and simple backend integration.
+Long-term production packaging target remains **Tauri + web UI + Python sidecar**.
 
 ---
 
@@ -159,6 +175,20 @@ Listening... (speak naturally, Ctrl+C to stop)
 ^C
 Done.
 ```
+
+---
+
+## Benchmarks
+
+*Measured 2026-06-06 on RTX 4060 (CUDA) + DeepSeek v4 Flash, 15 utterances.*
+
+| Stage | p50 | p95 | Notes |
+|---|---|---|---|
+| **ASR** | 0.67s | 11.8s | GPU — median sub-second. p95 includes first-utterance CUDA kernel compilation |
+| **LLM** | 1.47s | 3.0s | DeepSeek — every call completed |
+| **Total** | 3.0s | 13.2s | ~3 seconds from end-of-speech to final output |
+
+p95 ASR of 11.8s is from the first 1–2 utterances (one-time CUDA warmup). After that, ASR settles at ~0.6s — a **30× improvement** over CPU-only `distil-large-v3` (18s baseline).
 
 ---
 
