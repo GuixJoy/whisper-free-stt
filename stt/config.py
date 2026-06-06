@@ -72,6 +72,11 @@ class TranscriptionConfig:
     language: str | None = None
     beam_size: int = 1
     condition_on_previous_text: bool = True
+    noise_reduce: bool = True
+    noise_reduce_prop_decrease: float = 0.85
+    whisper_no_speech_thold: float = 0.5
+    whisper_entropy_thold: float = 2.2
+    whisper_logprob_thold: float = -1.0
 
 
 def _env_default(key: str, fallback: str) -> str:
