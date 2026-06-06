@@ -178,6 +178,20 @@ Done.
 
 ---
 
+## Benchmarks
+
+*Measured 2026-06-06 on RTX 4060 (CUDA) + DeepSeek v4 Flash, 15 utterances.*
+
+| Stage | p50 | p95 | Notes |
+|---|---|---|---|
+| **ASR** | 0.67s | 11.8s | GPU — median sub-second. p95 includes first-utterance CUDA kernel compilation |
+| **LLM** | 1.47s | 3.0s | DeepSeek — every call completed |
+| **Total** | 3.0s | 13.2s | ~3 seconds from end-of-speech to final output |
+
+p95 ASR of 11.8s is from the first 1–2 utterances (one-time CUDA warmup). After that, ASR settles at ~0.6s — a **30× improvement** over CPU-only `distil-large-v3` (18s baseline).
+
+---
+
 ## Extending
 
 ### Add a new LLM rewrite mode
