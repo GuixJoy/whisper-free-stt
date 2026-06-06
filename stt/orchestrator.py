@@ -170,6 +170,7 @@ def run(
 ) -> None:
     """Continuous streaming: mic → adaptive VAD → transcribe → [LLM] → print."""
     telemetry = _LatencyTracker()
+    stream_iter = None
 
     _echo("╔══════════════════════════════════╗")
     _echo("║   STT — Local Speech-to-Text    ║")
@@ -182,14 +183,21 @@ def run(
     _echo()
 
     # --- Auto-detect best mic ---
-    if config.audio.device_index is not None:
-        mic_index = config.audio.device_index
-        mic_name = f"device {mic_index}"
-    else:
-        _echo("Scanning microphones...")
-        mic_index, mic_name, mic_rms = find_best_microphone(config.audio.sample_rate)
-        _echo(f"Mic: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
-        object.__setattr__(config.audio, "device_index", mic_index)
+    try:
+        if config.audio.device_index is not None:
+            mic_index = config.audio.device_index
+            mic_name = f"device {mic_index}"
+        else:
+            _echo("Scanning microphones...")
+            mic_index, mic_name, mic_rms = find_best_microphone(config.audio.sample_rate)
+            _echo(f"Mic: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
+            object.__setattr__(config.audio, "device_index", mic_index)
+    except Exception as exc:
+        if hooks and hooks.on_error:
+            hooks.on_error(f"Microphone setup failed: {exc}")
+        if hooks and hooks.on_state:
+            hooks.on_state("error")
+        return
 
     _echo(f"LLM: {config.llm.mode.value} ({config.llm.provider.value}:{config.llm.model})")
     _echo(f"Typing: {'enabled' if config.typing.enabled else 'disabled'}")
@@ -233,6 +241,12 @@ def run(
             calib_rms.append(compute_rms(chunk))
     except StopIteration:
         pass
+    except Exception as exc:
+        if hooks and hooks.on_error:
+            hooks.on_error(f"Microphone stream failed: {exc}")
+        if hooks and hooks.on_state:
+            hooks.on_state("error")
+        return
 
     if calib_rms:
         sorted_r = sorted(calib_rms)
@@ -298,10 +312,11 @@ def run(
     except KeyboardInterrupt:
         pass
     finally:
-        try:
-            stream_iter.close()
-        except Exception:
-            pass
+        if stream_iter is not None:
+            try:
+                stream_iter.close()
+            except Exception:
+                pass
 
     # --- Print telemetry summary on exit ---
     snap = telemetry.snapshot()
