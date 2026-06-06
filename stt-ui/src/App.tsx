@@ -1,207 +1,308 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
-import Lenis from "lenis";
-import "./App.css";
-import { type STTApi, type STTEvent } from "./api";
-import { createTauriApi } from "./api-tauri";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { STTApi, STTEvent } from "./api";
 import { createWsApi } from "./api-ws";
+import { createTauriApi } from "./api-tauri";
+import "./App.css";
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const qc = new QueryClient();
+type RunMode = "ws" | "tauri";
 
-// ── Types ──
-type Status = "idle" | "listening" | "transcribing" | "rewriting" | "error";
-interface Card { id: number; raw: string; processed: string; status: Status; at: string; }
-
-// ── Sketch Button ──
-function Btn({ children, onClick, on, small, accent, disabled }: {
-  children: React.ReactNode; onClick?: () => void; on?: boolean; small?: boolean; accent?: boolean; disabled?: boolean;
-}) {
-  return (
-    <motion.button
-      className={`sketch-btn ${on ? "recording" : ""} ${accent ? "accent" : ""}`}
-      onClick={onClick}
-      whileHover={{ scale: 1.04, rotate: 0.5 }}
-      whileTap={disabled ? undefined : { scale: 0.96, rotate: 0 }}
-      style={small ? { fontSize: "0.85rem", padding: "0.3em 0.8em" } : {}}
-      disabled={disabled}
-    >
-      {children}
-    </motion.button>
-  );
+interface TranscriptLine {
+  id: number;
+  raw: string;
+  processed: string;
+  status: string;
+  createdAt: string;
 }
 
-// ── Main App ──
-function AppInner() {
-  const [status, setStatus] = useState<Status>("idle");
+interface RuntimeSettings {
+  wsPort: number;
+  asrProfile: "auto" | "speed" | "balanced" | "accuracy" | "distil" | "turbo";
+  backend: "auto" | "whisper_cpp" | "faster_whisper";
+  model: string;
+  llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
+  fastCommit: boolean;
+  typing: boolean;
+  clipboard: boolean;
+  debug: boolean;
+}
+
+const DEFAULT_SETTINGS: RuntimeSettings = {
+  wsPort: 8765,
+  asrProfile: "auto",
+  backend: "auto",
+  model: "",
+  llmMode: "cleanup",
+  fastCommit: true,
+  typing: false,
+  clipboard: false,
+  debug: false,
+};
+
+function buildCliArgs(settings: RuntimeSettings): string[] {
+  const args: string[] = ["--json-mode", "--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];
+  if (settings.backend !== "auto") args.push("--backend", settings.backend);
+  if (settings.model.trim()) args.push("--model", settings.model.trim());
+  if (settings.fastCommit) args.push("--fast-commit");
+  if (!settings.typing) args.push("--no-type");
+  if (settings.clipboard) args.push("--clipboard");
+  if (settings.debug) args.push("--debug");
+  return args;
+}
+
+function buildWsCommand(settings: RuntimeSettings): string {
+  const args = [
+    "--ws-port",
+    String(settings.wsPort),
+    "--asr-profile",
+    settings.asrProfile,
+    "--llm-mode",
+    settings.llmMode,
+  ];
+  if (settings.backend !== "auto") args.push("--backend", settings.backend);
+  if (settings.model.trim()) args.push("--model", settings.model.trim());
+  if (settings.fastCommit) args.push("--fast-commit");
+  if (!settings.typing) args.push("--no-type");
+  if (settings.clipboard) args.push("--clipboard");
+  if (settings.debug) args.push("--debug");
+  return `stt ${args.join(" ")}`;
+}
+
+function App() {
+  const [mode, setMode] = useState<RunMode>("ws");
+  const [connected, setConnected] = useState(false);
+  const [settings, setSettings] = useState<RuntimeSettings>(DEFAULT_SETTINGS);
+  const [status, setStatus] = useState("idle");
   const [micLevel, setMicLevel] = useState(0);
-  const [compact, setCompact] = useState(false);
-  const [typing, setTyping] = useState(true);
-  const apiRef = useRef<STTApi | null>(null);
-  const currentCard = useRef<Card | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
+  const [lines, setLines] = useState<TranscriptLine[]>([]);
+  const [toast, setToast] = useState("");
+  const [showControls, setShowControls] = useState(true);
 
-  // Lenis smooth scroll
+  const runtimeRef = useRef<STTApi | null>(null);
+  const nextLocalId = useRef(1);
+  const feedRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
-    const lenis = new Lenis({ duration: 0.8, easing: (t: number) => 1 - Math.pow(1 - t, 3) });
-    function raf(time: number) { lenis.raf(time); requestAnimationFrame(raf); }
-    requestAnimationFrame(raf);
-    return () => lenis.destroy();
+    if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+      setMode("tauri");
+    }
   }, []);
 
-  // Transcript feed via TanStack Query
-  const { data: cards = [] } = useQuery<Card[]>({
-    queryKey: ["transcripts"],
-    queryFn: () => Promise.resolve([]),
-    staleTime: Infinity,
-    initialData: [],
-  });
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(""), 1800);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
-  const addCard = useCallback((raw: string, processed: string) => {
-    const card: Card = { id: Date.now(), raw, processed, status: "idle", at: new Date().toLocaleTimeString() };
-    queryClient.setQueryData<Card[]>(["transcripts"], (prev = []) => [card, ...prev].slice(0, 500));
-  }, [queryClient]);
+  useEffect(() => {
+    if (!feedRef.current) return;
+    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [lines]);
 
-  const clearCards = useCallback(() => {
-    queryClient.setQueryData<Card[]>(["transcripts"], []);
-  }, [queryClient]);
+  const commandPreview = useMemo(() => {
+    if (mode === "ws") return buildWsCommand(settings);
+    return `stt ${buildCliArgs(settings).join(" ")}`;
+  }, [mode, settings]);
 
-  // Start listening
-  const start = useCallback(async () => {
-    setStatus("listening");
-    const api = isTauri ? createTauriApi() : createWsApi();
-    apiRef.current = api;
-
-    api.onEvent((e: STTEvent) => {
-      switch (e.type) {
-        case "state":
-          if (["listening", "transcribing", "rewriting", "error", "idle"].includes(e.state)) {
-            setStatus(e.state as Status);
-          }
-          break;
-        case "raw":
-          currentCard.current = { id: Date.now(), raw: e.text, processed: "", status: "transcribing", at: new Date().toLocaleTimeString() };
-          queryClient.setQueryData<Card[]>(["transcripts"], (prev = []) => [currentCard.current!, ...prev]);
-          break;
-        case "processed":
-          if (currentCard.current) {
-            queryClient.setQueryData<Card[]>(["transcripts"], (prev = []) =>
-              prev.map(c => c.id === currentCard.current!.id ? { ...c, processed: e.text, status: "idle" as Status } : c)
-            );
-          } else {
-            addCard(e.text, e.text);
-          }
-          break;
-        case "mic": setMicLevel(e.level); break;
-        case "error": setStatus("error"); break;
+  const applyEvent = (event: STTEvent) => {
+    if (event.type === "state") {
+      setStatus(event.state === "copied" ? "idle" : event.state);
+      return;
+    }
+    if (event.type === "mic") {
+      setMicLevel(event.level);
+      return;
+    }
+    if (event.type === "error") {
+      setToast(event.message);
+      setStatus("error");
+      if (event.utterance_id) {
+        setLines((prev) => prev.map((line) => (
+          line.id === event.utterance_id ? { ...line, status: "error" } : line
+        )));
       }
-    });
+      return;
+    }
+    if (event.type === "dropped") {
+      setToast(`Dropped (${event.reason})`);
+      return;
+    }
+    if (event.type === "raw") {
+      const id = event.utterance_id ?? nextLocalId.current++;
+      setLines((prev) => [
+        ...prev,
+        {
+          id,
+          raw: event.text,
+          processed: "",
+          status: "transcribing",
+          createdAt: new Date().toISOString(),
+        },
+      ].slice(-500));
+      return;
+    }
+    if (event.type === "processed") {
+      const id = event.utterance_id;
+      if (!id) return;
+      setLines((prev) => prev.map((line) => (
+        line.id === id ? { ...line, processed: event.text, status: "done" } : line
+      )));
+    }
+  };
 
-    try { await api.start(); } catch { setStatus("error"); }
-  }, [queryClient, addCard]);
+  const start = async () => {
+    if (connected) return;
+    const api: STTApi = mode === "ws" ? createWsApi(settings.wsPort) : createTauriApi(buildCliArgs(settings));
+    api.onEvent(applyEvent);
+    try {
+      await api.start();
+      runtimeRef.current = api;
+      setConnected(true);
+      setStatus("listening");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Failed to start runtime");
+    }
+  };
 
-  const stop = useCallback(() => {
-    apiRef.current?.stop(); apiRef.current = null;
-    setStatus("idle"); setMicLevel(0);
-  }, []);
+  const stop = () => {
+    runtimeRef.current?.stop();
+    runtimeRef.current = null;
+    setConnected(false);
+    setStatus("idle");
+  };
 
-  const copyLast = useCallback(() => {
-    const last = cards.find(c => c.processed);
-    if (last) navigator.clipboard.writeText(last.processed);
-  }, [cards]);
+  useEffect(() => () => stop(), []);
 
-  const isRunning = status !== "idle";
+  const clearLines = () => setLines([]);
+
+  const copyLatest = async () => {
+    const latest = lines[lines.length - 1];
+    if (!latest) return;
+    await navigator.clipboard.writeText(latest.processed || latest.raw);
+    setToast("Copied latest");
+  };
 
   return (
-    <div className={compact ? "compact" : ""}>
-      {/* ── Header ── */}
+    <div className="paper-shell">
       <header className="app-header">
-        <h1>✎ stt</h1>
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          <span className={`status-badge ${status === "listening" ? "status-listening" : status === "transcribing" ? "status-transcribing" : status === "rewriting" ? "status-rewriting" : status === "error" ? "status-error" : "status-idle"}`}>
-            {status === "listening" ? "● listening" : status === "transcribing" ? "↻ transcribing" : status === "rewriting" ? "✎ rewriting" : status === "error" ? "⚠ error" : "○ idle"}
+        <h1>✎ STT Feed</h1>
+        <div className="flex items-center gap-2">
+          <span className={`status-badge ${status === "error" ? "status-error" : status === "rewriting" ? "status-rewriting" : status === "transcribing" ? "status-transcribing" : status === "listening" ? "status-listening" : "status-idle"}`}>
+            {status}
           </span>
-          <Btn small onClick={() => setTyping(!typing)}>{typing ? "⌨ on" : "⌨ off"}</Btn>
-          <Btn small onClick={() => setCompact(!compact)}>{compact ? "□" : "▤"}</Btn>
+          <button className="sketch-btn" onClick={() => setShowControls((s) => !s)}>
+            {showControls ? "Hide controls" : "Show controls"}
+          </button>
         </div>
       </header>
 
-      {/* ── Mic level bar ── */}
-      <motion.div className="mic-bar-wrap" animate={{ opacity: isRunning ? 1 : 0.4 }}>
-        <motion.div className="mic-bar-fill" animate={{ width: `${Math.min(100, micLevel * 200)}%` }} transition={{ duration: 0.1 }} />
-      </motion.div>
+      <main className="canvas-layout">
+        {showControls && (
+          <aside className="controls-panel">
+            <div className="controls-row">
+              <label>Mode</label>
+              <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
+                <option value="ws">WebSocket (external stt)</option>
+                <option value="tauri">Tauri local process</option>
+              </select>
+            </div>
 
-      {/* ── Controls bar ── */}
-      <div style={{ display: "flex", gap: "0.5rem", justifyContent: "center", alignItems: "center", padding: "0.6rem 0.5rem", flexWrap: "wrap" }}>
-        {isRunning ? (
-          <Btn on onClick={stop}>■ Stop</Btn>
-        ) : (
-          <Btn onClick={start}>▶ Start</Btn>
-        )}
-        <Btn small onClick={copyLast} disabled={cards.length === 0}>📋 Copy last</Btn>
-        <Btn small onClick={clearCards} disabled={cards.length === 0}>🗑 Clear</Btn>
-        <span style={{ fontFamily: "var(--font-sketch)", fontSize: "0.9rem", color: "var(--pencil-light)", marginLeft: "0.5rem" }}>
-          {cards.length} cards
-        </span>
-      </div>
+            <div className="controls-row">
+              <label>WS Port</label>
+              <input className="sketch-input" type="number" value={settings.wsPort} onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))} />
+            </div>
 
-      {/* ── Infinite transcript scroll ── */}
-      <main className="main-area" ref={scrollRef}>
-        <AnimatePresence initial={false}>
-          {cards.length === 0 && status === "idle" && (
-            <motion.p
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-              style={{ textAlign: "center", marginTop: "4rem", fontFamily: "var(--font-sketch)", fontSize: "1.4rem", color: "var(--pencil-light)" }}
-            >
-              press start and speak →
-            </motion.p>
-          )}
-          {cards.map((c, i) => (
-            <motion.div
-              key={c.id}
-              className="sketch-card"
-              initial={{ opacity: 0, y: 20, rotate: -1 }}
-              animate={{ opacity: 1, y: 0, rotate: -0.2 }}
-              exit={{ opacity: 0, x: -50 }}
-              transition={{ duration: 0.3, delay: i === 0 ? 0 : 0 }}
-              layout
-            >
+            <div className="controls-row">
+              <label>ASR Profile</label>
+              <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
+                <option value="auto">auto</option>
+                <option value="speed">speed</option>
+                <option value="balanced">balanced</option>
+                <option value="accuracy">accuracy</option>
+                <option value="distil">distil</option>
+                <option value="turbo">turbo</option>
+              </select>
+            </div>
+
+            <div className="controls-row">
+              <label>Backend</label>
+              <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
+                <option value="auto">auto</option>
+                <option value="whisper_cpp">whisper_cpp</option>
+                <option value="faster_whisper">faster_whisper</option>
+              </select>
+            </div>
+
+            <div className="controls-row">
+              <label>Model override</label>
+              <input className="sketch-input" value={settings.model} onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))} placeholder="e.g. large-v3-turbo" />
+            </div>
+
+            <div className="controls-row">
+              <label>LLM Mode</label>
+              <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
+                <option value="cleanup">cleanup</option>
+                <option value="off">off</option>
+                <option value="bullet_list">bullet_list</option>
+                <option value="email">email</option>
+                <option value="commit_message">commit_message</option>
+              </select>
+            </div>
+
+            <div className="controls-checks">
+              <label><input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} /> fast commit</label>
+              <label><input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} /> type to focused input</label>
+              <label><input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} /> clipboard</label>
+              <label><input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} /> debug</label>
+            </div>
+
+            <div className="controls-actions">
+              {!connected ? (
+                <button className="sketch-btn" onClick={start}>▶ Start</button>
+              ) : (
+                <button className="sketch-btn recording" onClick={stop}>■ Stop</button>
+              )}
+              <button className="sketch-btn" onClick={copyLatest}>📋 Copy last</button>
+              <button className="sketch-btn" onClick={clearLines}>🗑 Clear</button>
+            </div>
+
+            <div className="command-preview">
               <div className="transcript-meta">
-                <span>{c.at}</span>
-                <span style={{ color: c.status === "transcribing" ? "var(--accent)" : c.status === "rewriting" ? "#D97706" : "var(--pencil-light)" }}>
-                  {c.status}
-                </span>
+                <span>Command preview</span>
+                <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
               </div>
-              {c.raw && <div className="transcript-raw">~ {c.raw}</div>}
-              {c.processed && (
-                <motion.div
-                  className="transcript-clean"
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  transition={{ duration: 0.4 }}
-                >
-                  {c.processed}
-                </motion.div>
-              )}
-              {c.processed && (
-                <div className="transcript-actions">
-                  <button className="icon-btn" onClick={() => navigator.clipboard.writeText(c.processed)}>📋 copy</button>
+              <code>{commandPreview}</code>
+            </div>
+          </aside>
+        )}
+
+        <section className="feed-board">
+          <div className="hud">
+            <div className="note-chip">{connected ? "connected" : "disconnected"}</div>
+            <div className="note-chip">{lines.length} lines</div>
+          </div>
+          <div className="mic-meter">
+            <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
+          </div>
+
+          <div className="line-feed" ref={feedRef}>
+            {lines.length === 0 ? (
+              <p className="empty-feed">Listening output will appear here line by line…</p>
+            ) : (
+              lines.map((line) => (
+                <div key={line.id} className="feed-line">
+                  <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
+                  <span className="feed-text">{line.processed || line.raw}</span>
+                  <span className="feed-status">{line.status}</span>
                 </div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+              ))
+            )}
+          </div>
+        </section>
       </main>
+
+      {toast && <div className="toast-msg">{toast}</div>}
     </div>
   );
 }
 
-// ── Root with QueryClientProvider ──
-export default function App() {
-  return (
-    <QueryClientProvider client={qc}>
-      <AppInner />
-    </QueryClientProvider>
-  );
-}
+export default App;

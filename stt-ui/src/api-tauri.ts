@@ -1,7 +1,7 @@
 // ── Tauri sidecar: spawns `stt --json-mode` via shell plugin ──
 import { type STTApi, type STTEvent } from "./api";
 
-export function createTauriApi(): STTApi {
+export function createTauriApi(args: string[]): STTApi {
   let listeners: Array<(e: STTEvent) => void> = [];
   let child: any = null;
 
@@ -12,9 +12,7 @@ export function createTauriApi(): STTApi {
       try {
         // Tauri shell sidecar — runs `stt --json-mode` as a child process
         const { Command } = await import("@tauri-apps/plugin-shell");
-        // In Tauri v2, sidecar binaries are referenced by name (configured in tauri.conf.json)
-        // For now, use "stt" from PATH and --json-mode
-        const cmd = Command.create("stt-sidecar", ["--json-mode", "--no-type"]);
+        const cmd = Command.create("stt-sidecar", args);
         cmd.stdout.on("data", (line: string) => {
           try {
             const event: STTEvent = JSON.parse(line);
@@ -27,9 +25,9 @@ export function createTauriApi(): STTApi {
         });
         child = await cmd.spawn();
       } catch (err) {
-        // fallback: not in Tauri — try PATH
+        // fallback: not in Tauri sidecar env — try PATH
         const { Command } = await import("@tauri-apps/plugin-shell");
-        const cmd = Command.create("stt", ["--json-mode", "--no-type"]);
+        const cmd = Command.create("stt", args);
         cmd.stdout.on("data", (line: string) => {
           try {
             const event: STTEvent = JSON.parse(line);

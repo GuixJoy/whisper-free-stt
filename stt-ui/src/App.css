@@ -1,5 +1,6 @@
 /* ── Sketch Design System ── */
 @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&family=Patrick+Hand&display=swap');
+@import "tailwindcss";
 
 :root {
   --paper: #FAFAF5;
@@ -138,3 +139,224 @@ body::before {
 .compact .main-area { padding: 0.1rem; }
 .compact .sketch-btn { font-size: 0.95rem; padding: 0.3em 0.8em; }
 .compact .transcript-clean { font-size: 1rem; }
+
+/* ── Canvas workspace ── */
+.paper-shell {
+  min-height: 100vh;
+  position: relative;
+}
+
+.paper-shell::after {
+  content: "";
+  position: absolute;
+  right: 1.2rem;
+  top: 3.3rem;
+  width: 138px;
+  height: 86px;
+  background: var(--wash-yellow);
+  border-radius: 46% 54% 53% 47% / 42% 44% 56% 58%;
+  transform: rotate(-7deg);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.canvas-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  height: calc(100vh - 104px);
+}
+
+.controls-panel {
+  margin: 0.6rem;
+  padding: 0.8rem;
+  border: 2px solid var(--pencil);
+  border-radius: 12px 14px 10px 14px;
+  box-shadow: var(--sketch-shadow);
+  background: rgba(250, 250, 245, 0.95);
+  overflow-y: auto;
+  z-index: 2;
+}
+
+.controls-row {
+  margin-bottom: 0.55rem;
+}
+
+.controls-row label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-family: var(--font-sketch);
+  color: var(--pencil-light);
+}
+
+.controls-checks {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.8rem 0;
+}
+
+.controls-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.command-preview {
+  margin-top: 0.8rem;
+  padding: 0.6rem;
+  border: 1.5px dashed var(--pencil-faint);
+  border-radius: 8px;
+}
+
+.command-preview code {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  margin-top: 0.3rem;
+}
+
+.canvas-board {
+  position: relative;
+  margin: 0.6rem 0.6rem 0.6rem 0;
+  border: 2px dashed var(--pencil-faint);
+  border-radius: 16px 10px 14px 12px;
+  background:
+    linear-gradient(to right, rgba(0, 0, 0, 0.03) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.03) 1px, transparent 1px) 0 0 / 40px 40px,
+    var(--paper);
+  overflow: hidden;
+  cursor: grab;
+  z-index: 2;
+}
+
+.canvas-board:active {
+  cursor: grabbing;
+}
+
+.feed-board {
+  position: relative;
+  margin: 0.6rem 0.6rem 0.6rem 0;
+  border: 2px dashed var(--pencil-faint);
+  border-radius: 16px 10px 14px 12px;
+  background: var(--paper);
+  overflow: hidden;
+  z-index: 2;
+}
+
+.hud {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.note-chip {
+  border: 1px dashed var(--pencil-light);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  transform: rotate(-2deg);
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.7);
+  font-family: var(--font-sketch);
+}
+
+.mic-meter {
+  position: absolute;
+  left: 0.8rem;
+  top: 0.8rem;
+  width: 260px;
+  height: 10px;
+  border: 1px solid var(--pencil-light);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.05);
+  z-index: 3;
+}
+
+.mic-meter-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #f59e0b, #ef4444);
+  transition: width 120ms linear;
+}
+
+.board-surface {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.line-feed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2.2rem;
+  bottom: 0;
+  overflow-y: auto;
+  padding: 0.7rem 0.8rem 0.9rem;
+}
+
+.feed-line {
+  display: grid;
+  grid-template-columns: 90px 1fr auto;
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.35rem 0.2rem;
+  border-bottom: 1px dashed var(--pencil-faint);
+}
+
+.feed-time {
+  color: var(--pencil-light);
+  font-size: 0.78rem;
+  font-family: var(--font-sketch);
+}
+
+.feed-text {
+  color: var(--pencil);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.feed-status {
+  color: var(--pencil-light);
+  font-size: 0.78rem;
+  font-family: var(--font-sketch);
+}
+
+.empty-feed {
+  color: var(--pencil-light);
+  font-family: var(--font-sketch);
+  font-size: 1.2rem;
+  margin: 2rem 0.6rem;
+}
+
+.canvas-card {
+  position: absolute;
+  width: 320px;
+  min-height: 140px;
+}
+
+.toast-msg {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: var(--paper);
+  border: 2px solid var(--pencil);
+  border-radius: 10px 14px 10px 14px;
+  padding: 0.4rem 0.8rem;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.18);
+  font-family: var(--font-sketch);
+}
+
+@media (max-width: 980px) {
+  .canvas-layout {
+    grid-template-columns: 1fr;
+  }
+  .controls-panel {
+    margin-right: 0.6rem;
+    max-height: 40vh;
+  }
+}

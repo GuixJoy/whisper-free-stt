@@ -167,7 +167,18 @@ class AppConfig:
 def load_dotenv(path: str | Path | None = None) -> None:
     """Load KEY=value pairs from a .env file into os.environ."""
     if path is None:
-        path = Path.cwd() / ".env"
+        # Try cwd first, then project root, then home
+        candidates = [
+            Path.cwd() / ".env",
+            Path(__file__).resolve().parent.parent / ".env",
+            Path.home() / ".stt.env",
+        ]
+        for p in candidates:
+            if p.exists():
+                path = p
+                break
+        else:
+            return
     elif isinstance(path, str):
         path = Path(path)
     if not path.exists():
