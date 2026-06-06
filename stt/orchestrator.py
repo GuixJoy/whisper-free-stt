@@ -19,6 +19,7 @@ from stt.vad import compute_rms, StreamingEndpointDetector
 from stt.transcription import transcribe
 from stt.llm import rewrite
 from stt.clipboard import copy_to_clipboard
+from stt.typing import type_to_focused_input
 
 
 def _echo(*args, **kwargs) -> None:
@@ -70,6 +71,7 @@ def run(config: AppConfig) -> None:
 
     _echo(f"ASR: {config.transcription.model_name} ({config.transcription.device})")
     _echo(f"LLM: {config.llm.mode.value} ({config.llm.provider.value}:{config.llm.model})")
+    _echo(f"Typing: {'enabled' if config.typing.enabled else 'disabled'}")
     _echo(f"Clipboard: {'enabled' if config.clipboard.enabled else 'disabled'}")
     _echo()
 
@@ -187,6 +189,8 @@ def _transcribe_and_print(config: AppConfig, audio: np.ndarray, sr: int, timesta
 
 
 def _copy_and_sep(config: AppConfig, text: str) -> None:
+    if type_to_focused_input(text, config.typing):
+        _echo("[typed] ✓")
     if config.clipboard.enabled and copy_to_clipboard(text, config.clipboard):
         _echo("[clipboard] ✓")
     _echo("-" * 40)

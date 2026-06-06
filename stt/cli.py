@@ -17,6 +17,7 @@ from stt.config import (
     LLMProvider,
     TranscriptionBackend,
     TranscriptionConfig,
+    TypingConfig,
     VADConfig,
     load_dotenv,
 )
@@ -128,6 +129,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     # Clipboard
     parser.add_argument("--clipboard", action="store_true", help="Copy final text to Wayland clipboard (wl-copy)")
+    parser.add_argument("--no-type", action="store_true", help="Do not type final text into focused input")
+    parser.add_argument("--type-path", type=str, default="wtype", help="Typing binary path (default: wtype)")
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
@@ -198,6 +201,10 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         ),
         clipboard=ClipboardConfig(
             enabled=args.clipboard,
+        ),
+        typing=TypingConfig(
+            enabled=not args.no_type,
+            wtype_path=args.type_path,
         ),
         debug=args.debug,
     )

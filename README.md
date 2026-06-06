@@ -3,8 +3,8 @@
 Local-first Python speech-to-text for Linux Wayland.
 
 Listens to your microphone, auto-detects speech/silence (adaptive VAD with
-hysteresis + noise-floor calibration), transcribes with
-faster-whisper, and optionally rewrites text via OpenRouter.
+hysteresis + noise-floor calibration), transcribes, cleans up text with LLM by
+default, and types output into your currently focused input field.
 
 ## Architecture
 
@@ -40,8 +40,8 @@ uv venv
 source .venv/bin/activate
 uv pip install -e .
 
-# Optional: system dep for wl-copy (clipboard integration)
-sudo apt install wl-clipboard    # Debian/Ubuntu
+# Optional: system deps
+sudo apt install wl-clipboard wtype    # Debian/Ubuntu
 ```
 
 ## Quickstart with .env
@@ -54,13 +54,13 @@ cp .env.example .env
 ## Run
 
 ```bash
-# Basic: listen → transcribe → print
-stt
+# Basic: listen → transcribe → cleanup → type into focused input
+stt   # or: sst
 
-# LLM mode via .env (reads OPENROUTER_API_KEY + STT_LLM_MODE)
-stt
+# Disable typing (print-only flow)
+stt --no-type
 
-# Or override on the CLI
+# Override cleanup mode on the CLI
 stt --llm-mode bullet_list
 
 # With clipboard output
@@ -92,9 +92,11 @@ stt --help
 | `--asr-profile` | auto | auto / speed / balanced / accuracy / distil / turbo |
 | `--compute-type` | auto | auto / int8 / float16 / ... |
 | `--device` | auto | auto / cpu / cuda |
-| `--llm-mode` | env/off | off / cleanup / bullet_list / email / commit_message |
+| `--llm-mode` | cleanup | off / cleanup / bullet_list / email / commit_message |
 | `--llm-model` | env | Primary OpenRouter model (env: `STT_LLM_MODEL`) |
 | `--llm-fallback` | env | Fallback model (env: `STT_LLM_FALLBACK`) |
+| `--no-type` | false | Disable typing to focused input |
+| `--type-path` | wtype | Typing binary path |
 | `--clipboard` | false | Enable wl-copy clipboard output |
 
 ## Insertion points

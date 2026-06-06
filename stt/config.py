@@ -106,7 +106,7 @@ def _default_model_for(provider: LLMProvider) -> str:
 
 @dataclass(frozen=True)
 class LLMConfig:
-    mode: LLMMode = LLMMode.OFF
+    mode: LLMMode = LLMMode.CLEANUP
     provider: LLMProvider = field(default_factory=_detect_provider)
     model: str = field(default_factory=lambda: _env_default("STT_LLM_MODEL", ""))
     fallback_model: str = field(default_factory=lambda: _env_default("STT_LLM_FALLBACK", ""))
@@ -136,12 +136,19 @@ class ClipboardConfig:
 
 
 @dataclass(frozen=True)
+class TypingConfig:
+    enabled: bool = True
+    wtype_path: str = "wtype"
+
+
+@dataclass(frozen=True)
 class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
+    typing: TypingConfig = field(default_factory=TypingConfig)
     debug: bool = False
 
 
