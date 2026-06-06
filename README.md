@@ -29,6 +29,9 @@ cp .env.example .env
 
 # 3. Run
 stt
+
+# Optional: launch Milestone 1 desktop UI shell
+stt-ui
 ```
 
 That's it.  Speak — cleaned text appears wherever your cursor is.

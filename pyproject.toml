@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 stt = "stt.cli:main"
 sst = "stt.cli:main"
+stt-ui = "stt.ui:main"
 
 [project.optional-dependencies]
 llm = []  # uses stdlib urllib — no extra deps

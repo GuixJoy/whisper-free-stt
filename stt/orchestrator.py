@@ -10,6 +10,8 @@ import sys
 import threading
 import time
 from collections import deque
+from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 
@@ -20,6 +22,21 @@ from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite
 from stt.clipboard import copy_to_clipboard
 from stt.typing import type_to_focused_input
+
+
+# ---------------------------------------------------------------------------
+# Optional hooks for UI integration
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class RunHooks:
+    on_state: Callable[[str], None] | None = None
+    on_activity: Callable[[str], None] | None = None
+    on_partial: Callable[[str], None] | None = None
+    on_raw: Callable[[str], None] | None = None
+    on_processed: Callable[[str], None] | None = None
+    on_mic_level: Callable[[float], None] | None = None
+    on_error: Callable[[str], None] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +161,13 @@ class _RingBuffer:
 # Top-level streaming loop
 # ---------------------------------------------------------------------------
 
-def run(config: AppConfig) -> None:
+def run(
+    config: AppConfig,
+    *,
+    stop_event: threading.Event | None = None,
+    hooks: RunHooks | None = None,
+    enable_signal_handlers: bool = True,
+) -> None:
     """Continuous streaming: mic → adaptive VAD → transcribe → [LLM] → print."""
     telemetry = _LatencyTracker()
 
@@ -177,6 +200,10 @@ def run(config: AppConfig) -> None:
 
     _echo("Listening... (speak naturally, Ctrl+C to stop)")
     _echo("-" * 40)
+    if hooks and hooks.on_state:
+        hooks.on_state("listening")
+    if hooks and hooks.on_activity:
+        hooks.on_activity("Listening")
 
     sr = config.audio.sample_rate
     block_size = config.audio.blocksize
@@ -218,17 +245,22 @@ def run(config: AppConfig) -> None:
     def _stop(_sig, _frame):
         nonlocal running
         running = False
-    signal.signal(signal.SIGINT, _stop)
+        if stop_event is not None:
+            stop_event.set()
+    if enable_signal_handlers and threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGINT, _stop)
 
     chunk_count = 0
     try:
         for chunk in stream_iter:
-            if not running:
+            if not running or (stop_event is not None and stop_event.is_set()):
                 break
             chunk_start = ring.total_samples()
             ring.extend(chunk)
             chunk_end = ring.total_samples()
             rms = compute_rms(chunk)
+            if hooks and hooks.on_mic_level:
+                hooks.on_mic_level(rms)
             chunk_count += 1
 
             if config.debug and chunk_count % 8 == 0:
@@ -257,7 +289,7 @@ def run(config: AppConfig) -> None:
 
             thread = threading.Thread(
                 target=_transcribe_and_print,
-                args=(config, segment.copy(), sr, ring.total_samples() / sr, telemetry),
+                args=(config, segment.copy(), sr, ring.total_samples() / sr, telemetry, hooks),
                 daemon=True,
             )
             thread.start()
@@ -279,6 +311,10 @@ def run(config: AppConfig) -> None:
                   f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
                   f"min={stats['min']:.3f} max={stats['max']:.3f}")
     _echo("\nDone.")
+    if hooks and hooks.on_state:
+        hooks.on_state("idle")
+    if hooks and hooks.on_activity:
+        hooks.on_activity("Stopped")
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +327,7 @@ def _transcribe_and_print(
     sr: int,
     timestamp: float,
     telemetry: _LatencyTracker,
+    hooks: RunHooks | None = None,
 ) -> None:
     """Transcribe in background, emit partials via callback, then LLM + output."""
 
@@ -305,10 +342,16 @@ def _transcribe_and_print(
             with partial_lock:
                 partials.append(clean)
             _echo(f"  [partial] {clean}")
+            if hooks and hooks.on_partial:
+                hooks.on_partial(clean)
 
     ts_total = time.monotonic()
 
     # --- Transcription ---
+    if hooks and hooks.on_state:
+        hooks.on_state("transcribing")
+    if hooks and hooks.on_activity:
+        hooks.on_activity("Transcribing")
     ts_asr = time.monotonic()
     try:
         # Pass partial callback through config (hack: use a closure via
@@ -316,6 +359,10 @@ def _transcribe_and_print(
         result = _transcribe_with_partials(audio, sr, config.transcription, _on_partial)
     except Exception as exc:
         _debug(config, f"transcription error: {exc}")
+        if hooks and hooks.on_error:
+            hooks.on_error(f"Transcription error: {exc}")
+        if hooks and hooks.on_state:
+            hooks.on_state("error")
         return
     asr_elapsed = time.monotonic() - ts_asr
     telemetry.record("asr", asr_elapsed)
@@ -330,15 +377,25 @@ def _transcribe_and_print(
         _echo(f"\n[final] {raw}  ← confirmed")
     else:
         _echo(f"\n[raw] {raw}")
+    if hooks and hooks.on_raw:
+        hooks.on_raw(raw)
 
     # --- LLM ---
     if config.llm.mode is LLMMode.OFF:
         _copy_and_sep(config, raw)
+        if hooks and hooks.on_processed:
+            hooks.on_processed(raw)
+        if hooks and hooks.on_state:
+            hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
+    if hooks and hooks.on_state:
+        hooks.on_state("rewriting")
+    if hooks and hooks.on_activity:
+        hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
     ts_llm = time.monotonic()
     try:
         processed = rewrite(raw, config.llm)
@@ -348,8 +405,16 @@ def _transcribe_and_print(
     except Exception as exc:
         _echo(f"LLM error: {exc}", file=sys.stderr)
         processed = raw
+        if hooks and hooks.on_error:
+            hooks.on_error(f"LLM error: {exc}")
+        if hooks and hooks.on_state:
+            hooks.on_state("error")
 
     _copy_and_sep(config, processed)
+    if hooks and hooks.on_processed:
+        hooks.on_processed(processed)
+    if hooks and hooks.on_state:
+        hooks.on_state("copied")
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)
 
