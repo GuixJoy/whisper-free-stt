@@ -48,11 +48,18 @@ class ShortcutManager:
     def __init__(self, root: tk.Tk):
         self.root = root
         self._bound_sequences: set[str] = set()
+        self._handlers_by_sequence: dict[str, ShortcutHandler] = {}
 
     def clear(self) -> None:
         for seq in list(self._bound_sequences):
             self.root.unbind(seq)
         self._bound_sequences.clear()
+        self._handlers_by_sequence.clear()
+
+    def _dispatch(self, sequence: str) -> None:
+        handler = self._handlers_by_sequence.get(sequence)
+        if handler is not None:
+            handler()
 
     def bind_focused(
         self,
@@ -70,8 +77,10 @@ class ShortcutManager:
             if handler is None:
                 statuses.append(ShortcutStatus(action=action, sequence=seq, scope="unsupported"))
                 continue
-            self.root.bind(seq, lambda _event, fn=handler: fn())
+            self._handlers_by_sequence[seq] = handler
+            self.root.unbind(seq)
+            # Bind loop var via default arg to avoid late-binding closure bugs.
+            self.root.bind(seq, lambda _event, key=seq: self._dispatch(key))
             self._bound_sequences.add(seq)
             statuses.append(ShortcutStatus(action=action, sequence=seq, scope="app-focused"))
         return statuses
-

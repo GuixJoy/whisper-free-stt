@@ -233,6 +233,7 @@ def run(
     _debug(config, "calibrating noise floor (1.5s)...")
     calib_rms: list[float] = []
     try:
+        # Store generator for both calibration and main loop; cleaned up in finally.
         stream_iter = mic_stream(config.audio, debug=False)
         deadline = time.monotonic() + 1.5
         while time.monotonic() < deadline:
@@ -261,9 +262,17 @@ def run(
         running = False
         if stop_event is not None:
             stop_event.set()
-    # UI integrations may call run() from a worker thread; skip signal handlers there.
-    if enable_signal_handlers and threading.current_thread() == threading.main_thread():
-        signal.signal(signal.SIGINT, _stop)
+    # Python only allows signal registration on the interpreter main thread.
+    # UI integrations often run this loop in a worker thread, so we skip handlers there.
+    if enable_signal_handlers:
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGINT, _stop)
+        else:
+            msg = "Signal handlers disabled (run() is not on main thread)"
+            if hooks and hooks.on_activity:
+                hooks.on_activity(msg)
+            else:
+                _echo(msg)
 
     chunk_count = 0
     try:

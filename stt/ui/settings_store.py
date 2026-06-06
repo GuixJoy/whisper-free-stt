@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 import platform
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from stt.ui.models import TranscriptEntry, UISettings
+from stt.ui.models import DEFAULT_SHORTCUTS, TranscriptEntry, UISettings
 
 
 def _config_dir() -> Path:
@@ -36,6 +37,12 @@ def load_settings() -> UISettings:
         return UISettings()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        loaded_shortcuts = dict(data.get("shortcuts", {}))
+        merged_shortcuts = dict(DEFAULT_SHORTCUTS)
+        for action in DEFAULT_SHORTCUTS:
+            if action in loaded_shortcuts and str(loaded_shortcuts[action]).strip():
+                merged_shortcuts[action] = str(loaded_shortcuts[action]).strip()
+
         return UISettings(
             input_device_index=data.get("input_device_index"),
             asr_backend=data.get("asr_backend", "auto"),
@@ -49,9 +56,10 @@ def load_settings() -> UISettings:
             theme=str(data.get("theme", "paper_ink")),
             launch_on_startup=bool(data.get("launch_on_startup", False)),
             shortcut_scope_preference=str(data.get("shortcut_scope_preference", "global_preferred")),
-            shortcuts={**UISettings().shortcuts, **dict(data.get("shortcuts", {}))},
+            shortcuts=merged_shortcuts,
         )
-    except Exception:
+    except Exception as exc:
+        print(f"Warning: failed to load UI settings from {path}: {exc}", file=sys.stderr)
         return UISettings()
 
 
@@ -67,7 +75,8 @@ def load_history() -> list[TranscriptEntry]:
         return []
     try:
         raw_items = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        print(f"Warning: failed to load transcript history from {path}: {exc}", file=sys.stderr)
         return []
     out: list[TranscriptEntry] = []
     for item in raw_items:
@@ -83,6 +92,7 @@ def load_history() -> list[TranscriptEntry]:
                 )
             )
         except Exception:
+            print(f"Warning: skipped malformed history entry: {item}", file=sys.stderr)
             continue
     return out
 

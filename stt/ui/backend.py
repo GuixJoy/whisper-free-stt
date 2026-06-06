@@ -54,4 +54,5 @@ class BackendRunner:
     def stop(self) -> None:
         if self.stop_event:
             self.stop_event.set()
-
+        if self.worker and self.worker.is_alive():
+            self.worker.join(timeout=1.0)

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import queue
 import threading
-import time
 import tkinter as tk
 import uuid
 from dataclasses import replace
@@ -12,7 +12,7 @@ from tkinter import ttk
 
 from stt.audio_capture import list_microphones
 from stt.cli import _ensure_cuda_libs, build_arg_parser, build_config, load_dotenv
-from stt.config import LLMMode
+from stt.config import LLMMode, TranscriptionBackend
 from stt.llm import rewrite
 from stt.ui.backend import BackendEvent, BackendRunner
 from stt.ui.models import (
@@ -82,6 +82,8 @@ class STTDesktopApp:
         ink = "#2b2623"
         accent = "#2f9e8f"
         card = "#fffdf6"
+        self._ink = ink
+        self._card_bg = card
         self.root.configure(bg=bg)
 
         style = ttk.Style(self.root)
@@ -163,8 +165,8 @@ class STTDesktopApp:
             parent,
             wrap="word",
             height=16,
-            bg="#fffdf6",
-            fg="#2b2623",
+            bg=self._card_bg,
+            fg=self._ink,
             bd=0,
             highlightthickness=0,
             font=("TkDefaultFont", 11),
@@ -179,8 +181,8 @@ class STTDesktopApp:
             parent,
             wrap="word",
             height=6,
-            bg="#fffdf6",
-            fg="#2b2623",
+            bg=self._card_bg,
+            fg=self._ink,
             bd=0,
             highlightthickness=0,
             font=("TkDefaultFont", 9),
@@ -242,7 +244,9 @@ class STTDesktopApp:
         ttk.Checkbutton(flags, text="Clipboard auto-copy", variable=self.clipboard_var).pack(anchor="w")
         ttk.Checkbutton(flags, text="Push-to-talk mode", variable=self.ptt_mode_var).pack(anchor="w")
         ttk.Checkbutton(flags, text="Auto-transcribe mode", variable=self.auto_transcribe_var).pack(anchor="w")
-        ttk.Checkbutton(flags, text="Launch on startup (placeholder)", variable=self.launch_startup_var).pack(anchor="w")
+        # Placeholder only: platform-specific auto-start registration is deferred.
+        ttk.Checkbutton(flags, text="Launch on startup", variable=self.launch_startup_var, state="disabled").pack(anchor="w")
+        ttk.Label(flags, text="(Platform startup registration is not implemented yet.)", style="CardLabel.TLabel").pack(anchor="w")
 
         ttk.Label(parent, text=f"Platform: {self.capabilities.platform_label}", style="CardLabel.TLabel").pack(anchor="w", pady=(8, 4))
         matrix = ttk.Frame(parent, style="Card.TFrame")
@@ -299,8 +303,9 @@ class STTDesktopApp:
     def _load_devices(self) -> None:
         try:
             devices = list_microphones()
-        except Exception:
+        except Exception as exc:
             devices = []
+            self._append_activity(f"Microphone enumeration failed: {exc}")
         options = ["Auto default"]
         for dev in devices:
             options.append(f"{dev['index']}: {dev['name']}")
@@ -347,7 +352,11 @@ class STTDesktopApp:
         clip_cfg = replace(config.clipboard, enabled=self.clipboard_var.get())
         tcfg = config.transcription
         if self.backend_choice.get() in {"whisper_cpp", "faster_whisper"}:
-            tcfg = replace(tcfg, backend=type(tcfg.backend)(self.backend_choice.get()))
+            backend_map = {
+                "whisper_cpp": TranscriptionBackend.WHISPER_CPP,
+                "faster_whisper": TranscriptionBackend.FASTER_WHISPER,
+            }
+            tcfg = replace(tcfg, backend=backend_map[self.backend_choice.get()])
         if self.model_choice.get().strip():
             tcfg = replace(tcfg, model_name=self.model_choice.get().strip())
         acfg = config.audio
@@ -494,7 +503,7 @@ class STTDesktopApp:
         while True:
             try:
                 event: BackendEvent = self.backend.events.get_nowait()
-            except Exception:
+            except queue.Empty:
                 break
             self._handle_event(event)
         if not self.backend.is_running() and self.status_var.get() == "Listening":
@@ -580,7 +589,9 @@ class STTDesktopApp:
 
         def _worker() -> None:
             try:
-                updated = rewrite(item.raw, replace(self._build_runtime_config().llm, mode=LLMMode(self.llm_mode_var.get())))
+                runtime_llm = self._build_runtime_config().llm
+                rewrite_mode = LLMMode(self.llm_mode_var.get())
+                updated = rewrite(item.raw, replace(runtime_llm, mode=rewrite_mode))
                 self.root.after(0, lambda: self._apply_rerun_cleanup(item.id, updated))
             except Exception as exc:
                 self.root.after(0, lambda: self._append_activity(f"Cleanup failed: {exc}"))
@@ -652,8 +663,9 @@ class STTDesktopApp:
         if chosen and chosen != "Auto default":
             try:
                 device_index = int(chosen.split(":", 1)[0])
-            except Exception:
+            except Exception as exc:
                 device_index = None
+                self._append_activity(f"Invalid device selection '{chosen}': {exc}")
         self.settings = UISettings(
             input_device_index=device_index,
             asr_backend=self.backend_choice.get().strip() or "auto",
@@ -733,14 +745,11 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     root = tk.Tk()
     app = STTDesktopApp(root, args)
-    shutdown_delay = 0.05
 
     def _on_close() -> None:
         app.stop_listening()
         save_settings(app.settings)
-        time.sleep(shutdown_delay)
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
     root.mainloop()
-

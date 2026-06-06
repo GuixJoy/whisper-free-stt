@@ -40,7 +40,7 @@ def detect_capabilities() -> PlatformCapabilities:
     elif system == "linux":
         platform_label = "Linux Wayland" if is_wayland else "Linux X11"
         if is_wayland:
-            portal = shutil.which("gdbus") is not None and bool(os.environ.get("DBUS_SESSION_BUS_ADDRESS"))
+            portal = shutil.which("gdbus") is not None and os.environ.get("DBUS_SESSION_BUS_ADDRESS") is not None
             global_shortcuts = False
             if portal:
                 notes.append("Wayland: portal-based global shortcuts may be available depending on compositor.")
@@ -77,4 +77,3 @@ def capability_rows(c: PlatformCapabilities) -> list[tuple[str, str]]:
         ("Always-on-top compact window", "✅" if c.always_on_top else "⚠️ compositor/WM dependent"),
         ("True universal global PTT", "✅" if c.global_shortcuts else "❌"),
     ]
-
