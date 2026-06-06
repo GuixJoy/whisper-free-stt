@@ -48,6 +48,7 @@ function App() {
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [view, setView] = useState<View>("main");
   const [compactMode, setCompactMode] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
   // Load persisted transcripts on mount
   useEffect(() => {
     try {
@@ -112,9 +113,9 @@ function App() {
       ws.onmessage = (msg) => {
         try { handleSTTEvent(JSON.parse(msg.data), saveTranscript); } catch { }
       };
-      ws.onopen = () => setStatus("listening");
-      ws.onclose = () => { setStatus("idle"); setMicLevel(0); };
-      ws.onerror = () => setStatus("error");
+      ws.onopen = () => { setWsConnected(true); setStatus("listening"); };
+      ws.onclose = () => { setWsConnected(false); setStatus("idle"); setMicLevel(0); };
+      ws.onerror = () => { setWsConnected(false); setStatus("error"); };
     }
   }, [isTauri, handleSTTEvent, saveTranscript]);
 
