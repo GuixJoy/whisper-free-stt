@@ -53,6 +53,13 @@ def _debug(config: AppConfig, *args, **kwargs) -> None:
 
 
 # ---------------------------------------------------------------------------
+# LLM concurrency limit (prevent rate-limit pile-up from rapid speech)
+# ---------------------------------------------------------------------------
+
+_llm_semaphore = threading.Semaphore(2)  # max 2 concurrent LLM calls
+
+
+# ---------------------------------------------------------------------------
 # Latency telemetry (thread-safe, lock-free enough for debug use)
 # ---------------------------------------------------------------------------
 
@@ -423,7 +430,8 @@ def _transcribe_and_print(
         hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
     ts_llm = time.monotonic()
     try:
-        processed = rewrite(raw, config.llm)
+        with _llm_semaphore:
+            processed = rewrite(raw, config.llm)
         llm_elapsed = time.monotonic() - ts_llm
         telemetry.record("llm", llm_elapsed)
         _echo(f"[{config.llm.mode.value}] {processed}")
@@ -456,28 +464,13 @@ def _transcribe_with_partials(
     faster-whisper: yields segments incrementally — emit each as a partial.
     """
     from stt.transcription import (
-        _get_cpp_model, _get_fw_model,
-        _trim_silence, _reduce_noise,
-        _JUNK_TOKENS,
+        preprocess_audio, _get_cpp_model, _get_fw_model, _JUNK_TOKENS,
     )
     from stt.types import TranscriptionResult, TranscriptionSegment
     from stt.config import TranscriptionBackend
 
-    if len(audio) == 0:
-        return TranscriptionResult(text="", language="")
-
-    # Pre-processing (same as transcribe())
-    if audio.dtype != np.float32:
-        audio = audio.astype(np.float32)
-    peak = np.max(np.abs(audio))
-    if peak > 1.0:
-        audio = audio / peak
-    elif peak == 0.0:
-        return TranscriptionResult(text="", language="")
-
-    audio = _reduce_noise(audio, sr, tcfg)
-    audio = _trim_silence(audio)
-    if len(audio) == 0:
+    audio = preprocess_audio(audio, sr, tcfg)
+    if audio is None:
         return TranscriptionResult(text="", language="")
 
     if tcfg.backend is TranscriptionBackend.WHISPER_CPP:
@@ -557,3 +550,38 @@ def _copy_and_sep(config: AppConfig, text: str) -> None:
     if config.clipboard.enabled and copy_to_clipboard(text, config.clipboard):
         _echo("[clipboard] ✓")
     _echo("-" * 40)
+
+
+# ---------------------------------------------------------------------------
+# Dry-run: process a WAV file instead of live mic
+# ---------------------------------------------------------------------------
+
+def run_file(config: AppConfig, wav_path: str) -> None:
+    """Process a single WAV file through the pipeline. Useful for testing."""
+    import wave
+    _echo(f"Processing: {wav_path}")
+    with wave.open(wav_path, "rb") as wf:
+        frames = wf.readframes(wf.getnframes())
+        sr = wf.getframerate()
+        audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        if wf.getnchannels() > 1:
+            audio = audio.reshape(-1, wf.getnchannels()).mean(axis=1)
+
+    if sr != config.audio.sample_rate:
+        _echo(f"Warning: file sr={sr}, expected {config.audio.sample_rate}")
+
+    from stt.transcription import transcribe as _transcribe_fn
+    ts = time.monotonic()
+    result = _transcribe_fn(audio, sr, config.transcription)
+    elapsed = time.monotonic() - ts
+    _echo(f"\n[raw] {result.text}")
+    _echo(f"Transcribed in {elapsed:.1f}s (lang={result.language})")
+
+    if config.llm.mode is not LLMMode.OFF and result.text.strip():
+        try:
+            processed = rewrite(result.text, config.llm)
+            _echo(f"[{config.llm.mode.value}] {processed}")
+        except Exception as exc:
+            _echo(f"LLM error: {exc}", file=sys.stderr)
+
+    _echo("Done.")

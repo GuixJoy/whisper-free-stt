@@ -14,6 +14,9 @@ def type_to_focused_input(text: str, config: TypingConfig) -> bool:
         return False
     if not text.strip():
         return False
+    import os as _os
+    if not _os.environ.get("WAYLAND_DISPLAY"):
+        return False  # not on Wayland — don't hang
 
     wtype = shutil.which(config.wtype_path)
     if wtype is None:

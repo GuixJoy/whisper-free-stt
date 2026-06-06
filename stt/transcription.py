@@ -28,12 +28,15 @@ def _get_cpp_model(config: TranscriptionConfig):
 
     key = config.model_name
     if key not in _whisper_cpp_cache:
-        _whisper_cpp_cache[key] = CppModel(
-            config.model_name,
-            print_progress=False,
-            print_realtime=False,
-            n_threads=config.cpu_threads,
-        )
+        import os as _os
+        with open(_os.devnull, "w") as _devnull:
+            _whisper_cpp_cache[key] = CppModel(
+                config.model_name,
+                print_progress=False,
+                print_realtime=False,
+                redirect_whispercpp_logs_to=_devnull,
+                n_threads=config.cpu_threads,
+            )
     return _whisper_cpp_cache[key]
 
 
@@ -99,6 +102,32 @@ def _reduce_noise(audio: np.ndarray, sr: int, config: TranscriptionConfig) -> np
 
 
 # ---------------------------------------------------------------------------
+# Audio pre-processing (public — shared with orchestrator partials path)
+# ---------------------------------------------------------------------------
+
+def preprocess_audio(
+    audio_data: np.ndarray,
+    sample_rate: int,
+    config: TranscriptionConfig,
+) -> np.ndarray | None:
+    """Normalize, noise-reduce, and trim silence. Returns None if unusable."""
+    if len(audio_data) == 0:
+        return None
+    if audio_data.dtype != np.float32:
+        audio_data = audio_data.astype(np.float32)
+    peak = np.max(np.abs(audio_data))
+    if peak > 1.0:
+        audio_data = audio_data / peak
+    elif peak == 0.0:
+        return None
+    audio_data = _reduce_noise(audio_data, sample_rate, config)
+    audio_data = _trim_silence(audio_data)
+    if len(audio_data) == 0:
+        return None
+    return audio_data
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -107,29 +136,9 @@ def transcribe(
     sample_rate: int,
     config: TranscriptionConfig,
 ) -> TranscriptionResult:
-    """Transcribe audio using the configured backend.
-
-    Returns:
-        TranscriptionResult with text and optional segments.
-    """
-    if len(audio_data) == 0:
-        return TranscriptionResult(text="", language="")
-
-    # Normalise to float32 [-1, 1]
-    if audio_data.dtype != np.float32:
-        audio_data = audio_data.astype(np.float32)
-    peak = np.max(np.abs(audio_data))
-    if peak > 1.0:
-        audio_data = audio_data / peak
-    elif peak == 0.0:
-        return TranscriptionResult(text="", language="")
-
-    # Spectral noise reduction
-    audio_data = _reduce_noise(audio_data, sample_rate, config)
-
-    # Trim trailing silence
-    audio_data = _trim_silence(audio_data)
-    if len(audio_data) == 0:
+    """Transcribe audio using the configured backend."""
+    audio_data = preprocess_audio(audio_data, sample_rate, config)
+    if audio_data is None:
         return TranscriptionResult(text="", language="")
 
     if config.backend is TranscriptionBackend.WHISPER_CPP:

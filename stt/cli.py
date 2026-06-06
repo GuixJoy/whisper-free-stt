@@ -21,7 +21,7 @@ from stt.config import (
     VADConfig,
     load_dotenv,
 )
-from stt.orchestrator import run
+from stt.orchestrator import run, run_file
 
 
 @dataclass(frozen=True)
@@ -142,6 +142,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
+    parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
 
     return parser
 
@@ -264,7 +265,11 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
-    run(config)
+
+    if args.input_file:
+        run_file(config, args.input_file)
+    else:
+        run(config)
 
 
 if __name__ == "__main__":
