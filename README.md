@@ -1,57 +1,74 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/license-GPL%20v2-green.svg" alt="GPL v2">
+  <img src="https://img.shields.io/badge/platform-Linux%20Wayland-orange.svg" alt="Linux Wayland">
+  <img src="https://img.shields.io/badge/ASR-whisper.cpp%20%7C%20faster--whisper-purple.svg" alt="Dual ASR">
+  <img src="https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenRouter-yellow.svg" alt="Dual LLM">
+</p>
+
 # STT — Local Speech-to-Text Assistant
 
-Local-first Python speech-to-text for Linux Wayland.
+Local-first Python speech-to-text for Linux Wayland.  Speaks your words into existence.
 
 Listens to your microphone, auto-detects speech/silence (adaptive VAD with
-hysteresis + noise-floor calibration), transcribes, cleans up text with LLM by
-default, and types output into your currently focused input field.
+hysteresis + noise-floor calibration), transcribes, cleans up text with an LLM
+by default, and types the result directly into your focused input field.
+
+---
+
+## Quickstart
+
+```bash
+# 1. Install
+uv venv && source .venv/bin/activate && uv pip install -e .
+sudo apt install wl-clipboard wtype   # Debian/Ubuntu
+
+# 2. Configure
+cp .env.example .env
+# Edit .env → set your LLM key
+
+# 3. Run
+stt
+```
+
+That's it.  Speak — cleaned text appears wherever your cursor is.
+
+---
 
 ## Architecture
 
 ```
-mic → sounddevice → numpy arrays → VAD → audio segments
-                                          ↓
-                                   faster-whisper
-                                          ↓
-                                [OpenRouter LLM rewrite]
-                                          ↓
-                                 [wl-copy clipboard]
-                                          ↓
-                                       stdout
+mic → sounddevice → numpy arrays → adaptive VAD → audio segments
+                                                    ↓
+                                           whisper.cpp | faster-whisper
+                                                    ↓
+                                        DeepSeek | OpenRouter (cleanup)
+                                                    ↓
+                                            wtype → focused input
+                                            wl-copy → clipboard
+                                                    ↓
+                                                 stdout
 ```
 
 **Core principle:** pure functions at the center, effects at the edges.
 
-- `stt/config.py` — immutable dataclass config (pure)
-- `stt/types.py` — immutable data types (pure)
-- `stt/prompts.py` — centralized prompt templates (pure)
-- `stt/vad.py` — voice-activity detection over numpy (pure)
-- `stt/audio_capture.py` — microphone I/O boundary (effectful)
-- `stt/transcription.py` — faster-whisper I/O boundary (effectful)
-- `stt/llm.py` — OpenRouter HTTP boundary (effectful)
-- `stt/clipboard.py` — wl-copy subprocess boundary (effectful)
-- `stt/orchestrator.py` — imperative shell wiring (effectful)
-- `stt/cli.py` — arg parsing and config construction (effectful)
+| Module | Role | Side effects |
+|---|---|---|
+| `stt/config.py` | Immutable dataclass config | None |
+| `stt/types.py` | Immutable data types | None |
+| `stt/prompts.py` | Centralized prompt templates | None |
+| `stt/vad.py` | Voice-activity detection | None |
+| `stt/audio_capture.py` | Microphone I/O | sounddevice |
+| `stt/transcription.py` | ASR engines | faster-whisper, whisper.cpp |
+| `stt/llm.py` | LLM clients | HTTP (DeepSeek, OpenRouter) |
+| `stt/clipboard.py` | Wayland clipboard | wl-copy subprocess |
+| `stt/typing.py` | Focused-input typing | wtype subprocess |
+| `stt/orchestrator.py` | Main loop wiring | All of the above |
+| `stt/cli.py` | Argument parsing | argparse |
 
-## Install
+---
 
-```bash
-uv venv
-source .venv/bin/activate
-uv pip install -e .
-
-# Optional: system deps
-sudo apt install wl-clipboard wtype    # Debian/Ubuntu
-```
-
-## Quickstart with .env
-
-```bash
-cp .env.example .env
-# Edit .env — set your LLM provider below
-```
-
-### LLM Providers
+## LLM Providers
 
 Two providers supported, auto-detected from which API key you set:
 
@@ -70,38 +87,31 @@ STT_LLM_MODEL=openai/gpt-4o-mini
 STT_LLM_FALLBACK=anthropic/claude-3-5-haiku-latest
 ```
 
-DeepSeek takes priority if both keys are set. Provider is selected at startup:
-`LLM: cleanup (deepseek:deepseek-v4-flash)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`
+DeepSeek takes priority if both keys are set.  Provider is displayed at startup:
+`LLM: cleanup (deepseek:deepseek-v4-flash)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
 
 Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
-## Run
+---
+
+## ASR Profiles
+
+| Profile | Model | Backend | Best for |
+|---|---|---|---|
+| `auto` | turbo / base.en | auto-detect | Hands-off default |
+| `speed` | tiny.en | whisper.cpp | Lowest latency |
+| `balanced` | base.en | whisper.cpp | Good balance |
+| `accuracy` | small.en | whisper.cpp | Better accuracy on CPU |
+| `distil` | distil-large-v3 | faster-whisper | High quality (GPU) |
+| `turbo` | large-v3-turbo | faster-whisper | Best quality (GPU) |
 
 ```bash
-# Basic: listen → transcribe → cleanup → type into focused input
-stt   # or: sst
-
-# Disable typing (print-only flow)
-stt --no-type
-
-# Override cleanup mode on the CLI
-stt --llm-mode bullet_list
-
-# With clipboard output
-stt --clipboard
-
-# Full pipeline with larger model
-stt --llm-mode cleanup --clipboard --model small
-
-# Auto-select best default (GPU: distil+cuda+fp16, CPU-only: whisper.cpp balanced)
-stt
-
-# Force high-quality distil-whisper profile on GPU
-stt --asr-profile distil --device cuda --compute-type float16
-
-# See all options
-stt --help
+stt --asr-profile speed     # fastest
+stt --asr-profile accuracy  # more accurate
+stt --asr-profile distil    # highest quality (needs GPU)
 ```
+
+---
 
 ## CLI Flags
 
@@ -112,76 +122,74 @@ stt --help
 | `--silence-threshold` | 0.005 | Base RMS floor for adaptive VAD |
 | `--silence-duration` | 0.9 | Seconds of silence to end utterance |
 | `--min-duration` | 0.5 | Ignore utterances shorter than this |
-| `--model` | profile-dependent | model name override |
-| `--asr-profile` | auto | auto / speed / balanced / accuracy / distil / turbo |
-| `--compute-type` | auto | auto / int8 / float16 / ... |
-| `--device` | auto | auto / cpu / cuda |
+| `--asr-profile` | auto | speed / balanced / accuracy / distil / turbo |
+| `--backend` | profile | whisper_cpp / faster_whisper |
+| `--model` | profile | Model name override |
+| `--device` | auto | cpu / cuda |
+| `--compute-type` | auto | int8 / float16 / ... |
 | `--llm-mode` | cleanup | off / cleanup / bullet_list / email / commit_message |
-| `--llm-model` | env | Primary OpenRouter model (env: `STT_LLM_MODEL`) |
-| `--llm-fallback` | env | Fallback model (env: `STT_LLM_FALLBACK`) |
+| `--llm-provider` | auto | deepseek / openrouter |
+| `--llm-model` | env | Model (env: `STT_LLM_MODEL`) |
+| `--llm-fallback` | env | Fallback model (OpenRouter only) |
 | `--no-type` | false | Disable typing to focused input |
-| `--type-path` | wtype | Typing binary path |
 | `--clipboard` | false | Enable wl-copy clipboard output |
+| `--debug` | false | Print diagnostic info |
 
-## Insertion points
+---
 
-### OpenRouter — already wired
-
-Set `--llm-mode` to anything except `off`.  See `stt/llm.py` and `stt/prompts.py`.
-To add a new rewrite mode:
-
-1. Add the enum value in `stt/config.py` → `LLMMode`.
-2. Add the instruction string in `stt/prompts.py` → `_MODE_INSTRUCTIONS`.
-3. Done — the orchestrator, CLI, and LLM module pick it up automatically.
-
-### wl-copy — already wired
-
-Pass `--clipboard`.  See `stt/clipboard.py`.
-
-## Test plan
-
-1. `python -c "from stt.config import AppConfig; c = AppConfig(); print(c)"`
-   — config constructs cleanly.
-2. `python -c "from stt.vad import compute_rms; import numpy as np; print(compute_rms(np.zeros(1000, dtype=np.float32)))"` — returns 0.0.
-3. `python -c "from stt.prompts import build_user_prompt; from stt.config import LLMMode; print(build_user_prompt('hello', LLMMode.CLEANUP))"` — returns formatted prompt.
-4. Run `stt --help` — all flags appear.
-5. Run `stt` with a mic, speak a sentence, confirm transcript appears.
-6. Run `stt --llm-mode cleanup` with `OPENROUTER_API_KEY` set — confirm rewrite.
-7. Run `stt --clipboard` then `wl-paste` — confirm clipboard contents.
-8. Run `stt --model small` — confirm larger model loads and transcribes.
-
-## Example session
+## Example Session
 
 ```
-$ stt --llm-mode cleanup
+$ stt
 
 ╔══════════════════════════════════╗
 ║   STT — Local Speech-to-Text    ║
 ╚══════════════════════════════════╝
 
-Microphone: index=1
-Whisper model: tiny
-LLM mode: cleanup
-Clipboard: disabled
+ASR: large-v3-turbo (cuda)
+LLM: cleanup (deepseek:deepseek-v4-flash)
+Typing: enabled  Clipboard: disabled
 
-Listening... (Ctrl+C to stop)
+Listening... (speak naturally, Ctrl+C to stop)
 ----------------------------------------
-[raw] um so I think we should refactor the the config module to use uh frozen dataclasses
-[cleanup] I think we should refactor the config module to use frozen dataclasses.
+[raw] um so I think we should refactor the the config module
+[cleanup] I think we should refactor the config module.
+[typed] ✓
 ----------------------------------------
 ^C
 Done.
 ```
 
-## Adding a Tkinter UI later
+---
 
-1. Create `stt/ui.py` with a class or function-based Tkinter window.
-2. Run the orchestrator in a background thread; push transcripts via a
-   `queue.Queue` to the UI thread.
-3. The UI reads from the queue and updates a text widget.
-4. Since all pure logic is already in `stt/vad.py`, `stt/prompts.py`,
-   `stt/config.py`, and `stt/types.py`, the Tkinter layer only needs to
-   consume the same `AppConfig` and call `_process_one_utterance` in a loop.
-5. The orchestrator's `_process_one_utterance` is already factored so you
-   can call it from any event loop (Tkinter, asyncio, etc.) by passing the
-   VAD stop predicate.
+## Extending
+
+### Add a new LLM rewrite mode
+
+1. Add the enum value in `stt/config.py` → `LLMMode`
+2. Add the instruction string in `stt/prompts.py` → `_MODE_INSTRUCTIONS`
+3. Done — orchestrator, CLI, and LLM module pick it up.
+
+### Add a new ASR backend
+
+1. Add to `TranscriptionBackend` enum in `stt/config.py`
+2. Implement `_transcribe_xxx()` in `stt/transcription.py`
+3. Register in `transcribe()` dispatch
+
+### Add a Tkinter UI
+
+1. Create `stt/ui.py` with a Tkinter window
+2. Run the orchestrator in a background thread; push transcripts via `queue.Queue`
+3. All pure logic is UI-free — just consume `AppConfig` and call the pipeline
+
+---
+
+## License
+
+GNU General Public License v2.0 — see [LICENSE](LICENSE).
+
+---
+
+<p align="center">
+  <sub>Designed and developed by <a href="https://www.akshatkotpalliwar.in/"><b>Akshat Kotpalliwar</b></a></sub>
+</p>
