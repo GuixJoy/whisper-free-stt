@@ -66,8 +66,8 @@ async def _ws_broadcast(payload: str) -> None:
         except Exception:
             dead.append(client)
     for d in dead:
-        _ws_clients.remove(d)
-
+        if d in _ws_clients:
+            _ws_clients.remove(d)
 
 def _get_ws_loop():
     return _ws_loop
