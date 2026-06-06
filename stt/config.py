@@ -54,12 +54,12 @@ class VADConfig:
     min_recording_sec: float = 0.5
     pre_speech_padding_sec: float = 0.2
     max_recording_sec: float = 15.0
-    start_threshold_multiplier: float = 1.3
-    trigger_ratio: float = 0.8
+    start_threshold_multiplier: float = 1.15
+    trigger_ratio: float = 0.6
     detrigger_ratio: float = 0.9
     decision_window_sec: float = 0.2
     noise_floor_alpha: float = 0.95
-    noise_floor_margin: float = 3.0
+    noise_floor_margin: float = 2.0
     # Fast-commit: when set, use lower silence duration + higher detrigger ratio
     # for ~40% faster endpointing. Trades occasional mid-sentence cuts for speed.
     fast_commit: bool = False
