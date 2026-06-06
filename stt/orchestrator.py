@@ -13,7 +13,7 @@ from collections import deque
 
 import numpy as np
 
-from stt.config import AppConfig, LLMMode
+from stt.config import AppConfig, LLMMode, TranscriptionBackend
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
 from stt.vad import compute_rms, StreamingEndpointDetector
 from stt.transcription import transcribe, warm_up_backend
@@ -21,6 +21,10 @@ from stt.llm import rewrite
 from stt.clipboard import copy_to_clipboard
 from stt.typing import type_to_focused_input
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _echo(*args, **kwargs) -> None:
     print(*args, **kwargs, flush=True)
@@ -30,6 +34,90 @@ def _debug(config: AppConfig, *args, **kwargs) -> None:
     if config.debug:
         print("[debug]", *args, **kwargs, flush=True)
 
+
+# ---------------------------------------------------------------------------
+# Latency telemetry (thread-safe, lock-free enough for debug use)
+# ---------------------------------------------------------------------------
+
+class _LatencyTracker:
+    """Collect timing samples per stage, compute P50/P95 on demand."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._samples: dict[str, list[float]] = {}
+
+    def record(self, stage: str, elapsed: float) -> None:
+        with self._lock:
+            self._samples.setdefault(stage, []).append(elapsed)
+
+    def snapshot(self) -> dict[str, dict[str, float]]:
+        with self._lock:
+            out: dict[str, dict[str, float]] = {}
+            for stage, vals in sorted(self._samples.items()):
+                if not vals:
+                    continue
+                s = sorted(vals)
+                out[stage] = {
+                    "count": len(s),
+                    "p50": s[len(s) // 2],
+                    "p95": s[int(len(s) * 0.95)],
+                    "min": s[0],
+                    "max": s[-1],
+                }
+            return out
+
+
+# ---------------------------------------------------------------------------
+# Hardware probe
+# ---------------------------------------------------------------------------
+
+def _probe_hardware(config: AppConfig) -> None:
+    """Print explicit backend capability diagnostics at startup."""
+    results: list[str] = []
+
+    # --- whisper.cpp ---
+    try:
+        from pywhispercpp.model import Model as CppModel
+        results.append("whisper.cpp: available (ggml CPU)")
+    except Exception as exc:
+        results.append(f"whisper.cpp: unavailable ({exc})")
+
+    # --- faster-whisper ---
+    try:
+        import ctranslate2
+        cuda_devices = ctranslate2.get_cuda_device_count()
+        if cuda_devices > 0:
+            # Verify libcublas is actually loadable
+            import ctypes
+            lib_ok = False
+            for lib in ("libcublas.so.12", "libcublas.so.11"):
+                try:
+                    ctypes.CDLL(lib)
+                    lib_ok = True
+                    break
+                except OSError:
+                    continue
+            if lib_ok:
+                results.append(f"faster-whisper: available (CUDA, {cuda_devices} device(s))")
+            else:
+                results.append(f"faster-whisper: available (CPU fallback — libcublas not loadable, {cuda_devices} CUDA device(s) detected but unusable)")
+        else:
+            results.append("faster-whisper: available (CPU only, no CUDA devices)")
+    except Exception as exc:
+        results.append(f"faster-whisper: unavailable ({exc})")
+
+    # --- Active backend ---
+    backend = config.transcription.backend
+    device = config.transcription.device
+    results.append(f"active: {backend.value} on {device} (model: {config.transcription.model_name})")
+
+    for line in results:
+        _echo(f"  {line}")
+
+
+# ---------------------------------------------------------------------------
+# Ring buffer
+# ---------------------------------------------------------------------------
 
 class _RingBuffer:
     """Fixed-size sample buffer with append and slice access."""
@@ -52,31 +140,41 @@ class _RingBuffer:
         return self._total
 
 
+# ---------------------------------------------------------------------------
+# Top-level streaming loop
+# ---------------------------------------------------------------------------
+
 def run(config: AppConfig) -> None:
     """Continuous streaming: mic → adaptive VAD → transcribe → [LLM] → print."""
+    telemetry = _LatencyTracker()
+
     _echo("╔══════════════════════════════════╗")
     _echo("║   STT — Local Speech-to-Text    ║")
     _echo("╚══════════════════════════════════╝")
     _echo()
 
-    # Auto-detect best mic or use user-specified device
+    # --- Hardware probe ---
+    _echo("Hardware:")
+    _probe_hardware(config)
+    _echo()
+
+    # --- Auto-detect best mic ---
     if config.audio.device_index is not None:
         mic_index = config.audio.device_index
         mic_name = f"device {mic_index}"
     else:
         _echo("Scanning microphones...")
         mic_index, mic_name, mic_rms = find_best_microphone(config.audio.sample_rate)
-        _echo(f"Selected: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
+        _echo(f"Mic: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
         object.__setattr__(config.audio, "device_index", mic_index)
 
-    _echo(f"ASR: {config.transcription.model_name} ({config.transcription.device})")
     _echo(f"LLM: {config.llm.mode.value} ({config.llm.provider.value}:{config.llm.model})")
     _echo(f"Typing: {'enabled' if config.typing.enabled else 'disabled'}")
     _echo(f"Clipboard: {'enabled' if config.clipboard.enabled else 'disabled'}")
+    if config.vad.fast_commit:
+        _echo("VAD: fast-commit mode")
     _echo()
 
-    _debug(config, f"vad: threshold={config.vad.silence_threshold_rms}")
-    _debug(config, "mic stream starting...")
     _echo("Listening... (speak naturally, Ctrl+C to stop)")
     _echo("-" * 40)
 
@@ -84,6 +182,10 @@ def run(config: AppConfig) -> None:
     block_size = config.audio.blocksize
     ring = _RingBuffer(int(30 * sr))
     detector = StreamingEndpointDetector(config.vad, sr, block_size)
+
+    # Apply fast-commit overrides on the detector directly
+    if config.vad.fast_commit:
+        detector._min_silence_blocks = max(1, int(config.vad.fast_silence_duration_sec * sr / block_size))
 
     # Warm the selected ASR backend in parallel with calibration.
     warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
@@ -151,7 +253,8 @@ def run(config: AppConfig) -> None:
                 continue
 
             thread = threading.Thread(
-                target=_transcribe_and_print, args=(config, segment.copy(), sr, ring.total_samples() / sr),
+                target=_transcribe_and_print,
+                args=(config, segment.copy(), sr, ring.total_samples() / sr, telemetry),
                 daemon=True,
             )
             thread.start()
@@ -164,37 +267,198 @@ def run(config: AppConfig) -> None:
         except Exception:
             pass
 
+    # --- Print telemetry summary on exit ---
+    snap = telemetry.snapshot()
+    if snap:
+        _echo("\n--- Latency (seconds) ---")
+        for stage, stats in snap.items():
+            _echo(f"  {stage}: n={stats['count']:.0f} "
+                  f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
+                  f"min={stats['min']:.3f} max={stats['max']:.3f}")
     _echo("\nDone.")
 
 
-def _transcribe_and_print(config: AppConfig, audio: np.ndarray, sr: int, timestamp: float) -> None:
-    ts = time.monotonic()
+# ---------------------------------------------------------------------------
+# Background transcription + LLM + clipboard
+# ---------------------------------------------------------------------------
+
+def _transcribe_and_print(
+    config: AppConfig,
+    audio: np.ndarray,
+    sr: int,
+    timestamp: float,
+    telemetry: _LatencyTracker,
+) -> None:
+    """Transcribe in background, emit partials via callback, then LLM + output."""
+
+    # Partial hypothesis collector (filled by ASR callback during decode)
+    partials: list[str] = []
+    partial_lock = threading.Lock()
+
+    def _on_partial(text: str) -> None:
+        """Called by the ASR backend as segments are decoded."""
+        clean = text.strip()
+        if clean:
+            with partial_lock:
+                partials.append(clean)
+            _echo(f"  [partial] {clean}")
+
+    ts_total = time.monotonic()
+
+    # --- Transcription ---
+    ts_asr = time.monotonic()
     try:
-        result = transcribe(audio, sr, config.transcription)
+        # Pass partial callback through config (hack: use a closure via
+        # a sentinel that transcription.py checks for)
+        result = _transcribe_with_partials(audio, sr, config.transcription, _on_partial)
     except Exception as exc:
         _debug(config, f"transcription error: {exc}")
         return
-    _debug(config, f"transcribed {len(audio)/sr:.1f}s in {time.monotonic()-ts:.1f}s ({result.language})")
+    asr_elapsed = time.monotonic() - ts_asr
+    telemetry.record("asr", asr_elapsed)
+    _debug(config, f"transcribed {len(audio)/sr:.1f}s in {asr_elapsed:.1f}s ({result.language})")
 
     if result.is_empty:
         return
 
     raw = result.text
-    _echo(f"\n[raw] {raw}")
+    # Don't duplicate partial output if the final raw matches what we already showed
+    if partials and raw.strip() == partials[-1].strip():
+        _echo(f"\n[final] {raw}  ← confirmed")
+    else:
+        _echo(f"\n[raw] {raw}")
 
+    # --- LLM ---
     if config.llm.mode is LLMMode.OFF:
         _copy_and_sep(config, raw)
+        total_elapsed = time.monotonic() - ts_total
+        telemetry.record("total", total_elapsed)
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
+    ts_llm = time.monotonic()
     try:
         processed = rewrite(raw, config.llm)
+        llm_elapsed = time.monotonic() - ts_llm
+        telemetry.record("llm", llm_elapsed)
         _echo(f"[{config.llm.mode.value}] {processed}")
     except Exception as exc:
         _echo(f"LLM error: {exc}", file=sys.stderr)
         processed = raw
 
     _copy_and_sep(config, processed)
+    total_elapsed = time.monotonic() - ts_total
+    telemetry.record("total", total_elapsed)
+
+
+def _transcribe_with_partials(
+    audio: np.ndarray,
+    sr: int,
+    tcfg: "TranscriptionConfig",  # noqa: F821
+    on_partial: "Callable[[str], None]",  # noqa: F821
+) -> "TranscriptionResult":  # noqa: F821
+    """Transcribe with partial-hypothesis callbacks.
+
+    whisper.cpp: uses new_segment_callback to emit partials during decode.
+    faster-whisper: yields segments incrementally — emit each as a partial.
+    """
+    from stt.transcription import (
+        _get_cpp_model, _get_fw_model,
+        _trim_silence, _reduce_noise,
+        _JUNK_TOKENS,
+    )
+    from stt.types import TranscriptionResult, TranscriptionSegment
+    from stt.config import TranscriptionBackend
+
+    if len(audio) == 0:
+        return TranscriptionResult(text="", language="")
+
+    # Pre-processing (same as transcribe())
+    if audio.dtype != np.float32:
+        audio = audio.astype(np.float32)
+    peak = np.max(np.abs(audio))
+    if peak > 1.0:
+        audio = audio / peak
+    elif peak == 0.0:
+        return TranscriptionResult(text="", language="")
+
+    audio = _reduce_noise(audio, sr, tcfg)
+    audio = _trim_silence(audio)
+    if len(audio) == 0:
+        return TranscriptionResult(text="", language="")
+
+    if tcfg.backend is TranscriptionBackend.WHISPER_CPP:
+        # --- whisper.cpp with partial callback ---
+        model = _get_cpp_model(tcfg)
+
+        def _cpp_callback(ctx, seg, n_new, user_data):
+            """pywhispercpp new_segment_callback — called as segments decode."""
+            text = seg.text.decode("utf-8") if isinstance(seg.text, bytes) else str(seg.text)
+            on_partial(text)
+            return 0  # continue
+
+        raw_segments = model.transcribe(
+            audio,
+            n_threads=tcfg.cpu_threads,
+            no_context=not tcfg.condition_on_previous_text,
+            single_segment=True,
+            language=tcfg.language or "",
+            new_segment_callback=_cpp_callback,
+            params={
+                "temperature": 0.0,
+                "temperature_inc": 0.2,
+                "no_speech_thold": tcfg.whisper_no_speech_thold,
+                "entropy_thold": tcfg.whisper_entropy_thold,
+                "logprob_thold": tcfg.whisper_logprob_thold,
+                "suppress_non_speech_tokens": True,
+                "suppress_blank": True,
+                "greedy": {"best_of": 5},
+            },
+        )
+
+        segments: list[TranscriptionSegment] = []
+        text_parts: list[str] = []
+        for seg in raw_segments:
+            text = seg.text.strip() if isinstance(seg.text, str) else seg.text.decode("utf-8").strip()
+            if not text or text in _JUNK_TOKENS:
+                continue
+            segments.append(TranscriptionSegment(text=text, start=seg.t0 * 0.01, end=seg.t1 * 0.01))
+            text_parts.append(text)
+
+        return TranscriptionResult(
+            text=" ".join(text_parts),
+            language=tcfg.language or "",
+            segments=tuple(segments),
+        )
+    else:
+        # --- faster-whisper: yield segments incrementally ---
+        model = _get_fw_model(tcfg)
+        raw_segments, info = model.transcribe(
+            audio,
+            beam_size=tcfg.beam_size,
+            language=tcfg.language,
+            condition_on_previous_text=tcfg.condition_on_previous_text,
+            no_speech_threshold=tcfg.whisper_no_speech_thold,
+            compression_ratio_threshold=tcfg.whisper_compression_ratio_thold,
+            log_prob_threshold=tcfg.whisper_logprob_thold,
+        )
+
+        segments = []
+        text_parts = []
+        for seg in raw_segments:
+            text = seg.text.strip()
+            if text:
+                on_partial(text)
+            if not text or text in _JUNK_TOKENS:
+                continue
+            segments.append(TranscriptionSegment(text=text, start=seg.start, end=seg.end))
+            text_parts.append(text)
+
+        return TranscriptionResult(
+            text=" ".join(text_parts),
+            language=info.language if info else "",
+            segments=tuple(segments),
+        )
 
 
 def _copy_and_sep(config: AppConfig, text: str) -> None:
@@ -203,4 +467,3 @@ def _copy_and_sep(config: AppConfig, text: str) -> None:
     if config.clipboard.enabled and copy_to_clipboard(text, config.clipboard):
         _echo("[clipboard] ✓")
     _echo("-" * 40)
-

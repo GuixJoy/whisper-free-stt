@@ -78,6 +78,9 @@ def _reduce_noise(audio: np.ndarray, sr: int, config: TranscriptionConfig) -> np
     # Skip if signal is already clean (very low ambient RMS)
     if compute_rms(audio[: min(len(audio), sr // 2)]) < 0.001:
         return audio
+    # Skip very short utterances to avoid unnecessary latency/artifacts.
+    if len(audio) < int(0.8 * sr):
+        return audio
 
     import noisereduce as nr
     try:
@@ -172,17 +175,15 @@ def _transcribe_cpp(
             print_realtime=False,
             language=config.language or "",
             # --- Quality tuning ---
-            params={
-                "initial_prompt": _OUTPUT_PROMPT,
-                "temperature": 0.0,                    # greedy decode — most accurate
-                "temperature_inc": 0.2,                # fallback with slight randomness
-                "no_speech_thold": config.whisper_no_speech_thold,      # 0.5 — aggressive non-speech reject
-                "entropy_thold": config.whisper_entropy_thold,          # 2.2 — stricter than default 2.4
-                "logprob_thold": config.whisper_logprob_thold,          # -1.0 — reject low-confidence
-                "suppress_non_speech_tokens": True,
-                "suppress_blank": True,
-                "greedy": {"best_of": 5},               # slight quality boost in greedy mode
-            },
+            initial_prompt=_OUTPUT_PROMPT,
+            temperature=0.0,                    # greedy decode — most accurate
+            temperature_inc=0.2,                # fallback with slight randomness
+            no_speech_thold=config.whisper_no_speech_thold,      # aggressive non-speech reject
+            entropy_thold=config.whisper_entropy_thold,          # stricter than default 2.4
+            logprob_thold=config.whisper_logprob_thold,          # reject low-confidence
+            suppress_non_speech_tokens=True,
+            suppress_blank=True,
+            greedy={"best_of": 5},               # slight quality boost in greedy mode
         )
     except Exception as exc:
         raise RuntimeError(f"whisper.cpp transcription failed: {exc}") from exc
@@ -227,7 +228,7 @@ def _transcribe_fw(
             language=config.language,
             condition_on_previous_text=config.condition_on_previous_text,
             no_speech_threshold=config.whisper_no_speech_thold,
-            compression_ratio_threshold=config.whisper_entropy_thold,
+            compression_ratio_threshold=config.whisper_compression_ratio_thold,
             log_prob_threshold=config.whisper_logprob_thold,
         )
     except Exception as exc:
@@ -248,7 +249,7 @@ def _transcribe_fw(
                 language=config.language,
                 condition_on_previous_text=config.condition_on_previous_text,
                 no_speech_threshold=config.whisper_no_speech_thold,
-                compression_ratio_threshold=config.whisper_entropy_thold,
+                compression_ratio_threshold=config.whisper_compression_ratio_thold,
                 log_prob_threshold=config.whisper_logprob_thold,
             )
         else:

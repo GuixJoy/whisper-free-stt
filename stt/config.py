@@ -60,6 +60,11 @@ class VADConfig:
     decision_window_sec: float = 0.2
     noise_floor_alpha: float = 0.95
     noise_floor_margin: float = 3.0
+    # Fast-commit: when set, use lower silence duration + higher detrigger ratio
+    # for ~40% faster endpointing. Trades occasional mid-sentence cuts for speed.
+    fast_commit: bool = False
+    fast_silence_duration_sec: float = 0.5
+    fast_detrigger_ratio: float = 0.75
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,7 @@ class TranscriptionConfig:
     noise_reduce_prop_decrease: float = 0.85
     whisper_no_speech_thold: float = 0.5
     whisper_entropy_thold: float = 2.2
+    whisper_compression_ratio_thold: float = 2.4
     whisper_logprob_thold: float = -1.0
 
 

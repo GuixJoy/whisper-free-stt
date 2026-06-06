@@ -85,6 +85,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--silence-threshold", type=float, default=None, help="RMS silence threshold (default: 0.005)")
     parser.add_argument("--silence-duration", type=float, default=None, help="Seconds of silence before stopping")
     parser.add_argument("--min-duration", type=float, default=0.5, help="Minimum recording duration (seconds)")
+    parser.add_argument("--fast-commit", action="store_true", help="Faster endpointing (lower silence, higher detrigger)")
 
     # Whisper
     parser.add_argument(
@@ -181,6 +182,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             silence_threshold_rms=args.silence_threshold if args.silence_threshold is not None else VADConfig.silence_threshold_rms,
             silence_duration_sec=args.silence_duration if args.silence_duration is not None else VADConfig.silence_duration_sec,
             min_recording_sec=args.min_duration,
+            fast_commit=args.fast_commit,
         ),
         transcription=TranscriptionConfig(
             backend=backend,
