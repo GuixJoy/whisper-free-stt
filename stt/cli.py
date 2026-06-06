@@ -73,21 +73,9 @@ def _has_cuda() -> bool:
                 except OSError: continue
         if not loaded:
             return False
-        # 2. Actually run a tiny inference on GPU to verify it works
-        from faster_whisper import WhisperModel
-        import sys as _sys, io as _io
-        _old = _sys.stderr; _sys.stderr = _io.StringIO()  # suppress init noise
-        try:
-            model = WhisperModel("base", device="cuda", compute_type="float16")
-            audio = _np.zeros(16000, dtype=_np.float32)
-            t0 = _time.monotonic()
-            list(model.transcribe(audio, beam_size=1))
-            elapsed = _time.monotonic() - t0
-            return elapsed < 5.0  # GPU should be <1s, CPU takes 5-15s
-        except Exception:
-            return False
-        finally:
-            _sys.stderr = _old
+        # 2. Avoid running an inference here (can download models / slow startup).
+        # Library-load + device count is enough for selecting a default profile.
+        return True
     except Exception:
         return False
 
