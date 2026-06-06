@@ -579,7 +579,8 @@ def run_file(config: AppConfig, wav_path: str) -> None:
 
     if config.llm.mode is not LLMMode.OFF and result.text.strip():
         try:
-            processed = rewrite(result.text, config.llm)
+            with _llm_semaphore:
+                processed = rewrite(result.text, config.llm)
             _echo(f"[{config.llm.mode.value}] {processed}")
         except Exception as exc:
             _echo(f"LLM error: {exc}", file=sys.stderr)
