@@ -161,6 +161,7 @@ class AppConfig:
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
     typing: TypingConfig = field(default_factory=TypingConfig)
     debug: bool = False
+    json_mode: bool = False
 
 
 def load_dotenv(path: str | Path | None = None) -> None:

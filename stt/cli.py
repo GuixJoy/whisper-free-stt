@@ -142,6 +142,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
+    parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
     parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
 
     return parser
@@ -219,6 +220,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             wtype_path=args.type_path,
         ),
         debug=args.debug,
+        json_mode=args.json_mode,
     )
 
 

@@ -52,6 +52,13 @@ def _debug(config: AppConfig, *args, **kwargs) -> None:
         print("[debug]", *args, **kwargs, flush=True)
 
 
+def _json_emit(config: AppConfig, event: dict) -> None:
+    """Emit a JSON event to stdout if json_mode is enabled."""
+    if config.json_mode:
+        import json as _json
+        print(_json.dumps(event), flush=True)
+
+
 # ---------------------------------------------------------------------------
 # LLM concurrency limit (prevent rate-limit pile-up from rapid speech)
 # ---------------------------------------------------------------------------
@@ -215,6 +222,7 @@ def run(
 
     _echo("Listening... (speak naturally, Ctrl+C to stop)")
     _echo("-" * 40)
+    _json_emit(config, {"type": "state", "state": "listening"})
     if hooks and hooks.on_state:
         hooks.on_state("listening")
     if hooks and hooks.on_activity:
@@ -292,6 +300,8 @@ def run(
             rms = compute_rms(chunk)
             if hooks and hooks.on_mic_level:
                 hooks.on_mic_level(rms)
+            if config.json_mode and chunk_count % 4 == 0:
+                _json_emit(config, {"type": "mic", "level": round(rms, 6)})
             chunk_count += 1
 
             if config.debug and chunk_count % 8 == 0:
@@ -380,6 +390,7 @@ def _transcribe_and_print(
     ts_total = time.monotonic()
 
     # --- Transcription ---
+    _json_emit(config, {"type": "state", "state": "transcribing"})
     if hooks and hooks.on_state:
         hooks.on_state("transcribing")
     if hooks and hooks.on_activity:
@@ -409,11 +420,13 @@ def _transcribe_and_print(
         _echo(f"\n[final] {raw}  ← confirmed")
     else:
         _echo(f"\n[raw] {raw}")
+    _json_emit(config, {"type": "raw", "text": raw})
     if hooks and hooks.on_raw:
         hooks.on_raw(raw)
 
     # --- LLM ---
     if config.llm.mode is LLMMode.OFF:
+        _json_emit(config, {"type": "processed", "text": raw})
         _copy_and_sep(config, raw)
         if hooks and hooks.on_processed:
             hooks.on_processed(raw)
@@ -424,6 +437,7 @@ def _transcribe_and_print(
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
+    _json_emit(config, {"type": "state", "state": "rewriting"})
     if hooks and hooks.on_state:
         hooks.on_state("rewriting")
     if hooks and hooks.on_activity:
@@ -435,8 +449,10 @@ def _transcribe_and_print(
         llm_elapsed = time.monotonic() - ts_llm
         telemetry.record("llm", llm_elapsed)
         _echo(f"[{config.llm.mode.value}] {processed}")
+        _json_emit(config, {"type": "processed", "text": processed})
     except Exception as exc:
         _echo(f"LLM error: {exc}", file=sys.stderr)
+        _json_emit(config, {"type": "error", "message": str(exc)})
         processed = raw
         if hooks and hooks.on_error:
             hooks.on_error(f"LLM error: {exc}")
