@@ -1,16 +1,17 @@
 """Immutable configuration for the STT application.
 
-All configuration lives here. No hidden globals — pass config instances explicitly.
+.env support: call load_dotenv() before building config.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 
 
 class LLMMode(str, Enum):
-    """What the LLM should do with the raw transcript."""
     OFF = "off"
     CLEANUP = "cleanup"
     BULLET_LIST = "bullet_list"
@@ -18,8 +19,12 @@ class LLMMode(str, Enum):
     COMMIT_MESSAGE = "commit_message"
 
 
+class LLMProvider(str, Enum):
+    OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
+
+
 class ComputeType(str, Enum):
-    """Whisper compute type for faster-whisper / CTranslate2."""
     INT8 = "int8"
     INT8_FLOAT16 = "int8_float16"
     INT16 = "int16"
@@ -30,7 +35,6 @@ class ComputeType(str, Enum):
 
 @dataclass(frozen=True)
 class AudioConfig:
-    """Microphone capture settings."""
     sample_rate: int = 16_000
     channels: int = 1
     dtype: str = "float32"
@@ -40,7 +44,6 @@ class AudioConfig:
 
 @dataclass(frozen=True)
 class VADConfig:
-    """Voice-activity detection parameters."""
     silence_threshold_rms: float = 0.005
     silence_duration_sec: float = 1.5
     min_recording_sec: float = 0.5
@@ -49,7 +52,6 @@ class VADConfig:
 
 @dataclass(frozen=True)
 class TranscriptionConfig:
-    """ASR settings."""
     model_name: str = "base"
     compute_type: ComputeType = ComputeType.INT8
     device: str = "cpu"
@@ -58,31 +60,100 @@ class TranscriptionConfig:
     beam_size: int = 1
 
 
+def _env_default(key: str, fallback: str) -> str:
+    return os.environ.get(key, fallback)
+
+
+def _detect_provider() -> LLMProvider:
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return LLMProvider.DEEPSEEK
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return LLMProvider.OPENROUTER
+    return LLMProvider.OPENROUTER
+
+
+def _base_url_for(provider: LLMProvider) -> str:
+    if provider is LLMProvider.DEEPSEEK:
+        return "https://api.deepseek.com/chat/completions"
+    return "https://openrouter.ai/api/v1/chat/completions"
+
+
+def _api_key_env_for(provider: LLMProvider) -> str:
+    if provider is LLMProvider.DEEPSEEK:
+        return "DEEPSEEK_API_KEY"
+    return "OPENROUTER_API_KEY"
+
+
+def _default_model_for(provider: LLMProvider) -> str:
+    if provider is LLMProvider.DEEPSEEK:
+        return "deepseek-chat"
+    return "openai/gpt-4o-mini"
+
+
 @dataclass(frozen=True)
 class LLMConfig:
-    """LLM settings."""
     mode: LLMMode = LLMMode.OFF
-    model: str = "openai/gpt-4o-mini"
-    api_key_env: str = "OPENROUTER_API_KEY"
+    provider: LLMProvider = field(default_factory=_detect_provider)
+    model: str = field(default_factory=lambda: _env_default("STT_LLM_MODEL", ""))
+    fallback_model: str = field(default_factory=lambda: _env_default("STT_LLM_FALLBACK", ""))
     max_tokens: int = 1024
     temperature: float = 0.2
     timeout_sec: float = 15.0
-    base_url: str = "https://openrouter.ai/api/v1/chat/completions"
+
+    def __post_init__(self) -> None:
+        if not self.model:
+            object.__setattr__(self, "model", _default_model_for(self.provider))
+        if not self.fallback_model and self.provider is LLMProvider.OPENROUTER:
+            object.__setattr__(self, "fallback_model", "anthropic/claude-3-5-haiku-latest")
+
+    @property
+    def api_key_env(self) -> str:
+        return _api_key_env_for(self.provider)
+
+    @property
+    def base_url(self) -> str:
+        return _base_url_for(self.provider)
 
 
 @dataclass(frozen=True)
 class ClipboardConfig:
-    """Clipboard integration settings."""
     enabled: bool = False
     wl_copy_path: str = "wl-copy"
 
 
 @dataclass(frozen=True)
 class AppConfig:
-    """Aggregate config — pass a single instance through the app."""
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
     debug: bool = False
+
+
+def load_dotenv(path: str | Path | None = None) -> None:
+    """Load KEY=value pairs from a .env file into os.environ."""
+    if path is None:
+        path = Path.cwd() / ".env"
+    elif isinstance(path, str):
+        path = Path(path)
+    if not path.exists():
+        return
+    content = path.read_text(encoding="utf-8")
+    for raw in content.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip()
+        if len(value) >= 2 and (
+            (value.startswith('"') and value.endswith('"')) or
+            (value.startswith("'") and value.endswith("'"))
+        ):
+            value = value[1:-1]
+        if key not in os.environ:
+            os.environ[key] = value
