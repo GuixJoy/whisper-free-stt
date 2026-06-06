@@ -247,7 +247,8 @@ def run(
         running = False
         if stop_event is not None:
             stop_event.set()
-    if enable_signal_handlers and threading.current_thread() is threading.main_thread():
+    # UI integrations may call run() from a worker thread; skip signal handlers there.
+    if enable_signal_handlers and threading.current_thread() == threading.main_thread():
         signal.signal(signal.SIGINT, _stop)
 
     chunk_count = 0

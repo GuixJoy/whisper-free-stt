@@ -21,6 +21,10 @@ class TranscriptEntry:
 
 
 class STTDesktopApp:
+    # Typical observed RMS during speech is often below ~0.03 in this pipeline.
+    # Scale that range into the 0..1 progress meter interval.
+    _MIC_LEVEL_SCALE = 30.0
+
     def __init__(self, root: tk.Tk, args: argparse.Namespace):
         self.root = root
         self.args = args
@@ -124,7 +128,7 @@ class STTDesktopApp:
 
     def _bind_shortcuts(self) -> None:
         self.root.bind("<Control-space>", lambda _evt: self.toggle_listening())
-        self.root.bind("<Control-Shift-C>", lambda _evt: self.copy_latest())
+        self.root.bind("<Control-Shift-c>", lambda _evt: self.copy_latest())
 
     def _sync_armed(self) -> None:
         if not self.armed.get():
@@ -261,7 +265,7 @@ class STTDesktopApp:
                     self._refresh_transcript()
                 elif kind == "mic":
                     rms = float(payload)
-                    level = max(0.0, min(1.0, rms * 30.0))
+                    level = max(0.0, min(1.0, rms * self._MIC_LEVEL_SCALE))
                     self.mic_level_var.set(level)
                 elif kind == "error":
                     self._set_status("Error")
@@ -282,10 +286,11 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     root = tk.Tk()
     app = STTDesktopApp(root, args)
+    shutdown_grace_period_sec = 0.05
 
     def _on_close() -> None:
         app.stop_listening()
-        time.sleep(0.05)
+        time.sleep(shutdown_grace_period_sec)
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
