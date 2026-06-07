@@ -195,7 +195,7 @@ function App() {
   stopRef.current = stop;
 
   // Cleanup on unmount
-  useEffect(() => () => { runtimeRef.current?.stop(); }, []);
+  useEffect(() => () => runtimeRef.current?.stop(), []);
 
   const clearLines = () => setLines([]);
 
@@ -211,7 +211,13 @@ function App() {
     setToast("Copied!");
   };
 
-  const statusClass = `status-${status === "error" ? "error" : status === "rewriting" ? "rewriting" : status === "transcribing" ? "transcribing" : status === "listening" ? "listening" : "idle"}`;
+  const STATUS_CLASS: Record<string, string> = {
+    error: "status-error",
+    rewriting: "status-rewriting",
+    transcribing: "status-transcribing",
+    listening: "status-listening",
+  };
+  const statusClass = STATUS_CLASS[status] ?? "status-idle";
   const statusIcon = STATUS_ICON[status] ?? "◎";
 
   return (
