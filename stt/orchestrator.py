@@ -637,6 +637,17 @@ def _transcribe_with_partials(
     else:
         # --- faster-whisper: yield segments incrementally ---
         model = _get_fw_model(tcfg)
+        fw_kwargs: dict = {}
+        if tcfg.vad_filter:
+            from faster_whisper.vad import VadOptions
+            fw_kwargs["vad_filter"] = True
+            fw_kwargs["vad_parameters"] = VadOptions(
+                threshold=0.5,
+                min_silence_duration_ms=tcfg.vad_min_silence_ms,
+                min_speech_duration_ms=250,
+                max_speech_duration_s=tcfg.vad_max_speech_sec,
+                speech_pad_ms=400,
+            )
         raw_segments, info = model.transcribe(
             audio,
             beam_size=tcfg.beam_size,
@@ -645,6 +656,7 @@ def _transcribe_with_partials(
             no_speech_threshold=tcfg.whisper_no_speech_thold,
             compression_ratio_threshold=tcfg.whisper_compression_ratio_thold,
             log_prob_threshold=tcfg.whisper_logprob_thold,
+            **fw_kwargs,
         )
 
         segments = []

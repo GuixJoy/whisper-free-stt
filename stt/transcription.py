@@ -234,6 +234,19 @@ def _transcribe_fw(
     except Exception as exc:
         raise RuntimeError(f"Failed to load faster-whisper model '{config.model_name}': {exc}") from exc
 
+    # Build vad_parameters if vad_filter is enabled
+    vad_kwargs: dict = {}
+    if config.vad_filter:
+        from faster_whisper.vad import VadOptions
+        vad_kwargs["vad_filter"] = True
+        vad_kwargs["vad_parameters"] = VadOptions(
+            threshold=0.5,
+            min_silence_duration_ms=config.vad_min_silence_ms,
+            min_speech_duration_ms=250,
+            max_speech_duration_s=config.vad_max_speech_sec if hasattr(config, 'vad_max_speech_sec') else 15,
+            speech_pad_ms=400,
+        )
+
     try:
         raw_segments, info = model.transcribe(
             audio,
@@ -243,6 +256,7 @@ def _transcribe_fw(
             no_speech_threshold=config.whisper_no_speech_thold,
             compression_ratio_threshold=config.whisper_compression_ratio_thold,
             log_prob_threshold=config.whisper_logprob_thold,
+            **vad_kwargs,
         )
     except Exception as exc:
         err = str(exc)
