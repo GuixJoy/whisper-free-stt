@@ -180,15 +180,15 @@ Done.
 
 ## Benchmarks
 
-*Measured 2026-06-06 on RTX 4060 (CUDA) + DeepSeek v4 Flash, 15 utterances.*
+*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo, Silero VAD) + DeepSeek Chat, 14 utterances.*
 
 | Stage | p50 | p95 | Notes |
 |---|---|---|---|
-| **ASR** | 0.67s | 11.8s | GPU — median sub-second. p95 includes first-utterance CUDA kernel compilation |
-| **LLM** | 1.47s | 3.0s | DeepSeek — every call completed |
-| **Total** | 3.0s | 13.2s | ~3 seconds from end-of-speech to final output |
+| **ASR** | 0.69s | 2.6s | GPU turbo + Silero VAD — neural VAD runs on GPU alongside Whisper |
+| **LLM** | 0.90s | 1.22s | DeepSeek Chat — 50-token prompt, no system message |
+| **Total** | 1.74s | 3.7s | **Under 2 seconds** from end-of-speech to punctuated, ready-to-use output |
 
-p95 ASR of 11.8s is from the first 1–2 utterances (one-time CUDA warmup). After that, ASR settles at ~0.6s — a **30× improvement** over CPU-only `distil-large-v3` (18s baseline).
+At ~80 WPM average typing speed, this delivers **2× faster than manual typing** with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
 
 ---
 

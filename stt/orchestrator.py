@@ -579,10 +579,19 @@ def _transcribe_with_partials(
     tcfg: "TranscriptionConfig",  # noqa: F821
     on_partial: "Callable[[str], None]",  # noqa: F821
 ) -> "TranscriptionResult":  # noqa: F821
-    """Transcribe with partial-hypothesis callbacks.
-
-    whisper.cpp: uses new_segment_callback to emit partials during decode.
-    faster-whisper: yields segments incrementally — emit each as a partial.
+    """
+    Transcribe audio and emit partial hypotheses via the provided callback as decoding progresses.
+    
+    Calls `on_partial(text)` whenever a backend produces an intermediate segment/hypothesis. The final returned TranscriptionResult contains the concatenated final text, detected language, and a tuple of TranscriptionSegment entries.
+    
+    Parameters:
+        audio (np.ndarray): Preprocessed audio samples (mono float32, range [-1, 1]).
+        sr (int): Sample rate of `audio`.
+        tcfg (TranscriptionConfig): Transcription backend/configuration options.
+        on_partial (Callable[[str], None]): Callback invoked with each partial hypothesis text.
+    
+    Returns:
+        TranscriptionResult: Object with `text` (final concatenated transcription), `language`, and `segments` (tuple of TranscriptionSegment for final segments).
     """
     from stt.transcription import (
         preprocess_audio, _get_cpp_model, _get_fw_model, _JUNK_TOKENS,
@@ -637,6 +646,17 @@ def _transcribe_with_partials(
     else:
         # --- faster-whisper: yield segments incrementally ---
         model = _get_fw_model(tcfg)
+        fw_kwargs: dict = {}
+        if tcfg.vad_filter:
+            from faster_whisper.vad import VadOptions
+            fw_kwargs["vad_filter"] = True
+            fw_kwargs["vad_parameters"] = VadOptions(
+                threshold=0.5,
+                min_silence_duration_ms=tcfg.vad_min_silence_ms,
+                min_speech_duration_ms=250,
+                max_speech_duration_s=tcfg.vad_max_speech_sec,
+                speech_pad_ms=400,
+            )
         raw_segments, info = model.transcribe(
             audio,
             beam_size=tcfg.beam_size,
@@ -645,6 +665,7 @@ def _transcribe_with_partials(
             no_speech_threshold=tcfg.whisper_no_speech_thold,
             compression_ratio_threshold=tcfg.whisper_compression_ratio_thold,
             log_prob_threshold=tcfg.whisper_logprob_thold,
+            **fw_kwargs,
         )
 
         segments = []

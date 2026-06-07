@@ -77,6 +77,9 @@ class TranscriptionConfig:
     language: str | None = None
     beam_size: int = 1
     condition_on_previous_text: bool = True
+    vad_filter: bool = True                # Use Silero VAD inside Whisper (GPU) instead of our RMS VAD
+    vad_min_silence_ms: int = 900          # Silence before endpoint (matches our RMS VAD default)
+    vad_max_speech_sec: float = 15.0       # Max speech before forced split
     noise_reduce: bool = True
     noise_reduce_prop_decrease: float = 0.85
     whisper_no_speech_thold: float = 0.5
