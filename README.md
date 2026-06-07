@@ -180,15 +180,15 @@ Done.
 
 ## Benchmarks
 
-*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo) + DeepSeek Chat, 6 utterances.*
+*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo, Silero VAD) + DeepSeek Chat, 14 utterances.*
 
 | Stage | p50 | p95 | Notes |
 |---|---|---|---|
-| **ASR** | 0.66s | 2.2s | GPU turbo — median sub-second. p95 is first-utterance CUDA warmup |
-| **LLM** | 1.04s | 1.07s | DeepSeek Chat — tight variance, every call ~1s |
-| **Total** | 1.81s | 3.3s | **Under 2 seconds** from end-of-speech to punctuated output |
+| **ASR** | 0.69s | 2.6s | GPU turbo + Silero VAD — neural VAD runs on GPU alongside Whisper |
+| **LLM** | 0.90s | 1.22s | DeepSeek Chat — 50-token prompt, no system message |
+| **Total** | 1.74s | 3.7s | **Under 2 seconds** from end-of-speech to punctuated, ready-to-use output |
 
-At ~80 WPM average typing speed, this delivers **2× faster than manual typing** with proper punctuation and zero editing. LLM latency halved by switching from `deepseek-v4-flash` to `deepseek-chat` with an optimized 50-token prompt.
+At ~80 WPM average typing speed, this delivers **2× faster than manual typing** with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
 
 ---
 
