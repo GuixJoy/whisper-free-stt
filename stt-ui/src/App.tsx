@@ -49,6 +49,15 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   return args;
 }
 
+/**
+ * Build a shell command string for launching the external WebSocket STT backend using the provided runtime settings.
+ *
+ * The produced command begins with `stt` and includes required flags for WebSocket port, ASR profile, and LLM mode.
+ * Optional flags are appended when enabled in `settings` (backend, model, fast-commit, no-type, clipboard, debug).
+ *
+ * @param settings - Runtime settings that determine the CLI flags and their values
+ * @returns The full `stt` command string with flags derived from `settings`
+ */
 function buildWsCommand(settings: RuntimeSettings): string {
   const args = [
     "--ws-port", String(settings.wsPort),
@@ -72,6 +81,16 @@ const STATUS_ICON: Record<string, string> = {
   idle: "◎",
 };
 
+/**
+ * Main application React component that renders the STT feed UI and manages runtime state.
+ *
+ * Renders controls for connection and runtime settings, a live transcript feed, and status/notification UI.
+ * Manages the runtime lifecycle (start/stop), processes incoming STT events to update transcript lines and mic level,
+ * keeps transcripts auto-scrolled, synchronizes clipboard helpers, and registers a global Space key shortcut to
+ * toggle start/stop. Ensures the runtime is stopped on unmount.
+ *
+ * @returns The component's rendered JSX element.
+ */
 function App() {
   const [mode, setMode] = useState<RunMode>("ws");
   const [connected, setConnected] = useState(false);

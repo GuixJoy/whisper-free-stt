@@ -228,7 +228,17 @@ def _transcribe_fw(
     sr: int,
     config: TranscriptionConfig,
 ) -> TranscriptionResult:
-    """Transcribe via faster-whisper. Falls back to CPU if CUDA fails."""
+    """
+    Transcribe the given audio using the faster-whisper backend and return a structured transcription.
+    
+    If a CUDA/cuBLAS error occurs during transcription, the function sets CT2_FORCE_CPU and retries on CPU; other failures raise a RuntimeError.
+    
+    Returns:
+        TranscriptionResult: An object containing the concatenated transcript text, the detected language (or empty string), and a tuple of TranscriptionSegment items.
+    
+    Raises:
+        RuntimeError: If the faster-whisper model fails to load or if transcription fails for reasons other than a CUDA/cuBLAS error.
+    """
     try:
         model = _get_fw_model(config)
     except Exception as exc:
