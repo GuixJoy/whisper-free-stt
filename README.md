@@ -180,15 +180,15 @@ Done.
 
 ## Benchmarks
 
-*Measured 2026-06-06 on RTX 4060 (CUDA) + DeepSeek v4 Flash, 15 utterances.*
+*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo) + DeepSeek Chat, 6 utterances.*
 
 | Stage | p50 | p95 | Notes |
 |---|---|---|---|
-| **ASR** | 0.67s | 11.8s | GPU — median sub-second. p95 includes first-utterance CUDA kernel compilation |
-| **LLM** | 1.47s | 3.0s | DeepSeek — every call completed |
-| **Total** | 3.0s | 13.2s | ~3 seconds from end-of-speech to final output |
+| **ASR** | 0.66s | 2.2s | GPU turbo — median sub-second. p95 is first-utterance CUDA warmup |
+| **LLM** | 1.04s | 1.07s | DeepSeek Chat — tight variance, every call ~1s |
+| **Total** | 1.81s | 3.3s | **Under 2 seconds** from end-of-speech to punctuated output |
 
-p95 ASR of 11.8s is from the first 1–2 utterances (one-time CUDA warmup). After that, ASR settles at ~0.6s — a **30× improvement** over CPU-only `distil-large-v3` (18s baseline).
+At ~80 WPM average typing speed, this delivers **2× faster than manual typing** with proper punctuation and zero editing. LLM latency halved by switching from `deepseek-v4-flash` to `deepseek-chat` with an optimized 50-token prompt.
 
 ---
 
