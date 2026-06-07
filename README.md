@@ -104,7 +104,7 @@ STT_LLM_FALLBACK=anthropic/claude-3-5-haiku-latest
 ```
 
 DeepSeek takes priority if both keys are set.  Provider is displayed at startup:
-`LLM: cleanup (deepseek:deepseek-v4-flash)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
+`LLM: cleanup (deepseek:deepseek-chat)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
 
 Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
@@ -163,7 +163,7 @@ $ stt
 ╚══════════════════════════════════╝
 
 ASR: large-v3-turbo (cuda)
-LLM: cleanup (deepseek:deepseek-v4-flash)
+LLM: cleanup (deepseek:deepseek-chat)
 Typing: enabled  Clipboard: disabled
 
 Listening... (speak naturally, Ctrl+C to stop)
@@ -180,15 +180,17 @@ Done.
 
 ## Benchmarks
 
-*Measured 2026-06-06 on RTX 4060 (CUDA) + DeepSeek v4 Flash, 15 utterances.*
+*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo, Silero VAD) + DeepSeek Chat, 14 utterances.*
 
 | Stage | p50 | p95 | Notes |
 |---|---|---|---|
-| **ASR** | 0.67s | 11.8s | GPU — median sub-second. p95 includes first-utterance CUDA kernel compilation |
-| **LLM** | 1.47s | 3.0s | DeepSeek — every call completed |
-| **Total** | 3.0s | 13.2s | ~3 seconds from end-of-speech to final output |
+| **ASR** | 0.69s | 2.6s | GPU turbo + Silero VAD — neural VAD runs on GPU alongside Whisper |
+| **LLM** | 0.90s | 1.22s | DeepSeek Chat — 50-token prompt, no system message |
+| **Total** | 1.74s | 3.7s | **Under 2 seconds** from end-of-speech to punctuated, ready-to-use output |
 
-p95 ASR of 11.8s is from the first 1–2 utterances (one-time CUDA warmup). After that, ASR settles at ~0.6s — a **30× improvement** over CPU-only `distil-large-v3` (18s baseline).
+> **Note on percentiles:** p50 and p95 values are calculated independently for each processing stage across all utterances. The Total p95 (3.7s) is less than the arithmetic sum of ASR p95 and LLM p95 (2.6s + 1.22s = 3.82s) because the worst-case samples for different stages come from different utterances — an utterance that was slow to transcribe was not necessarily slow to rewrite.
+
+For a 20-word utterance spoken at ~150 WPM (~8s of speech), the total wall-clock time is ~8s speaking + 1.74s processing ≈ 9.74s. Typing the same 20 words at ~80 WPM takes ~15s, delivering **up to 2× faster than manual typing** for typical utterances, with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
 
 ---
 

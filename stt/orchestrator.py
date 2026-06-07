@@ -157,10 +157,14 @@ class _LatencyTracker:
                 if not vals:
                     continue
                 s = sorted(vals)
+                # Use numpy percentile for stable p95 interpolation.
+                # The simple index int(len*0.95) snaps to max with small
+                # samples (e.g. 14 utterances → s[13]=max), skewing p95.
+                import numpy as np
                 out[stage] = {
                     "count": len(s),
-                    "p50": s[len(s) // 2],
-                    "p95": s[int(len(s) * 0.95)],
+                    "p50": float(np.percentile(s, 50)),
+                    "p95": float(np.percentile(s, 95)),
                     "min": s[0],
                     "max": s[-1],
                 }
@@ -579,13 +583,23 @@ def _transcribe_with_partials(
     tcfg: "TranscriptionConfig",  # noqa: F821
     on_partial: "Callable[[str], None]",  # noqa: F821
 ) -> "TranscriptionResult":  # noqa: F821
-    """Transcribe with partial-hypothesis callbacks.
-
-    whisper.cpp: uses new_segment_callback to emit partials during decode.
-    faster-whisper: yields segments incrementally — emit each as a partial.
+    """
+    Transcribe audio and emit partial hypotheses via the provided callback as decoding progresses.
+    
+    Calls `on_partial(text)` whenever a backend produces an intermediate segment/hypothesis. The final returned TranscriptionResult contains the concatenated final text, detected language, and a tuple of TranscriptionSegment entries.
+    
+    Parameters:
+        audio (np.ndarray): Preprocessed audio samples (mono float32, range [-1, 1]).
+        sr (int): Sample rate of `audio`.
+        tcfg (TranscriptionConfig): Transcription backend/configuration options.
+        on_partial (Callable[[str], None]): Callback invoked with each partial hypothesis text.
+    
+    Returns:
+        TranscriptionResult: Object with `text` (final concatenated transcription), `language`, and `segments` (tuple of TranscriptionSegment for final segments).
     """
     from stt.transcription import (
         preprocess_audio, _get_cpp_model, _get_fw_model, _JUNK_TOKENS,
+        _build_vad_kwargs,
     )
     from stt.types import TranscriptionResult, TranscriptionSegment
     from stt.config import TranscriptionBackend
@@ -637,6 +651,7 @@ def _transcribe_with_partials(
     else:
         # --- faster-whisper: yield segments incrementally ---
         model = _get_fw_model(tcfg)
+        fw_kwargs = _build_vad_kwargs(tcfg)
         raw_segments, info = model.transcribe(
             audio,
             beam_size=tcfg.beam_size,
@@ -645,6 +660,7 @@ def _transcribe_with_partials(
             no_speech_threshold=tcfg.whisper_no_speech_thold,
             compression_ratio_threshold=tcfg.whisper_compression_ratio_thold,
             log_prob_threshold=tcfg.whisper_logprob_thold,
+            **fw_kwargs,
         )
 
         segments = []

@@ -77,6 +77,9 @@ class TranscriptionConfig:
     language: str | None = None
     beam_size: int = 1
     condition_on_previous_text: bool = True
+    vad_filter: bool = True                # Use Silero VAD inside Whisper (GPU) instead of our RMS VAD
+    vad_min_silence_ms: int = 900          # Silence before endpoint (matches our RMS VAD default)
+    vad_max_speech_sec: float = 15.0       # Max speech before forced split
     noise_reduce: bool = True
     noise_reduce_prop_decrease: float = 0.85
     whisper_no_speech_thold: float = 0.5
@@ -121,7 +124,7 @@ class LLMConfig:
     provider: LLMProvider = field(default_factory=_detect_provider)
     model: str = field(default_factory=lambda: _env_default("STT_LLM_MODEL", ""))
     fallback_model: str = field(default_factory=lambda: _env_default("STT_LLM_FALLBACK", ""))
-    max_tokens: int = 1024
+    max_tokens: int = 256     # 256 is optimal for cleanup; modes like EMAIL override to >=512
     temperature: float = 0.2
     timeout_sec: float = 15.0
 

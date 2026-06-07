@@ -223,16 +223,49 @@ def _transcribe_cpp(
 # faster-whisper backend
 # ---------------------------------------------------------------------------
 
+def _build_vad_kwargs(config: TranscriptionConfig) -> dict:
+    """Return vad_filter + vad_parameters kwargs dict for faster-whisper transcribe().
+
+    Returns an empty dict when config.vad_filter is False so callers can always
+    splat the result without branching.
+    """
+    if not config.vad_filter:
+        return {}
+    from faster_whisper.vad import VadOptions
+    return {
+        "vad_filter": True,
+        "vad_parameters": VadOptions(
+            threshold=0.5,
+            min_silence_duration_ms=config.vad_min_silence_ms,
+            min_speech_duration_ms=250,
+            max_speech_duration_s=config.vad_max_speech_sec,
+            speech_pad_ms=400,
+        ),
+    }
+
+
 def _transcribe_fw(
     audio: np.ndarray,
     sr: int,
     config: TranscriptionConfig,
 ) -> TranscriptionResult:
-    """Transcribe via faster-whisper. Falls back to CPU if CUDA fails."""
+    """
+    Transcribe the given audio using the faster-whisper backend and return a structured transcription.
+
+    If a CUDA/cuBLAS error occurs during transcription, the function sets CT2_FORCE_CPU and retries on CPU; other failures raise a RuntimeError.
+
+    Returns:
+        TranscriptionResult: An object containing the concatenated transcript text, the detected language (or empty string), and a tuple of TranscriptionSegment items.
+
+    Raises:
+        RuntimeError: If the faster-whisper model fails to load or if transcription fails for reasons other than a CUDA/cuBLAS error.
+    """
     try:
         model = _get_fw_model(config)
     except Exception as exc:
         raise RuntimeError(f"Failed to load faster-whisper model '{config.model_name}': {exc}") from exc
+
+    vad_kwargs = _build_vad_kwargs(config)
 
     try:
         raw_segments, info = model.transcribe(
@@ -243,6 +276,7 @@ def _transcribe_fw(
             no_speech_threshold=config.whisper_no_speech_thold,
             compression_ratio_threshold=config.whisper_compression_ratio_thold,
             log_prob_threshold=config.whisper_logprob_thold,
+            **vad_kwargs,
         )
     except Exception as exc:
         err = str(exc)
@@ -264,6 +298,7 @@ def _transcribe_fw(
                 no_speech_threshold=config.whisper_no_speech_thold,
                 compression_ratio_threshold=config.whisper_compression_ratio_thold,
                 log_prob_threshold=config.whisper_logprob_thold,
+                **vad_kwargs,
             )
         else:
             raise RuntimeError(f"faster-whisper transcription failed: {exc}") from exc

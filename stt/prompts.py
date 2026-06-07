@@ -4,19 +4,11 @@ from __future__ import annotations
 
 from stt.config import LLMMode
 
-SYSTEM_PROMPT = (
-    "You are a speech-to-text cleanup engine. "
-    "Transform noisy microphone transcription into clean, faithful text. "
-    "Do not invent facts. Do not add commentary. "
-    "Return only the cleaned result."
-)
+SYSTEM_PROMPT = ""  # not used — we pass everything as user message for speed
 
 _CLEANUP = (
-    "Clean the following microphone transcript. "
-    "Remove filler words, fix punctuation and capitalization, "
-    "and correct obvious mistranscriptions. "
-    "Preserve all technical terms exactly. "
-    "Return only the cleaned text with no preamble."
+    "Fix punctuation, capitalization, and remove filler words (um, uh). "
+    "Preserve technical terms. Return only the cleaned text."
 )
 
 _BULLET = (
