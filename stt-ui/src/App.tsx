@@ -51,12 +51,9 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
 
 function buildWsCommand(settings: RuntimeSettings): string {
   const args = [
-    "--ws-port",
-    String(settings.wsPort),
-    "--asr-profile",
-    settings.asrProfile,
-    "--llm-mode",
-    settings.llmMode,
+    "--ws-port", String(settings.wsPort),
+    "--asr-profile", settings.asrProfile,
+    "--llm-mode", settings.llmMode,
   ];
   if (settings.backend !== "auto") args.push("--backend", settings.backend);
   if (settings.model.trim()) args.push("--model", settings.model.trim());
@@ -66,6 +63,14 @@ function buildWsCommand(settings: RuntimeSettings): string {
   if (settings.debug) args.push("--debug");
   return `stt ${args.join(" ")}`;
 }
+
+const STATUS_ICON: Record<string, string> = {
+  listening: "🎙",
+  transcribing: "✍",
+  rewriting: "🔄",
+  error: "⚠",
+  idle: "◎",
+};
 
 function App() {
   const [mode, setMode] = useState<RunMode>("ws");
@@ -80,6 +85,12 @@ function App() {
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
+
+  // Refs so keyboard handler always calls the freshest start/stop
+  const connectedRef = useRef(connected);
+  const startRef = useRef<() => Promise<void>>(async () => {});
+  const stopRef = useRef<() => void>(() => {});
+  connectedRef.current = connected;
 
   useEffect(() => {
     if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
@@ -97,6 +108,21 @@ function App() {
     if (!feedRef.current) return;
     feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [lines]);
+
+  // Register keyboard shortcut once; use refs for fresh values
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const tag = target.tagName.toUpperCase();
+      if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA") {
+        e.preventDefault();
+        if (connectedRef.current) stopRef.current();
+        else void startRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const commandPreview = useMemo(() => {
     if (mode === "ws") return buildWsCommand(settings);
@@ -116,9 +142,9 @@ function App() {
       setToast(event.message);
       setStatus("error");
       if (event.utterance_id) {
-        setLines((prev) => prev.map((line) => (
+        setLines((prev) => prev.map((line) =>
           line.id === event.utterance_id ? { ...line, status: "error" } : line
-        )));
+        ));
       }
       return;
     }
@@ -130,22 +156,16 @@ function App() {
       const id = event.utterance_id ?? nextLocalId.current++;
       setLines((prev) => [
         ...prev,
-        {
-          id,
-          raw: event.text,
-          processed: "",
-          status: "transcribing",
-          createdAt: new Date().toISOString(),
-        },
+        { id, raw: event.text, processed: "", status: "transcribing", createdAt: new Date().toISOString() },
       ].slice(-500));
       return;
     }
     if (event.type === "processed") {
       const id = event.utterance_id;
       if (!id) return;
-      setLines((prev) => prev.map((line) => (
+      setLines((prev) => prev.map((line) =>
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
-      )));
+      ));
     }
   };
 
@@ -170,7 +190,12 @@ function App() {
     setStatus("idle");
   };
 
-  useEffect(() => () => stop(), []);
+  // Keep start/stop refs up to date
+  startRef.current = start;
+  stopRef.current = stop;
+
+  // Cleanup on unmount
+  useEffect(() => () => { runtimeRef.current?.stop(); }, []);
 
   const clearLines = () => setLines([]);
 
@@ -178,19 +203,36 @@ function App() {
     const latest = lines[lines.length - 1];
     if (!latest) return;
     await navigator.clipboard.writeText(latest.processed || latest.raw);
-    setToast("Copied latest");
+    setToast("Copied latest!");
   };
+
+  const copyLine = async (line: TranscriptLine) => {
+    await navigator.clipboard.writeText(line.processed || line.raw);
+    setToast("Copied!");
+  };
+
+  const statusClass = `status-${status === "error" ? "error" : status === "rewriting" ? "rewriting" : status === "transcribing" ? "transcribing" : status === "listening" ? "listening" : "idle"}`;
+  const statusIcon = STATUS_ICON[status] ?? "◎";
 
   return (
     <div className="paper-shell">
+      {/* Decorative animated blobs */}
+      <div className="doodle-blob blob-1" aria-hidden="true" />
+      <div className="doodle-blob blob-2" aria-hidden="true" />
+      <div className="doodle-blob blob-3" aria-hidden="true" />
+
       <header className="app-header">
-        <h1>✎ STT Feed</h1>
-        <div className="flex items-center gap-2">
-          <span className={`status-badge ${status === "error" ? "status-error" : status === "rewriting" ? "status-rewriting" : status === "transcribing" ? "status-transcribing" : status === "listening" ? "status-listening" : "status-idle"}`}>
+        <div className="header-brand">
+          <span className="brand-icon">🎙</span>
+          <h1>STT Feed</h1>
+        </div>
+        <div className="header-right">
+          <span className={`status-badge ${statusClass}`}>
+            <span className="status-icon">{statusIcon}</span>
             {status}
           </span>
-          <button className="sketch-btn" onClick={() => setShowControls((s) => !s)}>
-            {showControls ? "Hide controls" : "Show controls"}
+          <button className="sketch-btn btn-sm" onClick={() => setShowControls((s) => !s)}>
+            {showControls ? "⟵ Hide" : "☰ Controls"}
           </button>
         </div>
       </header>
@@ -198,73 +240,125 @@ function App() {
       <main className="canvas-layout">
         {showControls && (
           <aside className="controls-panel">
-            <div className="controls-row">
-              <label>Mode</label>
-              <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
-                <option value="ws">WebSocket (external stt)</option>
-                <option value="tauri">Tauri local process</option>
-              </select>
+            {/* ── Connection ── */}
+            <div className="ctrl-section">
+              <div className="ctrl-section-header"><span>📡</span> Connection</div>
+              <div className="controls-row">
+                <label>Mode</label>
+                <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
+                  <option value="ws">WebSocket (external stt)</option>
+                  <option value="tauri">Tauri local process</option>
+                </select>
+              </div>
+              {mode === "ws" && (
+                <div className="controls-row">
+                  <label>WS Port</label>
+                  <input
+                    className="sketch-input"
+                    type="number"
+                    value={settings.wsPort}
+                    onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
+                  />
+                </div>
+              )}
             </div>
 
-            <div className="controls-row">
-              <label>WS Port</label>
-              <input className="sketch-input" type="number" value={settings.wsPort} onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))} />
+            {/* ── Speech ── */}
+            <div className="ctrl-section">
+              <div className="ctrl-section-header"><span>🎤</span> Speech</div>
+              <div className="controls-row">
+                <label>ASR Profile</label>
+                <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
+                  <option value="auto">auto</option>
+                  <option value="speed">speed</option>
+                  <option value="balanced">balanced</option>
+                  <option value="accuracy">accuracy</option>
+                  <option value="distil">distil</option>
+                  <option value="turbo">turbo</option>
+                </select>
+              </div>
+              <div className="controls-row">
+                <label>Backend</label>
+                <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
+                  <option value="auto">auto</option>
+                  <option value="whisper_cpp">whisper.cpp</option>
+                  <option value="faster_whisper">faster-whisper</option>
+                </select>
+              </div>
+              <div className="controls-row">
+                <label>Model override</label>
+                <input
+                  className="sketch-input"
+                  value={settings.model}
+                  onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                  placeholder="e.g. large-v3-turbo"
+                />
+              </div>
             </div>
 
-            <div className="controls-row">
-              <label>ASR Profile</label>
-              <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
-                <option value="auto">auto</option>
-                <option value="speed">speed</option>
-                <option value="balanced">balanced</option>
-                <option value="accuracy">accuracy</option>
-                <option value="distil">distil</option>
-                <option value="turbo">turbo</option>
-              </select>
+            {/* ── Output ── */}
+            <div className="ctrl-section">
+              <div className="ctrl-section-header"><span>⚙</span> Output</div>
+              <div className="controls-row">
+                <label>LLM Mode</label>
+                <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
+                  <option value="cleanup">cleanup</option>
+                  <option value="off">off</option>
+                  <option value="bullet_list">bullet list</option>
+                  <option value="email">email</option>
+                  <option value="commit_message">commit message</option>
+                </select>
+              </div>
+              <div className="controls-checks">
+                <label className="toggle-label">
+                  <span className="toggle-wrap">
+                    <input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} />
+                    <span className="toggle-track" />
+                  </span>
+                  fast commit
+                </label>
+                <label className="toggle-label">
+                  <span className="toggle-wrap">
+                    <input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} />
+                    <span className="toggle-track" />
+                  </span>
+                  type to focused input
+                </label>
+                <label className="toggle-label">
+                  <span className="toggle-wrap">
+                    <input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} />
+                    <span className="toggle-track" />
+                  </span>
+                  clipboard
+                </label>
+                <label className="toggle-label">
+                  <span className="toggle-wrap">
+                    <input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} />
+                    <span className="toggle-track" />
+                  </span>
+                  debug
+                </label>
+              </div>
             </div>
 
-            <div className="controls-row">
-              <label>Backend</label>
-              <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
-                <option value="auto">auto</option>
-                <option value="whisper_cpp">whisper_cpp</option>
-                <option value="faster_whisper">faster_whisper</option>
-              </select>
-            </div>
-
-            <div className="controls-row">
-              <label>Model override</label>
-              <input className="sketch-input" value={settings.model} onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))} placeholder="e.g. large-v3-turbo" />
-            </div>
-
-            <div className="controls-row">
-              <label>LLM Mode</label>
-              <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
-                <option value="cleanup">cleanup</option>
-                <option value="off">off</option>
-                <option value="bullet_list">bullet_list</option>
-                <option value="email">email</option>
-                <option value="commit_message">commit_message</option>
-              </select>
-            </div>
-
-            <div className="controls-checks">
-              <label><input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} /> fast commit</label>
-              <label><input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} /> type to focused input</label>
-              <label><input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} /> clipboard</label>
-              <label><input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} /> debug</label>
-            </div>
-
+            {/* ── Actions ── */}
             <div className="controls-actions">
               {!connected ? (
-                <button className="sketch-btn" onClick={start}>▶ Start</button>
+                <button className="sketch-btn btn-start" onClick={() => void start()}>▶ Start</button>
               ) : (
-                <button className="sketch-btn recording" onClick={stop}>■ Stop</button>
+                <button className="sketch-btn btn-stop" onClick={stop}>■ Stop</button>
               )}
-              <button className="sketch-btn" onClick={copyLatest}>📋 Copy last</button>
-              <button className="sketch-btn" onClick={clearLines}>🗑 Clear</button>
+              <button className="sketch-btn btn-copy" onClick={() => void copyLatest()} disabled={lines.length === 0}>
+                📋 Copy last
+              </button>
+              <button className="sketch-btn btn-clear" onClick={clearLines} disabled={lines.length === 0}>
+                🗑 Clear
+              </button>
             </div>
 
+            <p className="shortcut-hint">tip: press <kbd>Space</kbd> to start / stop</p>
+
+            {/* ── Command preview ── */}
             <div className="command-preview">
               <div className="transcript-meta">
                 <span>Command preview</span>
@@ -276,23 +370,38 @@ function App() {
         )}
 
         <section className="feed-board">
-          <div className="hud">
-            <div className="note-chip">{connected ? "connected" : "disconnected"}</div>
-            <div className="note-chip">{lines.length} lines</div>
-          </div>
-          <div className="mic-meter">
-            <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
+          {/* Top bar: mic meter + status chips */}
+          <div className="feed-top-bar">
+            <div className="mic-meter">
+              <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
+            </div>
+            <div className="hud">
+              <div className={`note-chip ${connected ? "chip-connected" : "chip-disconnected"}`}>
+                {connected ? "● live" : "○ off"}
+              </div>
+              <div className="note-chip">{lines.length} lines</div>
+            </div>
           </div>
 
+          {/* Transcript feed */}
           <div className="line-feed" ref={feedRef}>
             {lines.length === 0 ? (
-              <p className="empty-feed">Listening output will appear here line by line…</p>
+              <div className="empty-feed">
+                <div className="empty-icon">🎙</div>
+                <p>Listening output will appear here…</p>
+                <p className="empty-hint">Press <kbd>Space</kbd> or click <strong>Start</strong> to begin</p>
+              </div>
             ) : (
               lines.map((line) => (
-                <div key={line.id} className="feed-line">
-                  <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
-                  <span className="feed-text">{line.processed || line.raw}</span>
-                  <span className="feed-status">{line.status}</span>
+                <div key={line.id} className={`feed-line feed-line-${line.status}`}>
+                  <div className="feed-line-inner">
+                    <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
+                    <span className="feed-text">{line.processed || line.raw}</span>
+                  </div>
+                  <div className="feed-line-meta">
+                    <span className={`feed-status-dot dot-${line.status}`} title={line.status} />
+                    <button className="line-copy-btn" onClick={() => void copyLine(line)} title="Copy line">📋</button>
+                  </div>
                 </div>
               ))
             )}
