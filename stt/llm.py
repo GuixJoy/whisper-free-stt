@@ -9,16 +9,6 @@ import json as _json
 from stt.config import LLMConfig, LLMMode, LLMProvider
 from stt.prompts import build_user_prompt
 
-# Keep-alive connection (reuse TLS session across calls)
-_connection: urllib.request.OpenerDirector | None = None
-
-
-def _get_opener() -> urllib.request.OpenerDirector:
-    global _connection
-    if _connection is None:
-        _connection = urllib.request.build_opener()
-    return _connection
-
 
 def rewrite(transcript: str, config: LLMConfig) -> str:
     """Send transcript to the configured LLM provider. Returns original on failure."""
@@ -60,8 +50,8 @@ def _build_payload(config: LLMConfig, user_prompt: str) -> dict[str, object]:
         "messages": [
             {"role": "user", "content": user_prompt},
         ],
-        "max_tokens": 256,       # cleanup output is ~same length as input
-        "temperature": 0.0,      # greedy decode
+        "max_tokens": 256,
+        "temperature": 0.2,
         "stream": False,
     }
 
@@ -70,7 +60,6 @@ def _build_headers(api_key: str, provider: LLMProvider) -> dict[str, str]:
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
-        "Connection": "keep-alive",
     }
     if provider is LLMProvider.OPENROUTER:
         headers["HTTP-Referer"] = "http://localhost"
@@ -86,8 +75,7 @@ def _call_api(url: str, headers: dict[str, str], payload: dict[str, object], tim
             headers=headers,
             method="POST",
         )
-        opener = _get_opener()
-        with opener.open(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = _json.loads(resp.read().decode("utf-8"))
         return body["choices"][0]["message"]["content"].strip()
     except Exception as exc:
