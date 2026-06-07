@@ -164,7 +164,14 @@ ELSE:
 ```
 IF llm_mode != OFF:
     prompt = build_user_prompt(raw_text, mode)
-    payload = {model, messages=[system, user], max_tokens, temperature}
+    # Single user message — no system prompt. Saves ~50 tokens, faster inference.
+    payload = {
+        "model": config.model,
+        "messages": [{"role": "user", "content": user_prompt}],
+        "max_tokens": config.max_tokens,   # 256 default; >=512 for EMAIL/BULLET_LIST
+        "temperature": config.temperature, # 0.2 default
+        "stream": false,
+    }
     POST to provider URL with Bearer auth
     IF OpenRouter and primary fails → retry with fallback_model
     Return cleaned text (or raw on failure)

@@ -124,7 +124,7 @@ class LLMConfig:
     provider: LLMProvider = field(default_factory=_detect_provider)
     model: str = field(default_factory=lambda: _env_default("STT_LLM_MODEL", ""))
     fallback_model: str = field(default_factory=lambda: _env_default("STT_LLM_FALLBACK", ""))
-    max_tokens: int = 1024
+    max_tokens: int = 256     # 256 is optimal for cleanup; modes like EMAIL override to >=512
     temperature: float = 0.2
     timeout_sec: float = 15.0
 

@@ -104,7 +104,7 @@ STT_LLM_FALLBACK=anthropic/claude-3-5-haiku-latest
 ```
 
 DeepSeek takes priority if both keys are set.  Provider is displayed at startup:
-`LLM: cleanup (deepseek:deepseek-v4-flash)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
+`LLM: cleanup (deepseek:deepseek-chat)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
 
 Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
@@ -163,7 +163,7 @@ $ stt
 ╚══════════════════════════════════╝
 
 ASR: large-v3-turbo (cuda)
-LLM: cleanup (deepseek:deepseek-v4-flash)
+LLM: cleanup (deepseek:deepseek-chat)
 Typing: enabled  Clipboard: disabled
 
 Listening... (speak naturally, Ctrl+C to stop)
@@ -188,7 +188,9 @@ Done.
 | **LLM** | 0.90s | 1.22s | DeepSeek Chat — 50-token prompt, no system message |
 | **Total** | 1.74s | 3.7s | **Under 2 seconds** from end-of-speech to punctuated, ready-to-use output |
 
-At ~80 WPM average typing speed, this delivers **2× faster than manual typing** with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
+> **Note on percentiles:** p50 and p95 values are calculated independently for each processing stage across all utterances. The Total p95 (3.7s) is less than the arithmetic sum of ASR p95 and LLM p95 (2.6s + 1.22s = 3.82s) because the worst-case samples for different stages come from different utterances — an utterance that was slow to transcribe was not necessarily slow to rewrite.
+
+For a 20-word utterance spoken at ~150 WPM (~8s of speech), the total wall-clock time is ~8s speaking + 1.74s processing ≈ 9.74s. Typing the same 20 words at ~80 WPM takes ~15s, delivering **up to 2× faster than manual typing** for typical utterances, with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
 
 ---
 

@@ -107,6 +107,7 @@ function App() {
 
   // Refs so keyboard handler always calls the freshest start/stop
   const connectedRef = useRef(connected);
+  const isStartingRef = useRef(false);
   const startRef = useRef<() => Promise<void>>(async () => {});
   const stopRef = useRef<() => void>(() => {});
   connectedRef.current = connected;
@@ -131,9 +132,17 @@ function App() {
   // Register keyboard shortcut once; use refs for fresh values
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Ignore key-repeat events so held Space doesn't fire repeatedly.
+      if (e.repeat) return;
+      // Don't hijack Space when focus is on interactive/editable elements.
       const target = e.target as HTMLElement;
       const tag = target.tagName.toUpperCase();
-      if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA") {
+      const isInteractive =
+        tag === "BUTTON" ||
+        target.getAttribute("role") === "button" ||
+        target.closest('[contenteditable="true"]') !== null ||
+        (target as HTMLInputElement).isContentEditable === true;
+      if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA" && !isInteractive) {
         e.preventDefault();
         if (connectedRef.current) stopRef.current();
         else void startRef.current();
@@ -189,7 +198,8 @@ function App() {
   };
 
   const start = async () => {
-    if (connected) return;
+    if (connected || isStartingRef.current) return;
+    isStartingRef.current = true;
     const api: STTApi = mode === "ws" ? createWsApi(settings.wsPort) : createTauriApi(buildCliArgs(settings));
     api.onEvent(applyEvent);
     try {
@@ -198,7 +208,11 @@ function App() {
       setConnected(true);
       setStatus("listening");
     } catch (error) {
+      // Clean up the API that failed to start so it isn't left running.
+      try { api.stop(); } catch (_) { /* best effort */ }
       setToast(error instanceof Error ? error.message : "Failed to start runtime");
+    } finally {
+      isStartingRef.current = false;
     }
   };
 
@@ -218,16 +232,28 @@ function App() {
 
   const clearLines = () => setLines([]);
 
+  const copyText = async (text: string, label: string) => {
+    if (!navigator.clipboard) {
+      setToast("Clipboard not available");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setToast(label);
+    } catch (error) {
+      console.error("copy failed", error);
+      setToast(`Copy failed${error instanceof Error ? ": " + error.message : ""}`);
+    }
+  };
+
   const copyLatest = async () => {
     const latest = lines[lines.length - 1];
     if (!latest) return;
-    await navigator.clipboard.writeText(latest.processed || latest.raw);
-    setToast("Copied latest!");
+    await copyText(latest.processed || latest.raw, "Copied latest!");
   };
 
   const copyLine = async (line: TranscriptLine) => {
-    await navigator.clipboard.writeText(line.processed || line.raw);
-    setToast("Copied!");
+    await copyText(line.processed || line.raw, "Copied!");
   };
 
   const STATUS_CLASS: Record<string, string> = {

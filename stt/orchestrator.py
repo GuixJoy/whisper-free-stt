@@ -157,10 +157,14 @@ class _LatencyTracker:
                 if not vals:
                     continue
                 s = sorted(vals)
+                # Use numpy percentile for stable p95 interpolation.
+                # The simple index int(len*0.95) snaps to max with small
+                # samples (e.g. 14 utterances → s[13]=max), skewing p95.
+                import numpy as np
                 out[stage] = {
                     "count": len(s),
-                    "p50": s[len(s) // 2],
-                    "p95": s[int(len(s) * 0.95)],
+                    "p50": float(np.percentile(s, 50)),
+                    "p95": float(np.percentile(s, 95)),
                     "min": s[0],
                     "max": s[-1],
                 }
@@ -595,6 +599,7 @@ def _transcribe_with_partials(
     """
     from stt.transcription import (
         preprocess_audio, _get_cpp_model, _get_fw_model, _JUNK_TOKENS,
+        _build_vad_kwargs,
     )
     from stt.types import TranscriptionResult, TranscriptionSegment
     from stt.config import TranscriptionBackend
@@ -646,17 +651,7 @@ def _transcribe_with_partials(
     else:
         # --- faster-whisper: yield segments incrementally ---
         model = _get_fw_model(tcfg)
-        fw_kwargs: dict = {}
-        if tcfg.vad_filter:
-            from faster_whisper.vad import VadOptions
-            fw_kwargs["vad_filter"] = True
-            fw_kwargs["vad_parameters"] = VadOptions(
-                threshold=0.5,
-                min_silence_duration_ms=tcfg.vad_min_silence_ms,
-                min_speech_duration_ms=250,
-                max_speech_duration_s=tcfg.vad_max_speech_sec,
-                speech_pad_ms=400,
-            )
+        fw_kwargs = _build_vad_kwargs(tcfg)
         raw_segments, info = model.transcribe(
             audio,
             beam_size=tcfg.beam_size,

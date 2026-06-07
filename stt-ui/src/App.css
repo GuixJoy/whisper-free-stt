@@ -1,5 +1,5 @@
 /* ── Doodle Design System — Vibrant Edition ── */
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Patrick+Hand&display=swap');
+@import 'https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Patrick+Hand&display=swap';
 @import "tailwindcss";
 
 :root {
@@ -191,6 +191,7 @@ body::before {
   font-weight: 700;
   background: linear-gradient(135deg, var(--v-violet) 30%, var(--v-pink) 100%);
   -webkit-background-clip: text;
+  color: transparent;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
@@ -512,7 +513,7 @@ body::before {
   font-size: 0.98rem;
   line-height: 1.4;
   color: var(--ink);
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .feed-line-meta {
