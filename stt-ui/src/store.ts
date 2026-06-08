@@ -61,6 +61,7 @@ export interface OnboardingState {
   typingEnabled: boolean;
   preferredModel: string;
   modelDownloadProgress: Record<string, { percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" }>;
+  error: string | null;
 }
 
 export type OnboardingAction =
@@ -73,7 +74,9 @@ export type OnboardingAction =
   | { type: "SET_CLIPBOARD"; enabled: boolean }
   | { type: "SET_TYPING"; enabled: boolean }
   | { type: "SET_MODEL"; name: string }
-  | { type: "SET_DOWNLOAD_PROGRESS"; name: string; percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" };
+  | { type: "SET_DOWNLOAD_PROGRESS"; name: string; percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" }
+  | { type: "SET_ERROR"; error: string }
+  | { type: "CLEAR_ERROR" };
 
 export function onboardingReducer(state: OnboardingState, action: OnboardingAction): OnboardingState {
   switch (action.type) {
@@ -108,6 +111,10 @@ export function onboardingReducer(state: OnboardingState, action: OnboardingActi
           },
         },
       };
+    case "SET_ERROR":
+      return { ...state, error: action.error };
+    case "CLEAR_ERROR":
+      return { ...state, error: null };
     default:
       return state;
   }
@@ -125,6 +132,7 @@ export const DEFAULT_ONBOARDING: OnboardingState = {
   typingEnabled: false,
   preferredModel: "small.en",
   modelDownloadProgress: {},
+  error: null,
 };
 
 export type AppView = "onboarding" | "main";

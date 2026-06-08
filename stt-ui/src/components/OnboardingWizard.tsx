@@ -242,8 +242,8 @@ interface Props {
 }
 
 export default function OnboardingWizard({ onFinished }: Props) {
-  const { state, runSystemChecks, downloadModels, testMic, nextStep, finish } = useOnboarding(onFinished);
-  const { step, systemChecks, modelDownloadProgress, selectedMicIndex, micLevel, clipboardEnabled, typingEnabled } = state;
+  const { state, dispatch, runSystemChecks, downloadModels, testMic, nextStep, finish } = useOnboarding(onFinished);
+  const { step, systemChecks, modelDownloadProgress, selectedMicIndex, micLevel, clipboardEnabled, typingEnabled, error } = state;
   const totalSteps = 5;
 
   return (
@@ -254,6 +254,13 @@ export default function OnboardingWizard({ onFinished }: Props) {
       transition={{ duration: 0.3, ease: "easeOut" }}
     >
       <StepIndicator step={step} total={totalSteps} />
+
+      {error && (
+        <div className="onboard-error-banner">
+          <span>⚠</span> {error}
+          <button className="error-dismiss" onClick={() => dispatch({ type: "CLEAR_ERROR" })}>×</button>
+        </div>
+      )}
 
       <AnimatePresence mode="wait">
         {step === 0 && (

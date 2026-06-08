@@ -38,12 +38,8 @@ export function useOnboarding(onComplete: () => void) {
           { name: "Clipboard Tool", status: "pass", message: "Clipboard available" },
         ];
       }
-    } catch {
-      // Fallback: if invoke fails, show platform-appropriate defaults
-      checks = [
-        { name: "Audio Server", status: "pass", message: "Audio available (dev mode)" },
-        { name: "Clipboard Tool", status: "pass", message: "Clipboard available (dev mode)" },
-      ];
+    } catch (err) {
+      dispatch({ type: "SET_ERROR", error: err instanceof Error ? err.message : "System check failed" });
     }
 
     // Disk space check (not in Rust backend yet — add here)
@@ -101,7 +97,7 @@ export function useOnboarding(onComplete: () => void) {
               bytesTotal: 0,
               status: "done",
             });
-          } catch {
+          } catch (err) {
             dispatch({
               type: "SET_DOWNLOAD_PROGRESS",
               name,
@@ -110,6 +106,7 @@ export function useOnboarding(onComplete: () => void) {
               bytesTotal: 0,
               status: "error",
             });
+            dispatch({ type: "SET_ERROR", error: `${name}: ${err instanceof Error ? err.message : "Download failed"}` });
           }
         } else {
           dispatch({
@@ -121,7 +118,7 @@ export function useOnboarding(onComplete: () => void) {
             status: "done",
           });
         }
-      } catch {
+      } catch (err) {
         dispatch({
           type: "SET_DOWNLOAD_PROGRESS",
           name,
@@ -130,6 +127,7 @@ export function useOnboarding(onComplete: () => void) {
           bytesTotal: 0,
           status: "error",
         });
+        dispatch({ type: "SET_ERROR", error: err instanceof Error ? err.message : `${name} download failed` });
       }
     }
 
