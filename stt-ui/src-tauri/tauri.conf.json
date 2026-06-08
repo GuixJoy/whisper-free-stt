@@ -31,7 +31,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/stt-engine"]
+    "externalBin": [
+      "binaries/stt-engine"
+    ]
   },
   "plugins": {}
 }

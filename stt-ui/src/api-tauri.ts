@@ -10,21 +10,25 @@ export function createTauriApi(args: string[], sidecarName: string = "stt-engine
     for (const cb of listeners) cb({ type: "error", message: msg });
   };
 
+  const handleLine = (source: string, line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const event: STTEvent = JSON.parse(trimmed);
+      for (const cb of listeners) cb(event);
+    } catch {
+      notifyError(`[${source}] ${trimmed}`);
+    }
+  };
+
   return {
     onEvent(cb) { listeners.push(cb); },
 
     async start() {
       const { Command } = await import("@tauri-apps/plugin-shell");
       const cmd = Command.sidecar(sidecarName, args);
-      cmd.stdout.on("data", (line: string) => {
-        try {
-          const event: STTEvent = JSON.parse(line);
-          for (const cb of listeners) cb(event);
-        } catch { /* partial line, ignore */ }
-      });
-      cmd.stderr.on("data", (line: string) => {
-        notifyError(`stt-engine: ${line.trim()}`);
-      });
+      cmd.stdout.on("data", (line: string) => handleLine("stdout", line));
+      cmd.stderr.on("data", (line: string) => handleLine("stderr", line));
       cmd.on("close", () => {
         for (const cb of listeners) cb({ type: "state", state: "idle" });
       });
@@ -36,9 +40,10 @@ export function createTauriApi(args: string[], sidecarName: string = "stt-engine
 
     stop() {
       if (child) {
-        try { child.kill(); } catch { /* process already dead */ }
+        try { child.kill(); } catch { }
         child = null;
       }
     },
   };
 }
+
