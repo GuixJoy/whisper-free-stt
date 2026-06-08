@@ -118,6 +118,26 @@ fn check_system_deps() -> serde_json::Value {
             "fixHint": if has_pulse { None::<&str> } else { Some("Install: sudo apt install pipewire-pulse") }
         }));
 
+        // Check if user can actually connect to the audio server (tests group membership)
+        let has_audio_access = if has_pulse {
+            std::process::Command::new("pactl")
+                .arg("info")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        checks.push(serde_json::json!({
+            "name": "Audio Group",
+            "status": if has_audio_access { "pass" } else { "warning" },
+            "message": if has_audio_access { "Audio access available" } else { "May need audio group membership" },
+            "fixHint": if has_audio_access { None::<&str> } else {
+                Some("Run: sudo usermod -aG audio $USER   then log out and back in")
+            }
+        }));
+
         let has_clipboard = std::process::Command::new("sh")
             .arg("-c")
             .arg("command -v wl-copy || command -v xclip")

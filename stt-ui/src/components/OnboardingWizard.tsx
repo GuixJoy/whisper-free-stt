@@ -242,7 +242,7 @@ interface Props {
 }
 
 export default function OnboardingWizard({ onFinished }: Props) {
-  const { state, runSystemChecks, downloadModels, testMic, finish } = useOnboarding(onFinished);
+  const { state, runSystemChecks, downloadModels, testMic, nextStep, finish } = useOnboarding(onFinished);
   const { step, systemChecks, modelDownloadProgress, selectedMicIndex, micLevel, clipboardEnabled, typingEnabled } = state;
   const totalSteps = 5;
 
@@ -271,13 +271,13 @@ export default function OnboardingWizard({ onFinished }: Props) {
             <Step2ModelDownload
               progress={modelDownloadProgress}
               onDownload={(models) => { downloadModels(models); }}
-              onDone={() => finish()}
+              onDone={() => nextStep()}
             />
           </motion.div>
         )}
         {step === 2 && (
           <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-            <Step3MicSetup micIndex={selectedMicIndex} micLevel={micLevel} onTest={testMic} onDone={() => finish()} />
+            <Step3MicSetup micIndex={selectedMicIndex} micLevel={micLevel} onTest={testMic} onDone={() => nextStep()} />
           </motion.div>
         )}
         {step === 3 && (
@@ -287,7 +287,7 @@ export default function OnboardingWizard({ onFinished }: Props) {
               typing={typingEnabled}
               onClipboard={() => {}}
               onTyping={() => {}}
-              onDone={() => finish()}
+              onDone={() => nextStep()}
             />
           </motion.div>
         )}
