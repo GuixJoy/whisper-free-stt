@@ -4,6 +4,7 @@ set -euo pipefail
 # Build the Python STT engine as a standalone binary for Tauri sidecar.
 # Requires: PyInstaller, Python 3.11+, all stt deps installed.
 # Output: stt-ui/src-tauri/binaries/stt-engine-{target_triple}
+#         stt-ui/src-tauri/binaries/stt-engine (copy for dev mode resolution)
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -32,5 +33,11 @@ uv run python -m PyInstaller \
   --hidden-import pywhispercpp \
   "$PROJECT_ROOT/stt/cli.py"
 
+# Tauri v2 resolves sidecar by looking for the exact name in externalBin.
+# In dev mode it needs the plain name; in production it needs target-triple.
+# Provide both.
+cp "${SIDECAR_DIR}/${SIDECAR_OUTPUT}" "${SIDECAR_DIR}/stt-engine"
+
 echo "Sidecar built: ${SIDECAR_DIR}/${SIDECAR_OUTPUT}"
-echo "Add to tauri.conf.json → bundle.externalBin: [\"binaries/${SIDECAR_OUTPUT}\"]"
+echo "Dev copy:       ${SIDECAR_DIR}/stt-engine"
+echo "Add to tauri.conf.json → bundle.externalBin: [\"binaries/stt-engine\"]"
