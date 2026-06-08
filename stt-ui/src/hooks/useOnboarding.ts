@@ -87,7 +87,7 @@ export function useOnboarding(onComplete: () => void) {
     });
 
     dispatch({ type: "SET_SYSTEM_CHECKS", checks });
-    dispatch({ type: "NEXT_STEP" });
+    // Don't auto-advance — let user review checks before clicking Continue
   }, []);
 
   const downloadModels = useCallback(async (modelNames: string[]) => {
