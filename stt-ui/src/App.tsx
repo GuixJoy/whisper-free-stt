@@ -94,8 +94,15 @@ const STATUS_ICON: Record<string, string> = {
   idle: "◎",
 };
 
+function detectRunMode(): RunMode {
+  if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+    return "tauri";
+  }
+  return "ws";
+}
+
 function App() {
-  const [mode, setMode] = useState<RunMode>("ws");
+  const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
   const [settings, setSettings] = useState<RuntimeSettings>(DEFAULT_SETTINGS);
   const [status, setStatus] = useState("idle");

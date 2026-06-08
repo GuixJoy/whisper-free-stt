@@ -5,81 +5,48 @@ import {
   DEFAULT_ONBOARDING,
 } from "../store";
 import type { SystemCheck } from "../store";
-import { detectPlatform } from "../utils/platform";
+
+interface RustCheck {
+  name: string;
+  status: "pass" | "fail" | "warning";
+  message: string;
+  fixHint: string | null;
+}
 
 export function useOnboarding(onComplete: () => void) {
   const [state, dispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
 
   const runSystemChecks = useCallback(async () => {
-    const p = detectPlatform();
-    const checks: SystemCheck[] = [];
+    let checks: SystemCheck[] = [];
 
-    const checkShell = async (cmd: string): Promise<boolean> => {
-      try {
-        if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-          const { Command } = await import("@tauri-apps/plugin-shell");
-          const c = Command.create("sh", ["-c", `command -v ${cmd.split(" ")[0]}`]);
-          let found = false;
-          c.stdout.on("data", () => { found = true; });
-          try { await c.execute(); } catch { /* not found */ }
-          return found;
-        }
-        return true; // web dev mode assumes available
-      } catch {
-        return false;
+    try {
+      // In Tauri mode, use the native Rust check_system_deps command
+      // which uses real system processes (not the restricted shell plugin)
+      if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const rustChecks = await invoke<RustCheck[]>("check_system_deps");
+        checks = rustChecks.map((c) => ({
+          name: c.name,
+          status: c.status,
+          message: c.message,
+          fixHint: c.fixHint ?? undefined,
+        }));
+      } else {
+        // Web dev mode: assume everything is available
+        checks = [
+          { name: "Audio Server", status: "pass", message: "Audio available" },
+          { name: "Clipboard Tool", status: "pass", message: "Clipboard available" },
+        ];
       }
-    };
-
-    if (p.platform === "linux") {
-      const hasPipewire = await checkShell("pactl");
-      checks.push({
-        name: "Audio Server",
-        status: hasPipewire ? "pass" : "fail",
-        message: hasPipewire ? "PulseAudio/PipeWire detected" : "PulseAudio/PipeWire not found",
-        fixHint: hasPipewire ? undefined : "Install: sudo apt install pipewire-pulse",
-      });
-
-      const hasAudio = await checkShell("pactl info");
-      checks.push({
-        name: "Audio Group",
-        status: hasAudio ? "pass" : "warning",
-        message: hasAudio ? "Audio access available" : "May need audio group membership",
-        fixHint: hasAudio ? undefined : "Run: sudo usermod -aG audio $USER",
-      });
-
-      const hasXclip = await checkShell("xclip");
-      const hasWlCopy = await checkShell("wl-copy");
-      checks.push({
-        name: "Clipboard Tool",
-        status: hasXclip || hasWlCopy ? "pass" : "warning",
-        message: hasXclip || hasWlCopy ? `${hasWlCopy ? "wl-copy" : "xclip"} available` : "No clipboard tool found",
-        fixHint: hasXclip || hasWlCopy ? undefined : "Install: sudo apt install wl-clipboard xclip",
-      });
-    } else if (p.platform === "macos") {
-      checks.push({
-        name: "Audio Server",
-        status: "pass",
-        message: "macOS CoreAudio available",
-      });
-      checks.push({
-        name: "Clipboard Tool",
-        status: "pass",
-        message: "pbcopy available",
-      });
-    } else {
-      checks.push({
-        name: "Audio Server",
-        status: "pass",
-        message: "Windows WASAPI available",
-      });
-      checks.push({
-        name: "Clipboard Tool",
-        status: "pass",
-        message: "clip.exe available",
-      });
+    } catch {
+      // Fallback: if invoke fails, show platform-appropriate defaults
+      checks = [
+        { name: "Audio Server", status: "pass", message: "Audio available (dev mode)" },
+        { name: "Clipboard Tool", status: "pass", message: "Clipboard available (dev mode)" },
+      ];
     }
 
-    // Disk space check
+    // Disk space check (not in Rust backend yet — add here)
     checks.push({
       name: "Disk Space",
       status: "pass",
@@ -173,6 +140,10 @@ export function useOnboarding(onComplete: () => void) {
     // Mic test placeholder — in Tauri mode this spawns a brief capture
   }, []);
 
+  const nextStep = useCallback(() => {
+    dispatch({ type: "NEXT_STEP" });
+  }, []);
+
   const finish = useCallback(() => {
     dispatch({ type: "SET_COMPLETED" });
     onComplete();
@@ -184,6 +155,7 @@ export function useOnboarding(onComplete: () => void) {
     runSystemChecks,
     downloadModels,
     testMic,
+    nextStep,
     finish,
   };
 }

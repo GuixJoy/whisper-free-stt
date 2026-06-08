@@ -33,15 +33,5 @@
     ],
     "externalBin": ["binaries/stt-engine"]
   },
-  "plugins": {
-    "shell": {
-      "scope": [
-        {
-          "name": "stt-engine",
-          "cmd": "binaries/stt-engine",
-          "args": true
-        }
-      ]
-    }
-  }
+  "plugins": {}
 }
