@@ -297,6 +297,7 @@ function App() {
   if (view === "onboarding") {
     return (
       <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
+        <ErrorBanner errors={errors} onDismiss={dismissError} onRetry={(id) => { dismissError(id); }} />
         <OnboardingWizard onFinished={handleOnboardingComplete} />
       </AppStateContext.Provider>
     );

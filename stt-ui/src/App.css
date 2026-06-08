@@ -946,6 +946,21 @@ body::before {
   padding: 0 0.2rem;
 }
 
+/* Onboarding error */
+.onboard-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 1rem;
+  border: 2px solid var(--v-rose);
+  border-radius: 10px;
+  background: var(--w-rose);
+  font-family: var(--font-hand);
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
 /* Mic selector compact (header) */
 .mic-selector-compact {
   display: flex;
