@@ -38,7 +38,13 @@ _MODE_INSTRUCTIONS: dict[LLMMode, str] = {
 }
 
 
-def build_user_prompt(transcript: str, mode: LLMMode) -> str:
-    """Build the user-level prompt for a given LLM mode and transcript."""
+def build_user_prompt(transcript: str, mode: LLMMode, few_shot_context: str = "") -> str:
+    """Build the user-level prompt for a given LLM mode and transcript.
+
+    If few_shot_context is provided (from history-based similarity search),
+    it is prepended before the instruction so the LLM sees past corrections.
+    """
     instruction = _MODE_INSTRUCTIONS.get(mode, _CLEANUP)
+    if few_shot_context:
+        return f"{few_shot_context}{instruction}\n\nTranscript:\n{transcript}"
     return f"{instruction}\n\nTranscript:\n{transcript}"

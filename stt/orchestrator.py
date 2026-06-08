@@ -22,6 +22,8 @@ from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite
 from stt.clipboard import copy_to_clipboard
 from stt.typing import type_to_focused_input
+from stt.history import get_store
+from stt.embeddings import build_few_shot_context as _build_few_shot_ctx
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +543,7 @@ def _transcribe_and_print(
                 hooks.on_state("copied")
             total_elapsed = time.monotonic() - ts_total
             telemetry.record("total", total_elapsed)
+            get_store().write_async(raw, raw, mode="off", duration_sec=total_elapsed)
             return
 
         _debug(config, f"LLM: mode={config.llm.mode.value}")
@@ -549,10 +552,25 @@ def _transcribe_and_print(
             hooks.on_state("rewriting")
         if hooks and hooks.on_activity:
             hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
+
+        # Build few-shot context from past corrected transcripts (latency-gated)
+        few_shot_context = ""
+        try:
+            store = get_store()
+            candidates = store.recent_cleanups(limit=20)
+            if candidates:
+                before_ctx = time.monotonic()
+                few_shot_context = _build_few_shot_ctx(raw, candidates, top_k=3, max_tokens=400)
+                ctx_ms = (time.monotonic() - before_ctx) * 1000
+                if few_shot_context:
+                    _debug(config, f"few-shot: {ctx_ms:.0f}ms embedding latency")
+        except Exception:
+            pass
+
         ts_llm = time.monotonic()
         try:
             with _llm_semaphore:
-                processed = rewrite(raw, config.llm)
+                processed = rewrite(raw, config.llm, few_shot_context=few_shot_context)
             llm_elapsed = time.monotonic() - ts_llm
             telemetry.record("llm", llm_elapsed)
             _echo(f"[{config.llm.mode.value}] {processed}")
@@ -573,6 +591,7 @@ def _transcribe_and_print(
             hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
+        get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
     finally:
         _asr_semaphore.release()
 

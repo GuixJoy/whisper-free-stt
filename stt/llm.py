@@ -10,21 +10,11 @@ from stt.config import LLMConfig, LLMMode, LLMProvider
 from stt.prompts import build_user_prompt
 
 
-def rewrite(transcript: str, config: LLMConfig) -> str:
-    """
-    Rewrite a transcript using the configured LLM backend.
-    
-    Sends the provided transcript to the LLM specified by `config`. If an API key is missing, the LLM call fails, or a provider-specific fallback model is configured and also fails, the original `transcript` is returned unchanged.
-    
-    Parameters:
-        transcript (str): The text transcript to rewrite.
-        config (LLMConfig): Configuration for the LLM request (provider, model, timeout, API key environment variable, mode, and optional fallback model).
-    
-    Returns:
-        str: The rewritten transcript returned by the LLM, or the original `transcript` if rewriting could not be performed.
-    
-    Raises:
-        ValueError: If `config.mode` is `LLMMode.OFF`.
+def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -> str:
+    """Rewrite a transcript using the configured LLM backend.
+
+    If `few_shot_context` is provided (from history-based similarity search),
+    it is prepended to the prompt so the LLM sees past correction examples.
     """
     if config.mode is LLMMode.OFF:
         raise ValueError("LLM rewriting is disabled (mode=OFF).")
@@ -34,7 +24,7 @@ def rewrite(transcript: str, config: LLMConfig) -> str:
         print(f"Warning: {config.api_key_env} not set. Returning raw transcript.", flush=True)
         return transcript
 
-    user_prompt = build_user_prompt(transcript, config.mode)
+    user_prompt = build_user_prompt(transcript, config.mode, few_shot_context)
     payload = _build_payload(config, user_prompt)
     headers = _build_headers(api_key, config.provider)
 

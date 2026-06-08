@@ -16,11 +16,16 @@ dependencies = [
 [project.scripts]
 stt = "stt.cli:main"
 sst = "stt.cli:main"
-stt-ui = "stt.ui:main"
 
 [project.optional-dependencies]
 llm = []  # uses stdlib urllib — no extra deps
 clipboard = []  # uses stdlib subprocess — no extra deps
+embeddings = ["sentence-transformers>=3.0.0"]
 
 [tool.setuptools.packages.find]
 include = ["stt*"]
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.20.0",
+]
