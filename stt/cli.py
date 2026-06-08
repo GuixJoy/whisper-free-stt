@@ -137,6 +137,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--llm-model", type=str, default=None, help="LLM model (env: STT_LLM_MODEL)")
     parser.add_argument("--llm-fallback", type=str, default=None, help="Fallback model (env: STT_LLM_FALLBACK, OpenRouter only)")
     parser.add_argument("--llm-timeout", type=float, default=None, help="LLM timeout in seconds")
+    parser.add_argument("--deepseek-api-key", type=str, default=None, help="DeepSeek API key (overrides DEEPSEEK_API_KEY env)")
+    parser.add_argument("--openrouter-api-key", type=str, default=None, help="OpenRouter API key (overrides OPENROUTER_API_KEY env)")
 
     # Clipboard
     parser.add_argument("--clipboard", action="store_true", help="Copy final text to Wayland clipboard (wl-copy)")
@@ -148,6 +150,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
     parser.add_argument("--ws-port", type=int, default=None, help="Start WebSocket server on this port for browser UI")
     parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
+    parser.add_argument("--list-microphones", action="store_true", help="List available microphones and exit")
+    parser.add_argument("--download-model", type=str, default=None, help="Download a specific model and exit")
 
     return parser
 
@@ -157,8 +161,12 @@ def build_config(args: argparse.Namespace) -> AppConfig:
 
     Precedence: CLI flag > env var > hardcoded default.
     """
-    # Build a vanilla LLMConfig first to get env-based defaults, then
-    # override with any explicit CLI flags.
+    # Inject API keys from CLI args into environment before LLMConfig detects them
+    if args.deepseek_api_key:
+        os.environ["DEEPSEEK_API_KEY"] = args.deepseek_api_key
+    if args.openrouter_api_key:
+        os.environ["OPENROUTER_API_KEY"] = args.openrouter_api_key
+
     llm_defaults = LLMConfig()
 
     llm_mode = LLMMode(args.llm_mode) if args.llm_mode is not None else llm_defaults.mode
@@ -260,6 +268,34 @@ def _ensure_cuda_libs() -> None:
             continue
 
 
+def _list_microphones(config: AppConfig) -> None:
+    """Print available microphones as JSON and exit."""
+    import json as _json
+    try:
+        from stt.audio_capture import list_microphones
+        devices = list_microphones(config.audio.sample_rate)
+        print(_json.dumps(devices), flush=True)
+    except Exception as exc:
+        print(_json.dumps({"error": str(exc)}), flush=True)
+        sys.exit(1)
+
+
+def _download_model(model_name: str, config: AppConfig) -> None:
+    """Trigger model download by doing a warm-up with the specified model."""
+    import json as _json
+    from stt.config import TranscriptionConfig
+    tcfg = TranscriptionConfig(
+        model_name=model_name,
+        backend=config.transcription.backend,
+    )
+    try:
+        warm_up_backend(tcfg)
+        print(_json.dumps({"status": "downloaded", "model": model_name}), flush=True)
+    except Exception as exc:
+        print(_json.dumps({"error": str(exc)}), flush=True)
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     """Parse args → build config → run.  Impure: reads argv, .env, launches app."""
     # Load .env before anything else — so config defaults can see it
@@ -269,6 +305,14 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
+
+    if args.list_microphones:
+        _list_microphones(config)
+        return
+
+    if args.download_model:
+        _download_model(args.download_model, config)
+        return
 
     if args.ws_port:
         start_ws_server(args.ws_port)
