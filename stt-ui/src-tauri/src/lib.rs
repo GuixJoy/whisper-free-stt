@@ -1,8 +1,56 @@
+use rusqlite::Connection;
+use serde::Serialize;
 use tauri_plugin_sql::{Migration, MigrationKind};
+
+#[derive(Debug, Serialize)]
+struct TranscriptRow {
+    id: i64,
+    raw_text: String,
+    processed_text: String,
+    language: String,
+    mode: String,
+    model: String,
+    duration_sec: f64,
+    favorite: i64,
+    created_at: String,
+}
+
+#[tauri::command]
+fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, String> {
+    let db_path = dirs_next::home_dir()
+        .unwrap_or_default()
+        .join(".local/share/stt/history.db");
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
+             FROM transcripts ORDER BY created_at DESC LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([limit as i64], |row| {
+            Ok(TranscriptRow {
+                id: row.get(0)?,
+                raw_text: row.get(1)?,
+                processed_text: row.get(2)?,
+                language: row.get(3)?,
+                mode: row.get(4)?,
+                model: row.get(5)?,
+                duration_sec: row.get(6)?,
+                favorite: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(result)
+}
 
 #[tauri::command]
 fn get_backend_path() -> Result<String, String> {
-    // Try to find the Python STT backend relative to the binary
     let candidates = vec![
         std::env::current_dir()
             .unwrap_or_default()
@@ -16,8 +64,90 @@ fn get_backend_path() -> Result<String, String> {
             return Ok(c.clone());
         }
     }
-    // Fall back to stt in PATH
     Ok("stt".to_string())
+}
+
+#[tauri::command]
+fn get_platform_info() -> serde_json::Value {
+    let platform = std::env::consts::OS;
+    let display_server = if platform == "linux" {
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            "wayland"
+        } else if std::env::var("DISPLAY").is_ok() {
+            "x11"
+        } else {
+            "unknown"
+        }
+    } else {
+        "native"
+    };
+
+    let (clipboard_tool, typing_tool) = match (platform, display_server) {
+        ("linux", "wayland") => ("wl-copy", "wtype"),
+        ("linux", "x11") => ("xclip", "xdotool"),
+        ("macos", _) => ("pbcopy", "osascript"),
+        ("windows", _) => ("clip.exe", "powershell"),
+        _ => ("unknown", "unknown"),
+    };
+
+    serde_json::json!({
+        "platform": platform,
+        "displayServer": display_server,
+        "clipboardTool": clipboard_tool,
+        "typingTool": typing_tool,
+    })
+}
+
+#[tauri::command]
+fn check_system_deps() -> serde_json::Value {
+    let platform = std::env::consts::OS;
+    let mut checks: Vec<serde_json::Value> = Vec::new();
+
+    if platform == "linux" {
+        let has_pulse = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("command -v pactl")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        checks.push(serde_json::json!({
+            "name": "Audio Server",
+            "status": if has_pulse { "pass" } else { "fail" },
+            "message": if has_pulse { "PulseAudio/PipeWire detected" } else { "PulseAudio/PipeWire not found" },
+            "fixHint": if has_pulse { None::<&str> } else { Some("Install: sudo apt install pipewire-pulse") }
+        }));
+
+        let has_clipboard = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("command -v wl-copy || command -v xclip")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        checks.push(serde_json::json!({
+            "name": "Clipboard Tool",
+            "status": if has_clipboard { "pass" } else { "warning" },
+            "message": if has_clipboard { "wl-copy or xclip available" } else { "No clipboard tool found" },
+            "fixHint": if has_clipboard { None::<&str> } else { Some("Install: sudo apt install wl-clipboard xclip") }
+        }));
+    } else if platform == "macos" {
+        checks.push(serde_json::json!({
+            "name": "Audio Server", "status": "pass", "message": "CoreAudio available", "fixHint": null
+        }));
+        checks.push(serde_json::json!({
+            "name": "Clipboard Tool", "status": "pass", "message": "pbcopy available", "fixHint": null
+        }));
+    } else {
+        checks.push(serde_json::json!({
+            "name": "Audio Server", "status": "pass", "message": "WASAPI available", "fixHint": null
+        }));
+        checks.push(serde_json::json!({
+            "name": "Clipboard Tool", "status": "pass", "message": "clip.exe available", "fixHint": null
+        }));
+    }
+
+    serde_json::json!(checks)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -37,6 +167,27 @@ pub fn run() {
             );",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 2,
+            description: "add model and duration columns",
+            sql: "ALTER TABLE transcripts ADD COLUMN model TEXT DEFAULT '';
+                 ALTER TABLE transcripts ADD COLUMN duration_sec REAL DEFAULT 0.0;",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 3,
+            description: "create full-text search index",
+            sql: "CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+                raw_text, processed_text, content='transcripts', content_rowid='id'
+            );
+            CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+                INSERT INTO transcripts_fts(raw_text, processed_text) VALUES (new.raw_text, new.processed_text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+                INSERT INTO transcripts_fts(transcripts_fts, raw_text, processed_text) VALUES ('delete', old.raw_text, old.processed_text);
+            END;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -47,7 +198,12 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![get_backend_path])
+        .invoke_handler(tauri::generate_handler![
+            get_backend_path,
+            get_platform_info,
+            check_system_deps,
+            get_history
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

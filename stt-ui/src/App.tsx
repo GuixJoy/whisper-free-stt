@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "react";
 import type { STTApi, STTEvent } from "./api";
 import { createWsApi } from "./api-ws";
 import { createTauriApi } from "./api-tauri";
+import OnboardingWizard from "./components/OnboardingWizard";
+import MicSelector from "./components/MicSelector";
+import ErrorBanner from "./components/ErrorBanner";
+import { type AppError } from "./components/ErrorBanner";
+import HistoryPanel from "./components/HistoryPanel";
+import SettingsPanel from "./components/SettingsPanel";
+import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import "./App.css";
 
 type RunMode = "ws" | "tauri";
@@ -14,12 +21,17 @@ interface TranscriptLine {
   createdAt: string;
 }
 
-interface RuntimeSettings {
+export interface RuntimeSettings {
   wsPort: number;
   asrProfile: "auto" | "speed" | "balanced" | "accuracy" | "distil" | "turbo";
   backend: "auto" | "whisper_cpp" | "faster_whisper";
   model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
+  llmProvider: "deepseek" | "openrouter";
+  llmModel: string;
+  llmFallback: string;
+  deepseekApiKey: string;
+  openrouterApiKey: string;
   fastCommit: boolean;
   typing: boolean;
   clipboard: boolean;
@@ -32,6 +44,11 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   backend: "auto",
   model: "",
   llmMode: "cleanup",
+  llmProvider: "openrouter",
+  llmModel: "",
+  llmFallback: "",
+  deepseekApiKey: "",
+  openrouterApiKey: "",
   fastCommit: true,
   typing: false,
   clipboard: false,
@@ -42,6 +59,11 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   const args: string[] = ["--json-mode", "--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];
   if (settings.backend !== "auto") args.push("--backend", settings.backend);
   if (settings.model.trim()) args.push("--model", settings.model.trim());
+  if (settings.llmProvider !== "openrouter") args.push("--llm-provider", settings.llmProvider);
+  if (settings.llmModel.trim()) args.push("--llm-model", settings.llmModel.trim());
+  if (settings.llmFallback.trim()) args.push("--llm-fallback", settings.llmFallback.trim());
+  if (settings.deepseekApiKey.trim()) args.push("--deepseek-api-key", settings.deepseekApiKey.trim());
+  if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
   if (settings.fastCommit) args.push("--fast-commit");
   if (!settings.typing) args.push("--no-type");
   if (settings.clipboard) args.push("--clipboard");
@@ -49,15 +71,6 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   return args;
 }
 
-/**
- * Build a shell command string for launching the external WebSocket STT backend using the provided runtime settings.
- *
- * The produced command begins with `stt` and includes required flags for WebSocket port, ASR profile, and LLM mode.
- * Optional flags are appended when enabled in `settings` (backend, model, fast-commit, no-type, clipboard, debug).
- *
- * @param settings - Runtime settings that determine the CLI flags and their values
- * @returns The full `stt` command string with flags derived from `settings`
- */
 function buildWsCommand(settings: RuntimeSettings): string {
   const args = [
     "--ws-port", String(settings.wsPort),
@@ -81,16 +94,6 @@ const STATUS_ICON: Record<string, string> = {
   idle: "◎",
 };
 
-/**
- * Main application React component that renders the STT feed UI and manages runtime state.
- *
- * Renders controls for connection and runtime settings, a live transcript feed, and status/notification UI.
- * Manages the runtime lifecycle (start/stop), processes incoming STT events to update transcript lines and mic level,
- * keeps transcripts auto-scrolled, synchronizes clipboard helpers, and registers a global Space key shortcut to
- * toggle start/stop. Ensures the runtime is stopped on unmount.
- *
- * @returns The component's rendered JSX element.
- */
 function App() {
   const [mode, setMode] = useState<RunMode>("ws");
   const [connected, setConnected] = useState(false);
@@ -100,12 +103,15 @@ function App() {
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
   const [showControls, setShowControls] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [view, setView] = useState<AppView>("onboarding");
+  const [errors, setErrors] = useState<AppError[]>([]);
+  const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
 
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
-
-  // Refs so keyboard handler always calls the freshest start/stop
   const connectedRef = useRef(connected);
   const isStartingRef = useRef(false);
   const startRef = useRef<() => Promise<void>>(async () => {});
@@ -120,7 +126,7 @@ function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = window.setTimeout(() => setToast(""), 1800);
+    const t = window.setTimeout(() => setToast(""), 3000);
     return () => window.clearTimeout(t);
   }, [toast]);
 
@@ -129,12 +135,10 @@ function App() {
     feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [lines]);
 
-  // Register keyboard shortcut once; use refs for fresh values
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Ignore key-repeat events so held Space doesn't fire repeatedly.
       if (e.repeat) return;
-      // Don't hijack Space when focus is on interactive/editable elements.
+      if (view === "onboarding") return;
       const target = e.target as HTMLElement;
       const tag = target.tagName.toUpperCase();
       const isInteractive =
@@ -150,6 +154,15 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
+  }, [view]);
+
+  const addError = useCallback((category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }].slice(-5));
+  }, []);
+
+  const dismissError = useCallback((id: string) => {
+    setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
   }, []);
 
   const commandPreview = useMemo(() => {
@@ -169,6 +182,7 @@ function App() {
     if (event.type === "error") {
       setToast(event.message);
       setStatus("error");
+      addError("general", event.message, true);
       if (event.utterance_id) {
         setLines((prev) => prev.map((line) =>
           line.id === event.utterance_id ? { ...line, status: "error" } : line
@@ -207,13 +221,19 @@ function App() {
       runtimeRef.current = api;
       setConnected(true);
       setStatus("listening");
+      dismissErrorsOfCategory("connection");
     } catch (error) {
-      // Clean up the API that failed to start so it isn't left running.
       try { api.stop(); } catch (_) { /* best effort */ }
-      setToast(error instanceof Error ? error.message : "Failed to start runtime");
+      const msg = error instanceof Error ? error.message : "Failed to start runtime";
+      setToast(msg);
+      addError("connection", msg, true, "Check if stt-engine is installed");
     } finally {
       isStartingRef.current = false;
     }
+  };
+
+  const dismissErrorsOfCategory = (category: AppError["category"]) => {
+    setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
   };
 
   const stop = () => {
@@ -223,11 +243,9 @@ function App() {
     setStatus("idle");
   };
 
-  // Keep start/stop refs up to date
   startRef.current = start;
   stopRef.current = stop;
 
-  // Cleanup on unmount
   useEffect(() => () => runtimeRef.current?.stop(), []);
 
   const clearLines = () => setLines([]);
@@ -265,203 +283,238 @@ function App() {
   const statusClass = STATUS_CLASS[status] ?? "status-idle";
   const statusIcon = STATUS_ICON[status] ?? "◎";
 
+  const handleOnboardingComplete = () => {
+    setView("main");
+  };
+
+  if (view === "onboarding") {
+    return (
+      <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
+        <OnboardingWizard onFinished={handleOnboardingComplete} />
+      </AppStateContext.Provider>
+    );
+  }
+
   return (
-    <div className="paper-shell">
-      {/* Decorative animated blobs */}
-      <div className="doodle-blob blob-1" aria-hidden="true" />
-      <div className="doodle-blob blob-2" aria-hidden="true" />
-      <div className="doodle-blob blob-3" aria-hidden="true" />
+    <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
+      <div className="paper-shell">
+        <div className="doodle-blob blob-1" aria-hidden="true" />
+        <div className="doodle-blob blob-2" aria-hidden="true" />
+        <div className="doodle-blob blob-3" aria-hidden="true" />
 
-      <header className="app-header">
-        <div className="header-brand">
-          <span className="brand-icon">🎙</span>
-          <h1>STT Feed</h1>
-        </div>
-        <div className="header-right">
-          <span className={`status-badge ${statusClass}`}>
-            <span className="status-icon">{statusIcon}</span>
-            {status}
-          </span>
-          <button className="sketch-btn btn-sm" onClick={() => setShowControls((s) => !s)}>
-            {showControls ? "⟵ Hide" : "☰ Controls"}
-          </button>
-        </div>
-      </header>
+        <ErrorBanner
+          errors={errors}
+          onDismiss={dismissError}
+          onRetry={(id) => {
+            dismissError(id);
+            void start();
+          }}
+        />
 
-      <main className="canvas-layout">
-        {showControls && (
-          <aside className="controls-panel">
-            {/* ── Connection ── */}
-            <div className="ctrl-section">
-              <div className="ctrl-section-header"><span>📡</span> Connection</div>
-              <div className="controls-row">
-                <label>Mode</label>
-                <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
-                  <option value="ws">WebSocket (external stt)</option>
-                  <option value="tauri">Tauri local process</option>
-                </select>
-              </div>
-              {mode === "ws" && (
+        <header className="app-header">
+          <div className="header-brand">
+            <span className="brand-icon">🎙</span>
+            <h1>STT Feed</h1>
+          </div>
+          <div className="header-right">
+            <MicSelector
+              selectedIndex={null}
+              micLevel={micLevel}
+              onSelect={() => {}}
+              onTest={() => {}}
+              compact
+            />
+            <span className={`status-badge ${statusClass}`}>
+              <span className="status-icon">{statusIcon}</span>
+              {status}
+            </span>
+            <button className="sketch-btn btn-sm" onClick={() => setShowControls((s) => !s)}>
+              {showControls ? "⟵ Hide" : "☰ Controls"}
+            </button>
+            <button className="sketch-btn btn-sm" onClick={() => setShowHistory(true)}>
+              📜 History
+            </button>
+            <button className="sketch-btn btn-sm" onClick={() => setShowSettings(true)}>
+              ⚙ Settings
+            </button>
+          </div>
+        </header>
+
+        <main className="canvas-layout">
+          {showControls && (
+            <aside className="controls-panel">
+              <div className="ctrl-section">
+                <div className="ctrl-section-header"><span>📡</span> Connection</div>
                 <div className="controls-row">
-                  <label>WS Port</label>
+                  <label>Mode</label>
+                  <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
+                    <option value="ws">WebSocket (external stt)</option>
+                    <option value="tauri">Tauri local process</option>
+                  </select>
+                </div>
+                {mode === "ws" && (
+                  <div className="controls-row">
+                    <label>WS Port</label>
+                    <input
+                      className="sketch-input"
+                      type="number"
+                      value={settings.wsPort}
+                      onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="ctrl-section">
+                <div className="ctrl-section-header"><span>🎤</span> Speech</div>
+                <div className="controls-row">
+                  <label>ASR Profile</label>
+                  <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
+                    <option value="auto">auto</option>
+                    <option value="speed">speed</option>
+                    <option value="balanced">balanced</option>
+                    <option value="accuracy">accuracy</option>
+                    <option value="distil">distil</option>
+                    <option value="turbo">turbo</option>
+                  </select>
+                </div>
+                <div className="controls-row">
+                  <label>Backend</label>
+                  <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
+                    <option value="auto">auto</option>
+                    <option value="whisper_cpp">whisper.cpp</option>
+                    <option value="faster_whisper">faster-whisper</option>
+                  </select>
+                </div>
+                <div className="controls-row">
+                  <label>Model override</label>
                   <input
                     className="sketch-input"
-                    type="number"
-                    value={settings.wsPort}
-                    onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
+                    value={settings.model}
+                    onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                    placeholder="e.g. large-v3-turbo"
                   />
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* ── Speech ── */}
-            <div className="ctrl-section">
-              <div className="ctrl-section-header"><span>🎤</span> Speech</div>
-              <div className="controls-row">
-                <label>ASR Profile</label>
-                <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
-                  <option value="auto">auto</option>
-                  <option value="speed">speed</option>
-                  <option value="balanced">balanced</option>
-                  <option value="accuracy">accuracy</option>
-                  <option value="distil">distil</option>
-                  <option value="turbo">turbo</option>
-                </select>
-              </div>
-              <div className="controls-row">
-                <label>Backend</label>
-                <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
-                  <option value="auto">auto</option>
-                  <option value="whisper_cpp">whisper.cpp</option>
-                  <option value="faster_whisper">faster-whisper</option>
-                </select>
-              </div>
-              <div className="controls-row">
-                <label>Model override</label>
-                <input
-                  className="sketch-input"
-                  value={settings.model}
-                  onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-                  placeholder="e.g. large-v3-turbo"
-                />
-              </div>
-            </div>
-
-            {/* ── Output ── */}
-            <div className="ctrl-section">
-              <div className="ctrl-section-header"><span>⚙</span> Output</div>
-              <div className="controls-row">
-                <label>LLM Mode</label>
-                <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
-                  <option value="cleanup">cleanup</option>
-                  <option value="off">off</option>
-                  <option value="bullet_list">bullet list</option>
-                  <option value="email">email</option>
-                  <option value="commit_message">commit message</option>
-                </select>
-              </div>
-              <div className="controls-checks">
-                <label className="toggle-label">
-                  <span className="toggle-wrap">
-                    <input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} />
-                    <span className="toggle-track" />
-                  </span>
-                  fast commit
-                </label>
-                <label className="toggle-label">
-                  <span className="toggle-wrap">
-                    <input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} />
-                    <span className="toggle-track" />
-                  </span>
-                  type to focused input
-                </label>
-                <label className="toggle-label">
-                  <span className="toggle-wrap">
-                    <input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} />
-                    <span className="toggle-track" />
-                  </span>
-                  clipboard
-                </label>
-                <label className="toggle-label">
-                  <span className="toggle-wrap">
-                    <input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} />
-                    <span className="toggle-track" />
-                  </span>
-                  debug
-                </label>
-              </div>
-            </div>
-
-            {/* ── Actions ── */}
-            <div className="controls-actions">
-              {!connected ? (
-                <button className="sketch-btn btn-start" onClick={() => void start()}>▶ Start</button>
-              ) : (
-                <button className="sketch-btn btn-stop" onClick={stop}>■ Stop</button>
-              )}
-              <button className="sketch-btn btn-copy" onClick={() => void copyLatest()} disabled={lines.length === 0}>
-                📋 Copy last
-              </button>
-              <button className="sketch-btn btn-clear" onClick={clearLines} disabled={lines.length === 0}>
-                🗑 Clear
-              </button>
-            </div>
-
-            <p className="shortcut-hint">tip: press <kbd>Space</kbd> to start / stop</p>
-
-            {/* ── Command preview ── */}
-            <div className="command-preview">
-              <div className="transcript-meta">
-                <span>Command preview</span>
-                <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
-              </div>
-              <code>{commandPreview}</code>
-            </div>
-          </aside>
-        )}
-
-        <section className="feed-board">
-          {/* Top bar: mic meter + status chips */}
-          <div className="feed-top-bar">
-            <div className="mic-meter">
-              <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
-            </div>
-            <div className="hud">
-              <div className={`note-chip ${connected ? "chip-connected" : "chip-disconnected"}`}>
-                {connected ? "● live" : "○ off"}
-              </div>
-              <div className="note-chip">{lines.length} lines</div>
-            </div>
-          </div>
-
-          {/* Transcript feed */}
-          <div className="line-feed" ref={feedRef}>
-            {lines.length === 0 ? (
-              <div className="empty-feed">
-                <div className="empty-icon">🎙</div>
-                <p>Listening output will appear here…</p>
-                <p className="empty-hint">Press <kbd>Space</kbd> or click <strong>Start</strong> to begin</p>
-              </div>
-            ) : (
-              lines.map((line) => (
-                <div key={line.id} className={`feed-line feed-line-${line.status}`}>
-                  <div className="feed-line-inner">
-                    <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
-                    <span className="feed-text">{line.processed || line.raw}</span>
-                  </div>
-                  <div className="feed-line-meta">
-                    <span className={`feed-status-dot dot-${line.status}`} title={line.status} />
-                    <button className="line-copy-btn" onClick={() => void copyLine(line)} title="Copy line">📋</button>
-                  </div>
+              <div className="ctrl-section">
+                <div className="ctrl-section-header"><span>⚙</span> Output</div>
+                <div className="controls-row">
+                  <label>LLM Mode</label>
+                  <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
+                    <option value="cleanup">cleanup</option>
+                    <option value="off">off</option>
+                    <option value="bullet_list">bullet list</option>
+                    <option value="email">email</option>
+                    <option value="commit_message">commit message</option>
+                  </select>
                 </div>
-              ))
-            )}
-          </div>
-        </section>
-      </main>
+                <div className="controls-checks">
+                  <label className="toggle-label">
+                    <span className="toggle-wrap">
+                      <input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} />
+                      <span className="toggle-track" />
+                    </span>
+                    fast commit
+                  </label>
+                  <label className="toggle-label">
+                    <span className="toggle-wrap">
+                      <input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} />
+                      <span className="toggle-track" />
+                    </span>
+                    type to focused input
+                  </label>
+                  <label className="toggle-label">
+                    <span className="toggle-wrap">
+                      <input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} />
+                      <span className="toggle-track" />
+                    </span>
+                    clipboard
+                  </label>
+                  <label className="toggle-label">
+                    <span className="toggle-wrap">
+                      <input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} />
+                      <span className="toggle-track" />
+                    </span>
+                    debug
+                  </label>
+                </div>
+              </div>
 
-      {toast && <div className="toast-msg">{toast}</div>}
-    </div>
+              <div className="controls-actions">
+                {!connected ? (
+                  <button className="sketch-btn btn-start" onClick={() => void start()}>▶ Start</button>
+                ) : (
+                  <button className="sketch-btn btn-stop" onClick={stop}>■ Stop</button>
+                )}
+                <button className="sketch-btn btn-copy" onClick={() => void copyLatest()} disabled={lines.length === 0}>
+                  📋 Copy last
+                </button>
+                <button className="sketch-btn btn-clear" onClick={clearLines} disabled={lines.length === 0}>
+                  🗑 Clear
+                </button>
+              </div>
+
+              <p className="shortcut-hint">tip: press <kbd>Space</kbd> to start / stop</p>
+
+              <div className="command-preview">
+                <div className="transcript-meta">
+                  <span>Command preview</span>
+                  <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
+                </div>
+                <code>{commandPreview}</code>
+              </div>
+            </aside>
+          )}
+
+          <section className="feed-board">
+            <div className="feed-top-bar">
+              <div className="mic-meter">
+                <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
+              </div>
+              <div className="hud">
+                <div className={`note-chip ${connected ? "chip-connected" : "chip-disconnected"}`}>
+                  {connected ? "● live" : "○ off"}
+                </div>
+                <div className="note-chip">{lines.length} lines</div>
+              </div>
+            </div>
+
+            <div className="line-feed" ref={feedRef}>
+              {lines.length === 0 ? (
+                <div className="empty-feed">
+                  <div className="empty-icon">🎙</div>
+                  <p>Listening output will appear here…</p>
+                  <p className="empty-hint">Press <kbd>Space</kbd> or click <strong>Start</strong> to begin</p>
+                </div>
+              ) : (
+                lines.map((line) => (
+                  <div key={line.id} className={`feed-line feed-line-${line.status}`}>
+                    <div className="feed-line-inner">
+                      <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
+                      <span className="feed-text">{line.processed || line.raw}</span>
+                    </div>
+                    <div className="feed-line-meta">
+                      <span className={`feed-status-dot dot-${line.status}`} title={line.status} />
+                      <button className="line-copy-btn" onClick={() => void copyLine(line)} title="Copy line">📋</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </main>
+
+        {toast && <div className="toast-msg">{toast}</div>}
+        <HistoryPanel visible={showHistory} onClose={() => setShowHistory(false)} />
+        <SettingsPanel
+          visible={showSettings}
+          settings={settings}
+          onSave={(s) => setSettings(s)}
+          onClose={() => setShowSettings(false)}
+        />
+      </div>
+    </AppStateContext.Provider>
   );
 }
 

@@ -6,6 +6,17 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "shell:default"
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [{"name": "stt-engine", "sidecar": true, "args": true}]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{"name": "stt-engine", "sidecar": true, "args": true}]
+    },
+    {
+      "identifier": "shell:allow-stdin-write",
+      "allow": [{"name": "stt-engine", "sidecar": true, "args": true}]
+    }
   ]
 }

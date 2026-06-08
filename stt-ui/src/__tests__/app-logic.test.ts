@@ -18,6 +18,11 @@ interface RuntimeSettings {
   backend: "auto" | "whisper_cpp" | "faster_whisper";
   model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
+  llmProvider: "deepseek" | "openrouter";
+  llmModel: string;
+  llmFallback: string;
+  deepseekApiKey: string;
+  openrouterApiKey: string;
   fastCommit: boolean;
   typing: boolean;
   clipboard: boolean;
@@ -31,6 +36,11 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   const args: string[] = ["--json-mode", "--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];
   if (settings.backend !== "auto") args.push("--backend", settings.backend);
   if (settings.model.trim()) args.push("--model", settings.model.trim());
+  if (settings.llmProvider !== "openrouter") args.push("--llm-provider", settings.llmProvider);
+  if (settings.llmModel.trim()) args.push("--llm-model", settings.llmModel.trim());
+  if (settings.llmFallback.trim()) args.push("--llm-fallback", settings.llmFallback.trim());
+  if (settings.deepseekApiKey.trim()) args.push("--deepseek-api-key", settings.deepseekApiKey.trim());
+  if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
   if (settings.fastCommit) args.push("--fast-commit");
   if (!settings.typing) args.push("--no-type");
   if (settings.clipboard) args.push("--clipboard");
@@ -61,6 +71,11 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   backend: "auto",
   model: "",
   llmMode: "cleanup",
+  llmProvider: "openrouter",
+  llmModel: "",
+  llmFallback: "",
+  deepseekApiKey: "",
+  openrouterApiKey: "",
   fastCommit: true,
   typing: false,
   clipboard: false,
