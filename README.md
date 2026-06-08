@@ -36,18 +36,25 @@ stt-ui
 
 That's it.  Speak — cleaned text appears wherever your cursor is.
 
-## Desktop UI (Tkinter, cross-platform shell)
+## Desktop UI (Tauri + React)
 
-`stt-ui` now includes:
-- Main panel: Idle/Listening/Transcribing/Rewriting/Copied/Error status, start/stop, PTT, copy/clear, mic level meter
-- Compact mode: mini window, optional always-on-top pin
-- Settings panel: device/backend/model/LLM/clipboard/PTT/auto-transcribe/theme/startup placeholder
-- Shortcut editor: remapping, conflict detection, scope labels
-- Transcript history: search, recopy, rerun cleanup, favorite, delete
-- Platform capability notes with Wayland fallback messaging
+`stt-ui` is a Tauri-based desktop application with a React frontend and Python engine sidecar:
+- **Onboarding wizard**: First-run setup with system checks, microphone selection, model download, and shortcut configuration
+- **Main panel**: Idle/Listening/Transcribing/Rewriting/Copied/Error status, start/stop, PTT, copy/clear, mic level meter
+- **History sidebar**: Browse past transcripts with search, recopy, rerun cleanup, favorite, and delete
+- **Settings panel**: Provider selector (DeepSeek/OpenRouter), API key input, model/fallback model selection, ASR backend/profile, device, clipboard, debug mode
+- **Compact mode**: Mini window with optional always-on-top pin
+- **Shortcut editor**: Remapping with conflict detection and scope labels
 
-Current implementation uses Python + Tkinter for low startup overhead and simple backend integration.
-Long-term production packaging target remains **Tauri + web UI + Python sidecar**.
+The Python engine is bundled as a Tauri sidecar via PyInstaller. Build it with:
+```bash
+./stt/build_sidecar.sh
+```
+
+Then build the Tauri app:
+```bash
+cd stt-ui && npm run tauri build
+```
 
 ---
 
@@ -147,6 +154,8 @@ stt --asr-profile distil    # highest quality (needs GPU)
 | `--llm-provider` | auto | deepseek / openrouter |
 | `--llm-model` | env | Model (env: `STT_LLM_MODEL`) |
 | `--llm-fallback` | env | Fallback model (OpenRouter only) |
+| `--deepseek-api-key` | env | DeepSeek API key (overrides `DEEPSEEK_API_KEY`) |
+| `--openrouter-api-key` | env | OpenRouter API key (overrides `OPENROUTER_API_KEY`) |
 | `--no-type` | false | Disable typing to focused input |
 | `--clipboard` | false | Enable wl-copy clipboard output |
 | `--debug` | false | Print diagnostic info |
@@ -193,6 +202,12 @@ Done.
 For a 20-word utterance spoken at ~150 WPM (~8s of speech), the total wall-clock time is ~8s speaking + 1.74s processing ≈ 9.74s. Typing the same 20 words at ~80 WPM takes ~15s, delivering **up to 2× faster than manual typing** for typical utterances, with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
 
 ---
+
+## History & Few-Shot Context
+
+Transcripts are persisted to SQLite (`~/.local/share/stt/history.db`) with metadata: raw text, cleaned text, LLM mode, provider, model, latency, and timestamp. The orchestrator builds few-shot context from past correction pairs (raw → cleaned) using sentence embeddings, injecting the top-3 most similar examples into the LLM prompt. This improves rewrite quality over time as the system learns your speech patterns.
+
+The Tauri UI reads the same database via a Rust `get_history` command for the history sidebar.
 
 ## Extending
 
