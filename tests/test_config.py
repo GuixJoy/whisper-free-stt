@@ -379,5 +379,131 @@ class TestTranscriptionConfigVADDefaults(unittest.TestCase):
         self.assertEqual(cfg.backend, TranscriptionBackend.WHISPER_CPP)
 
 
+class TestBuildConfigKeyInjection(unittest.TestCase):
+    """Tests that build_config() injects CLI API keys into os.environ before LLMConfig reads them."""
+
+    def setUp(self):
+        self._saved = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._saved)
+
+    def _make_args(self, **kwargs):
+        """Build a minimal argparse.Namespace with defaults matching build_arg_parser()."""
+        import argparse
+        defaults = {
+            "sample_rate": 16000,
+            "device_index": None,
+            "silence_threshold": None,
+            "silence_duration": None,
+            "min_duration": 0.5,
+            "fast_commit": False,
+            "asr_profile": "auto",
+            "backend": None,
+            "model": None,
+            "compute_type": "auto",
+            "device": "auto",
+            "cpu_threads": 4,
+            "language": None,
+            "beam_size": None,
+            "llm_provider": None,
+            "llm_mode": None,
+            "llm_model": None,
+            "llm_fallback": None,
+            "llm_timeout": None,
+            "deepseek_api_key": None,
+            "openrouter_api_key": None,
+            "clipboard": False,
+            "no_type": False,
+            "type_path": "wtype",
+            "debug": False,
+            "json_mode": False,
+            "ws_port": None,
+            "input_file": None,
+            "list_microphones": False,
+            "download_model": None,
+        }
+        defaults.update(kwargs)
+        return argparse.Namespace(**defaults)
+
+    def test_deepseek_key_injected_into_environ(self):
+        from stt.cli import build_config
+        os.environ.pop("DEEPSEEK_API_KEY", None)
+        args = self._make_args(deepseek_api_key="sk-deepseek-test")
+        build_config(args)
+        self.assertEqual(os.environ.get("DEEPSEEK_API_KEY"), "sk-deepseek-test")
+
+    def test_openrouter_key_injected_into_environ(self):
+        from stt.cli import build_config
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        args = self._make_args(openrouter_api_key="sk-openrouter-test")
+        build_config(args)
+        self.assertEqual(os.environ.get("OPENROUTER_API_KEY"), "sk-openrouter-test")
+
+    def test_both_keys_injected(self):
+        from stt.cli import build_config
+        os.environ.pop("DEEPSEEK_API_KEY", None)
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        args = self._make_args(
+            deepseek_api_key="sk-deepseek-test",
+            openrouter_api_key="sk-openrouter-test",
+        )
+        build_config(args)
+        self.assertEqual(os.environ.get("DEEPSEEK_API_KEY"), "sk-deepseek-test")
+        self.assertEqual(os.environ.get("OPENROUTER_API_KEY"), "sk-openrouter-test")
+
+    def test_none_keys_do_not_set_environ(self):
+        from stt.cli import build_config
+        os.environ.pop("DEEPSEEK_API_KEY", None)
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        args = self._make_args(deepseek_api_key=None, openrouter_api_key=None)
+        build_config(args)
+        self.assertIsNone(os.environ.get("DEEPSEEK_API_KEY"))
+        self.assertIsNone(os.environ.get("OPENROUTER_API_KEY"))
+
+    def test_empty_string_keys_do_not_set_environ(self):
+        from stt.cli import build_config
+        os.environ.pop("DEEPSEEK_API_KEY", None)
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        args = self._make_args(deepseek_api_key="", openrouter_api_key="")
+        build_config(args)
+        self.assertIsNone(os.environ.get("DEEPSEEK_API_KEY"))
+        self.assertIsNone(os.environ.get("OPENROUTER_API_KEY"))
+
+    def test_existing_env_not_overwritten_by_none(self):
+        from stt.cli import build_config
+        os.environ["DEEPSEEK_API_KEY"] = "pre-existing"
+        args = self._make_args(deepseek_api_key=None)
+        build_config(args)
+        self.assertEqual(os.environ.get("DEEPSEEK_API_KEY"), "pre-existing")
+
+    def test_cli_key_overrides_existing_env(self):
+        from stt.cli import build_config
+        os.environ["DEEPSEEK_API_KEY"] = "pre-existing"
+        args = self._make_args(deepseek_api_key="sk-new-key")
+        build_config(args)
+        self.assertEqual(os.environ.get("DEEPSEEK_API_KEY"), "sk-new-key")
+
+    def test_llm_model_injected_from_cli(self):
+        from stt.cli import build_config
+        args = self._make_args(llm_model="custom-model-v1")
+        cfg = build_config(args)
+        self.assertEqual(cfg.llm.model, "custom-model-v1")
+
+    def test_llm_provider_injected_from_cli(self):
+        from stt.config import LLMProvider
+        from stt.cli import build_config
+        args = self._make_args(llm_provider="deepseek")
+        cfg = build_config(args)
+        self.assertEqual(cfg.llm.provider, LLMProvider.DEEPSEEK)
+
+    def test_llm_fallback_injected_from_cli(self):
+        from stt.cli import build_config
+        args = self._make_args(llm_fallback="fallback-model")
+        cfg = build_config(args)
+        self.assertEqual(cfg.llm.fallback_model, "fallback-model")
+
+
 if __name__ == "__main__":
     unittest.main()
