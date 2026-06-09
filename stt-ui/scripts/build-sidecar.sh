@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build the Python STT engine as a standalone binary for Tauri sidecar.
 # Output: stt-ui/src-tauri/binaries/stt-engine (actual binary)
-#         stt-ui/src-tauri/binaries/stt-engine-{target_triple} -> stt-engine (symlink)
+#         stt-ui/src-tauri/binaries/stt-engine-{target_triple} (actual binary)
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$PROJECT_ROOT"
@@ -15,14 +15,40 @@ echo "Building sidecar for target: ${TARGET_TRIPLE}"
 
 mkdir -p "$SIDECAR_DIR"
 
+# ── Compatibility: Detect OS path separator for PyInstaller --add-data ──
+SEP=":"
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" || "$OSTYPE" == "cygwin" ]]; then
+  SEP=";"
+fi
+
+# ── Compatibility: Fallback command for Python/UV execution ──
+if command -v uv &> /dev/null; then
+  PYTHON_CMD="uv run python"
+else
+  if [ -f "$PROJECT_ROOT/.venv/bin/python" ]; then
+    PYTHON_CMD="$PROJECT_ROOT/.venv/bin/python"
+  elif [ -f "$PROJECT_ROOT/.venv/Scripts/python" ]; then
+    PYTHON_CMD="$PROJECT_ROOT/.venv/Scripts/python"
+  else
+    PYTHON_CMD="python3"
+  fi
+fi
+
+echo "Using Python command: ${PYTHON_CMD}"
+
+# Define local, cross-platform build temporary directories (avoids failing on Windows due to no /tmp)
+WORK_DIR="${SIDECAR_DIR}/build/work"
+SPEC_DIR="${SIDECAR_DIR}/build/spec"
+mkdir -p "$WORK_DIR" "$SPEC_DIR"
+
 # Build the bare-named binary that dev mode needs
-uv run python -m PyInstaller \
+$PYTHON_CMD -m PyInstaller \
   --onefile \
   --name "stt-engine" \
   --distpath "$SIDECAR_DIR" \
-  --workpath /tmp/pyinstaller-stt-work \
-  --specpath /tmp/pyinstaller-stt-spec \
-  --add-data "$PROJECT_ROOT/stt/prompts.py:stt" \
+  --workpath "$WORK_DIR" \
+  --specpath "$SPEC_DIR" \
+  --add-data "${PROJECT_ROOT}/stt/prompts.py${SEP}stt" \
   --collect-all sounddevice \
   --collect-all numpy \
   --collect-all faster_whisper \
@@ -30,11 +56,14 @@ uv run python -m PyInstaller \
   --collect-all noisereduce \
   --hidden-import websockets \
   --hidden-import pywhispercpp \
-  "$PROJECT_ROOT/stt/cli.py"
+  "${PROJECT_ROOT}/stt/cli.py"
 
 # Tauri v2 build mode looks for stt-engine-{target_triple}, dev mode looks for stt-engine.
 # Copy so both exist as actual files (tauri_build doesn't follow symlinks).
 cp "${SIDECAR_DIR}/stt-engine" "${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE}"
+
+# Clean up local temporary build files
+rm -rf "${SIDECAR_DIR}/build"
 
 echo "Sidecar binary:  ${SIDECAR_DIR}/stt-engine"
 echo "Target binary:  ${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE}"

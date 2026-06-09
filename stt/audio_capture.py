@@ -17,6 +17,78 @@ import sounddevice as sd
 from stt.config import AudioConfig
 from stt.types import AudioSegment
 
+
+def open_input_stream(
+    device_index: int,
+    target_samplerate: int,
+    channels: int,
+    dtype: str,
+    blocksize: int,
+    callback: Callable[[np.ndarray, int, object, int], None],
+) -> sd.InputStream:
+    """Safely opens a PortAudio InputStream at the target sample rate.
+
+    If the target sample rate (e.g., 16000) is unsupported natively by the hardware/driver,
+    it falls back to the device's native default sample rate, opens the stream,
+    and resamples the incoming audio chunks transparently on-the-fly to the target rate
+    before invoking the user callback.
+    """
+    try:
+        # First attempt: Open at the requested sample rate natively
+        return sd.InputStream(
+            samplerate=target_samplerate,
+            channels=channels,
+            dtype=dtype,
+            blocksize=blocksize,
+            device=device_index,
+            callback=callback,
+        )
+    except Exception as exc:
+        import sys
+        print(f"[debug] Target sample rate {target_samplerate}Hz failed: {exc}. Trying fallback...", file=sys.stderr, flush=True)
+
+        # Fallback attempt: Query native default sample rate for the device
+        try:
+            device_info = sd.query_devices(device_index, "input")
+            native_samplerate = int(device_info["default_samplerate"])
+        except Exception:
+            native_samplerate = 44100  # standard safe default
+
+        print(f"[debug] Falling back to device native rate: {native_samplerate}Hz", file=sys.stderr, flush=True)
+
+        # Calculate native blocksize to maintain similar chunk duration (~128ms)
+        # chunk duration = blocksize / target_samplerate
+        # native_blocksize = chunk duration * native_samplerate
+        native_blocksize = int((blocksize / target_samplerate) * native_samplerate)
+
+        # Thread-local/internal buffer to accumulate samples for continuous resampling
+        def resampling_callback(indata: np.ndarray, frames_count: int, time_info: object, status: int) -> None:
+            mono_data = indata[:, 0].copy()
+            # Resample mono data to target_samplerate using linear interpolation
+            num_samples = len(mono_data)
+            duration = num_samples / native_samplerate
+            num_target_samples = int(duration * target_samplerate)
+
+            indices = np.linspace(0, num_samples - 1, num_target_samples)
+            resampled_chunk = np.interp(indices, np.arange(num_samples), mono_data).astype(np.float32)
+
+            # Since user callback expects 2D array of shape (frames, channels), we construct it:
+            if channels == 1:
+                callback_data = resampled_chunk[:, np.newaxis]
+            else:
+                callback_data = np.column_stack([resampled_chunk] * channels)
+
+            callback(callback_data, len(resampled_chunk), time_info, status)
+
+        return sd.InputStream(
+            samplerate=native_samplerate,
+            channels=channels,
+            dtype=dtype,
+            blocksize=native_blocksize,
+            device=device_index,
+            callback=resampling_callback,
+        )
+
 # ---------------------------------------------------------------------------
 # One-shot recording (original)
 # ---------------------------------------------------------------------------
@@ -120,12 +192,12 @@ def _sample_mic_rms(device_index: int, sample_rate: int, duration: float) -> flo
             frames.append(indata[:, 0].copy())
             started.set()
 
-    stream = sd.InputStream(
-        samplerate=sample_rate,
+    stream = open_input_stream(
+        device_index=device_index,
+        target_samplerate=sample_rate,
         channels=1,
         dtype="float32",
         blocksize=2048,
-        device=device_index,
         callback=_cb,
     )
 
@@ -164,12 +236,12 @@ def record_utterance(
     start_event = threading.Event()
     callback = _make_callback(frames, config.sample_rate, start_event)
 
-    stream = sd.InputStream(
-        samplerate=config.sample_rate,
+    stream = open_input_stream(
+        device_index=device_index,
+        target_samplerate=config.sample_rate,
         channels=config.channels,
         dtype=config.dtype,
         blocksize=config.blocksize,
-        device=device_index,
         callback=callback,
     )
 
@@ -235,12 +307,12 @@ def mic_stream(
         chunk_queue.append(indata[:, 0].copy())
         chunk_ready.set()
 
-    stream = sd.InputStream(
-        samplerate=config.sample_rate,
+    stream = open_input_stream(
+        device_index=device_index,
+        target_samplerate=config.sample_rate,
         channels=config.channels,
         dtype=config.dtype,
         blocksize=config.blocksize,
-        device=device_index,
         callback=_callback,
     )
 
