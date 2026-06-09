@@ -55,6 +55,21 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   debug: false,
 };
 
+const LOCAL_STORAGE_KEY = "stt-settings";
+
+function getInitialSettings(): RuntimeSettings {
+  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+  try {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+    }
+  } catch (e) {
+    console.error("Failed to load settings", e);
+  }
+  return DEFAULT_SETTINGS;
+}
+
 function buildCliArgs(settings: RuntimeSettings): string[] {
   const args: string[] = ["--json-mode", "--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];
   if (settings.backend !== "auto") args.push("--backend", settings.backend);
@@ -104,7 +119,7 @@ function detectRunMode(): RunMode {
 function App() {
   const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
-  const [settings, setSettings] = useState<RuntimeSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<RuntimeSettings>(getInitialSettings);
   const [status, setStatus] = useState("idle");
   const [micLevel, setMicLevel] = useState(0);
   const [lines, setLines] = useState<TranscriptLine[]>([]);
@@ -121,7 +136,7 @@ function App() {
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
   const isStartingRef = useRef(false);
-  const startRef = useRef<() => Promise<void>>(async () => {});
+  const startRef = useRef<(overrideSettings?: RuntimeSettings) => Promise<void>>(async () => {});
   const stopRef = useRef<() => void>(() => {});
   connectedRef.current = connected;
 
@@ -141,6 +156,14 @@ function App() {
     if (!feedRef.current) return;
     feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [lines]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+    } catch (e) {
+      console.error("Failed to save settings", e);
+    }
+  }, [settings]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -218,10 +241,11 @@ function App() {
     }
   };
 
-  const start = async () => {
+  const start = async (overrideSettings?: RuntimeSettings) => {
     if (connected || isStartingRef.current) return;
+    const activeSettings = overrideSettings ?? settings;
     isStartingRef.current = true;
-    const api: STTApi = mode === "ws" ? createWsApi(settings.wsPort) : createTauriApi(buildCliArgs(settings));
+    const api: STTApi = mode === "ws" ? createWsApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
     api.onEvent(applyEvent);
     try {
       await api.start();
@@ -518,7 +542,15 @@ function App() {
         <SettingsPanel
           visible={showSettings}
           settings={settings}
-          onSave={(s) => setSettings(s)}
+          onSave={async (s) => {
+            setSettings(s);
+            if (connectedRef.current) {
+              stopRef.current();
+              setTimeout(() => {
+                void startRef.current(s);
+              }, 200);
+            }
+          }}
           onClose={() => setShowSettings(false)}
         />
       </div>
