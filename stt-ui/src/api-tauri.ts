@@ -17,7 +17,11 @@ export function createTauriApi(args: string[], sidecarName: string = "binaries/s
       const event: STTEvent = JSON.parse(trimmed);
       for (const cb of listeners) cb(event);
     } catch {
-      notifyError(`[${source}] ${trimmed}`);
+      if (source === "stderr") {
+        console.warn(`[Sidecar stderr] ${trimmed}`);
+      } else {
+        console.log(`[Sidecar stdout] ${trimmed}`);
+      }
     }
   };
 
