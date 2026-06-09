@@ -226,8 +226,7 @@ body::before {
 }
 
 .canvas-layout {
-  display: grid;
-  grid-template-columns: 295px 1fr;
+  display: flex;
   flex: 1;
   overflow: hidden;
   position: relative;
@@ -237,6 +236,8 @@ body::before {
 
 /* ── Controls panel ── */
 .controls-panel {
+  width: 295px;
+  flex-shrink: 0;
   margin: 0.5rem;
   padding: 0.65rem;
   border: 2px solid var(--ink);
@@ -405,6 +406,8 @@ body::before {
 
 /* ── Feed board ── */
 .feed-board {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   margin: 0.5rem 0.5rem 0.5rem 0;
@@ -605,10 +608,11 @@ body::before {
 /* ── Responsive ── */
 @media (max-width: 980px) {
   .canvas-layout {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    flex-direction: column;
   }
   .controls-panel {
+    width: auto;
+    flex-shrink: initial;
     margin: 0.5rem 0.5rem 0;
     max-height: 38vh;
   }
@@ -904,23 +908,64 @@ body::before {
   text-align: center;
 }
 
-/* Error banner */
-.error-banner-container {
-  position: absolute;
-  top: 4.5rem;
-  right: 1.5rem;
+/* Error side panel */
+.error-side-panel {
   width: 320px;
-  max-height: calc(100vh - 6rem);
-  overflow-y: auto;
-  z-index: 1000;
+  background: var(--paper);
+  border-left: 3px dashed var(--ink-faint);
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  height: 100%;
+  flex-shrink: 0;
+  transition: width 0.25s ease, opacity 0.25s ease;
+  overflow: hidden;
+}
+
+.error-side-panel.collapsed {
+  width: 0px;
+  border-left: none;
+  opacity: 0;
   pointer-events: none;
 }
 
+.error-side-panel.expanded {
+  width: 320px;
+  opacity: 1;
+}
+
+.error-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.8rem;
+  border-bottom: 2px dashed var(--ink-faint);
+  flex-shrink: 0;
+}
+
+.error-panel-header h2 {
+  font-family: var(--font-sketch);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--v-rose);
+}
+
+.error-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+.error-panel-body::-webkit-scrollbar { width: 5px; }
+.error-panel-body::-webkit-scrollbar-track { background: transparent; }
+.error-panel-body::-webkit-scrollbar-thumb { background: var(--ink-faint); border-radius: 4px; }
+
+.error-panel-empty {
+  font-family: var(--font-hand);
+  color: var(--ink-faint);
+  text-align: center;
+  padding: 2rem 0;
+}
+
 .error-banner {
-  pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -935,13 +980,24 @@ body::before {
   overflow: hidden;
 }
 
-@media (max-width: 600px) {
-  .error-banner-container {
-    left: 1rem;
-    right: 1rem;
-    width: auto;
-    top: 4.5rem;
-    max-height: calc(100vh - 8rem);
+@media (max-width: 980px) {
+  .error-side-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 3px dashed var(--ink-faint);
+    max-height: 40vh;
+  }
+  .error-side-panel.collapsed {
+    width: 100%;
+    height: 0px;
+    border-top: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .error-side-panel.expanded {
+    width: 100%;
+    height: auto;
+    opacity: 1;
   }
 }
 

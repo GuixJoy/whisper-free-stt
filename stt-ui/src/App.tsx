@@ -127,6 +127,7 @@ function App() {
   const [showControls, setShowControls] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showErrors, setShowErrors] = useState(false);
   const [view, setView] = useState<AppView>("onboarding");
   const [errors, setErrors] = useState<AppError[]>([]);
   const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
@@ -188,7 +189,8 @@ function App() {
 
   const addError = useCallback((category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }].slice(-5));
+    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }]);
+    setShowErrors(true);
   }, []);
 
   const dismissError = useCallback((id: string) => {
@@ -321,7 +323,13 @@ function App() {
   if (view === "onboarding") {
     return (
       <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
-        <ErrorBanner errors={errors} onDismiss={dismissError} onRetry={(id) => { dismissError(id); }} />
+        <ErrorBanner
+          errors={errors}
+          onDismiss={dismissError}
+          onRetry={(id) => { dismissError(id); }}
+          visible={showErrors}
+          onClose={() => setShowErrors(false)}
+        />
         <OnboardingWizard onFinished={handleOnboardingComplete} />
       </AppStateContext.Provider>
     );
@@ -333,15 +341,6 @@ function App() {
         <div className="doodle-blob blob-1" aria-hidden="true" />
         <div className="doodle-blob blob-2" aria-hidden="true" />
         <div className="doodle-blob blob-3" aria-hidden="true" />
-
-        <ErrorBanner
-          errors={errors}
-          onDismiss={dismissError}
-          onRetry={(id) => {
-            dismissError(id);
-            void start();
-          }}
-        />
 
         <header className="app-header">
           <div className="header-brand">
@@ -369,6 +368,19 @@ function App() {
             <button className="sketch-btn btn-sm" onClick={() => setShowSettings(true)}>
               ⚙ Settings
             </button>
+            {errors.filter((e) => !e.dismissed).length > 0 && (
+              <button
+                className="sketch-btn btn-sm"
+                onClick={() => setShowErrors((s) => !s)}
+                style={{
+                  background: "var(--w-rose)",
+                  borderColor: "var(--v-rose)",
+                  color: "var(--v-rose)",
+                }}
+              >
+                ⚠️ Errors ({errors.filter((e) => !e.dismissed).length})
+              </button>
+            )}
           </div>
         </header>
 
@@ -535,6 +547,17 @@ function App() {
               )}
             </div>
           </section>
+
+          <ErrorBanner
+            visible={showErrors}
+            onClose={() => setShowErrors(false)}
+            errors={errors}
+            onDismiss={dismissError}
+            onRetry={(id) => {
+              dismissError(id);
+              void start();
+            }}
+          />
         </main>
 
         {toast && <div className="toast-msg">{toast}</div>}

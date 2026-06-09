@@ -191,7 +191,7 @@ class TestRewrite(unittest.TestCase):
         cfg = self._make_config(
             provider=LLMProvider.OPENROUTER,
             model="openai/gpt-4o-mini",
-            fallback_model="anthropic/claude-3-5-haiku-latest",
+            fallback_model="anthropic/claude-3.5-haiku",
         )
         call_count = [0]
 
@@ -233,7 +233,7 @@ class TestRewrite(unittest.TestCase):
         cfg = self._make_config(
             provider=LLMProvider.OPENROUTER,
             model="openai/gpt-4o-mini",
-            fallback_model="anthropic/claude-3-5-haiku-latest",
+            fallback_model="anthropic/claude-3.5-haiku",
         )
 
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or"}, clear=False):

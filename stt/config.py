@@ -132,7 +132,7 @@ class LLMConfig:
         if not self.model:
             object.__setattr__(self, "model", _default_model_for(self.provider))
         if not self.fallback_model and self.provider is LLMProvider.OPENROUTER:
-            object.__setattr__(self, "fallback_model", "anthropic/claude-3-5-haiku-latest")
+            object.__setattr__(self, "fallback_model", "anthropic/claude-3.5-haiku")
 
     @property
     def api_key_env(self) -> str:
