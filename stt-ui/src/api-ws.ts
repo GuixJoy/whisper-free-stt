@@ -26,6 +26,7 @@ export function createWsApi(port: number = 8765): STTApi {
     },
 
     stop() {
+      listeners = [];
       ws?.close();
       ws = null;
     },

@@ -274,6 +274,7 @@ function App() {
     runtimeRef.current = null;
     setConnected(false);
     setStatus("idle");
+    setMicLevel(0);
   };
 
   startRef.current = start;

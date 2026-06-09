@@ -43,6 +43,7 @@ export function createTauriApi(args: string[], sidecarName: string = "binaries/s
     },
 
     stop() {
+      listeners = [];
       if (child) {
         try { child.kill(); } catch { }
         child = null;
