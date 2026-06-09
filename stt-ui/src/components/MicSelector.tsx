@@ -1,5 +1,6 @@
 // ── Microphone selector with live VU meter ──
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { micLevelEmitter } from "../utils/mic-emitter";
 
 export interface MicDevice {
   index: number;
@@ -10,14 +11,22 @@ export interface MicDevice {
 
 interface Props {
   selectedIndex: number | null;
-  micLevel: number;
   onSelect: (index: number) => void;
   onTest: () => void;
   compact?: boolean;
 }
 
-export default function MicSelector({ micLevel, onTest, compact }: Props) {
+export default function MicSelector({ onTest, compact }: Props) {
   const [testing, setTesting] = useState(false);
+  const fillRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return micLevelEmitter.subscribe((level) => {
+      if (fillRef.current) {
+        fillRef.current.style.width = `${Math.min(100, level * 300)}%`;
+      }
+    });
+  }, []);
 
   const handleTest = () => {
     setTesting(true);
@@ -29,7 +38,7 @@ export default function MicSelector({ micLevel, onTest, compact }: Props) {
     return (
       <div className="mic-selector-compact">
         <div className="mic-meter-compact">
-          <div className="mic-meter-compact-fill" style={{ width: `${Math.min(100, micLevel * 300)}%` }} />
+          <div ref={fillRef} className="mic-meter-compact-fill" style={{ width: "0%" }} />
         </div>
         <button className="sketch-btn btn-sm" onClick={handleTest}>
           {testing ? "⏳" : "🎤"}
@@ -45,7 +54,7 @@ export default function MicSelector({ micLevel, onTest, compact }: Props) {
       </div>
 
       <div className="mic-meter-large">
-        <div className="mic-meter-large-fill" style={{ width: `${Math.min(100, micLevel * 300)}%` }} />
+        <div ref={fillRef} className="mic-meter-large-fill" style={{ width: "0%" }} />
       </div>
 
       <button

@@ -9,6 +9,7 @@ import { type AppError } from "./components/ErrorBanner";
 import HistoryPanel from "./components/HistoryPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
+import { micLevelEmitter } from "./utils/mic-emitter";
 import "./App.css";
 
 type RunMode = "ws" | "tauri";
@@ -116,12 +117,29 @@ function detectRunMode(): RunMode {
   return "ws";
 }
 
+function LiveFeedMicMeter() {
+  const fillRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    return micLevelEmitter.subscribe((level) => {
+      if (fillRef.current) {
+        fillRef.current.style.width = `${Math.min(100, level * 220)}%`;
+      }
+    });
+  }, []);
+
+  return (
+    <div className="mic-meter">
+      <div ref={fillRef} className="mic-meter-fill" style={{ width: "0%" }} />
+    </div>
+  );
+}
+
 function App() {
   const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
   const [settings, setSettings] = useState<RuntimeSettings>(getInitialSettings);
   const [status, setStatus] = useState("idle");
-  const [micLevel, setMicLevel] = useState(0);
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
   const [showControls, setShowControls] = useState(true);
@@ -208,7 +226,7 @@ function App() {
       return;
     }
     if (event.type === "mic") {
-      setMicLevel(event.level);
+      micLevelEmitter.emit(event.level);
       return;
     }
     if (event.type === "error") {
@@ -274,7 +292,7 @@ function App() {
     runtimeRef.current = null;
     setConnected(false);
     setStatus("idle");
-    setMicLevel(0);
+    micLevelEmitter.emit(0);
   };
 
   startRef.current = start;
@@ -351,7 +369,6 @@ function App() {
           <div className="header-right">
             <MicSelector
               selectedIndex={null}
-              micLevel={micLevel}
               onSelect={() => {}}
               onTest={() => {}}
               compact
@@ -514,9 +531,7 @@ function App() {
 
           <section className="feed-board">
             <div className="feed-top-bar">
-              <div className="mic-meter">
-                <div className="mic-meter-fill" style={{ width: `${Math.min(100, micLevel * 220)}%` }} />
-              </div>
+              <LiveFeedMicMeter />
               <div className="hud">
                 <div className={`note-chip ${connected ? "chip-connected" : "chip-disconnected"}`}>
                   {connected ? "● live" : "○ off"}
