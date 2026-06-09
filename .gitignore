@@ -1,27 +1,23 @@
-# stt/
 
-# Python
+*$py.class
+1
+build/
+dist/
+.DS_Store
+*.egg-info/
+.eggs/
+.env
+# Environment
+# IDE
+.idea/
+# OS
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-.eggs/
-
-# Virtual environment
+# Python
+# stt/
+stt-ui/src-tauri/binaries/
+Thumbs.db
 .venv/
 venv/
-
-# IDE
+# Virtual environment
 .vscode/
-.idea/
-
-# Environment
-.env
-
-# OS
-.DS_Store
-Thumbs.db
-stt-ui/src-tauri/binaries/
-1

@@ -70,7 +70,7 @@ export function useOnboarding(onComplete: () => void) {
       try {
         if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
           const { Command } = await import("@tauri-apps/plugin-shell");
-          const cmd = Command.sidecar("stt-engine", [
+          const cmd = Command.sidecar("binaries/stt-engine", [
             "--json-mode", "--model", name, "--asr-profile", "speed", "--llm-mode", "off",
             "--input-file", "/dev/null",
           ]);

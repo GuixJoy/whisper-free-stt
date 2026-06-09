@@ -2,7 +2,7 @@
 import { type STTApi, type STTEvent } from "./api";
 import type { Child } from "@tauri-apps/plugin-shell";
 
-export function createTauriApi(args: string[], sidecarName: string = "stt-engine"): STTApi {
+export function createTauriApi(args: string[], sidecarName: string = "binaries/stt-engine"): STTApi {
   let listeners: Array<(e: STTEvent) => void> = [];
   let child: Child | null = null;
 

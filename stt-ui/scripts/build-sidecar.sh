@@ -33,8 +33,8 @@ uv run python -m PyInstaller \
   "$PROJECT_ROOT/stt/cli.py"
 
 # Tauri v2 build mode looks for stt-engine-{target_triple}, dev mode looks for stt-engine.
-# Symlink so only one 178MB copy exists on disk.
-ln -sf "stt-engine" "${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE}"
+# Copy so both exist as actual files (tauri_build doesn't follow symlinks).
+cp "${SIDECAR_DIR}/stt-engine" "${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE}"
 
 echo "Sidecar binary:  ${SIDECAR_DIR}/stt-engine"
-echo "Target symlink:  ${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE} -> stt-engine"
+echo "Target binary:  ${SIDECAR_DIR}/stt-engine-${TARGET_TRIPLE}"

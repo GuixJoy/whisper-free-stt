@@ -9,20 +9,21 @@
     {
       "identifier": "shell:allow-execute",
       "allow": [
-        {"name": "stt-engine", "sidecar": true, "args": true},
+        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
         {"name": "sh", "cmd": "/bin/sh", "args": true}
       ]
     },
     {
       "identifier": "shell:allow-spawn",
       "allow": [
-        {"name": "stt-engine", "sidecar": true, "args": true},
+        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
         {"name": "sh", "cmd": "/bin/sh", "args": true}
       ]
     },
     {
       "identifier": "shell:allow-stdin-write",
-      "allow": [{"name": "stt-engine", "sidecar": true, "args": true}]
-    }
+      "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
+    },
+    "shell:allow-kill"
   ]
 }
