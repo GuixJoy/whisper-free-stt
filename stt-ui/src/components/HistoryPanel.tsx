@@ -62,6 +62,16 @@ export default function HistoryPanel({ visible, onClose }: Props) {
     loadHistory();
   }, [visible, loadHistory]);
 
+  // Keyboard handler: Escape to close
+  useEffect(() => {
+    if (!visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [visible, onClose]);
+
   const copyText = async (text: string, id: number) => {
     if (!navigator.clipboard) return;
     try {
@@ -74,24 +84,41 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   if (!visible) return null;
 
   return (
-    <div className="history-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      className="history-overlay"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Transcript history"
+    >
       <div className="history-panel">
         <div className="history-header">
           <h2>📜 Transcript History</h2>
           <div className="history-actions">
-            <button className="sketch-btn btn-sm" onClick={loadHistory} disabled={loading}>
+            <button
+              className="sketch-btn btn-sm"
+              onClick={loadHistory}
+              disabled={loading}
+              aria-label="Refresh history"
+            >
               {loading ? "⟳" : "↻"} Refresh
             </button>
-            <button className="sketch-btn btn-sm" onClick={onClose}>✕ Close</button>
+            <button
+              className="sketch-btn btn-sm"
+              onClick={onClose}
+              aria-label="Close history"
+            >
+              ✕ Close
+            </button>
           </div>
         </div>
-        {error && <div className="history-error">⚠ {error}</div>}
-        <div className="history-list">
+        {error && <div className="history-error" role="alert">⚠ {error}</div>}
+        <div className="history-list" role="list">
           {rows.length === 0 && !loading && (
             <p className="history-empty">No transcripts yet. Start recording to build your history.</p>
           )}
           {rows.map((row) => (
-            <div key={row.id} className="history-card">
+            <div key={row.id} className="history-card" role="listitem">
               <div className="history-card-header">
                 <span className="history-mode">{row.mode}</span>
                 <span className="history-time">{formatDate(row.created_at)}</span>
@@ -109,6 +136,7 @@ export default function HistoryPanel({ visible, onClose }: Props) {
                 <button
                   className="sketch-btn btn-sm"
                   onClick={() => copyText(row.processed_text || row.raw_text, row.id)}
+                  aria-label={`Copy transcript: ${row.raw_text.substring(0, 30)}...`}
                 >
                   {copiedId === row.id ? "Copied!" : "📋 Copy"}
                 </button>

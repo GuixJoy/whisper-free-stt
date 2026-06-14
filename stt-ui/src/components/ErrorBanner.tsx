@@ -30,10 +30,18 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
   const activeErrors = errors.filter((e) => !e.dismissed);
 
   return (
-    <aside className={`error-side-panel ${visible ? "expanded" : "collapsed"}`}>
+    <aside
+      className={`error-side-panel ${visible ? "expanded" : "collapsed"}`}
+      role="complementary"
+      aria-label="Error log"
+    >
       <div className="error-panel-header">
         <h2>⚠️ Errors ({activeErrors.length})</h2>
-        <button className="sketch-btn btn-sm" onClick={onClose}>
+        <button
+          className="sketch-btn btn-sm"
+          onClick={onClose}
+          aria-label="Hide error panel"
+        >
           ✕ Hide
         </button>
       </div>
@@ -45,47 +53,42 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
             {activeErrors.map((err) => (
               <motion.div
                 key={err.id}
-                className={`error-banner error-${err.category}`}
+                className={`error-item error-${err.category}`}
                 initial={{ height: 0, opacity: 0, scale: 0.95 }}
                 animate={{ height: "auto", opacity: 1, scale: 1 }}
                 exit={{ height: 0, opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.2 }}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.5rem",
-                  padding: "0.75rem",
-                  marginBottom: "0.5rem",
-                  border: "2px solid",
-                  borderRadius: "8px",
-                  boxShadow: "var(--sketch-shadow)",
-                  overflow: "hidden"
-                }}
+                role="alert"
               >
-                <div style={{ display: "flex", alignItems: "flex-start", width: "100%", gap: "0.5rem" }}>
-                  <span className="error-icon" style={{ fontSize: "1.1rem", flexShrink: 0 }}>
+                <div className="error-item-header">
+                  <span className="error-item-icon" aria-hidden="true">
                     {CATEGORY_ICONS[err.category] || "⚠️"}
                   </span>
-                  <span className="error-message" style={{ fontWeight: 600, fontSize: "0.85rem", wordBreak: "break-word", flex: 1 }}>
+                  <span className="error-item-message">
                     {err.message}
                   </span>
-                  <button className="error-dismiss" onClick={() => onDismiss(err.id)} style={{ marginLeft: "auto", cursor: "pointer", background: "none", border: "none", fontSize: "1.2rem" }}>
+                  <button
+                    className="error-item-dismiss"
+                    onClick={() => onDismiss(err.id)}
+                    aria-label={`Dismiss error: ${err.message}`}
+                  >
                     ×
                   </button>
                 </div>
                 {err.retryHint && (
-                  <p style={{ fontSize: "0.78rem", fontStyle: "italic", opacity: 0.85, fontFamily: "var(--font-hand)", color: "var(--ink-mid)" }}>
+                  <p className="error-item-hint">
                     Hint: {err.retryHint}
                   </p>
                 )}
                 {err.canRetry && (
-                  <button
-                    className="sketch-btn btn-sm"
-                    onClick={() => onRetry(err.id)}
-                    style={{ alignSelf: "flex-start", marginTop: "0.2rem" }}
-                  >
-                    Retry
-                  </button>
+                  <div className="error-item-actions">
+                    <button
+                      className="sketch-btn btn-sm"
+                      onClick={() => onRetry(err.id)}
+                    >
+                      Retry
+                    </button>
+                  </div>
                 )}
               </motion.div>
             ))}

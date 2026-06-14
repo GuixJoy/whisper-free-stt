@@ -165,6 +165,17 @@ function App() {
     }
   }, []);
 
+  // --- Fix viewport height for Tauri webview (handles maximize/fullscreen) ---
+  useEffect(() => {
+    const setVH = () => {
+      const vh = window.innerHeight * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+    setVH();
+    window.addEventListener('resize', setVH);
+    return () => window.removeEventListener('resize', setVH);
+  }, []);
+
   useEffect(() => {
     if (!toast) return;
     const t = window.setTimeout(() => setToast(""), 3000);
@@ -175,6 +186,18 @@ function App() {
     if (!feedRef.current) return;
     feedRef.current.scrollTop = feedRef.current.scrollHeight;
   }, [lines]);
+
+  // --- Update window title with status ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        const prefix = status === "idle" ? "○" : status === "listening" ? "🎙" : status === "transcribing" ? "✍" : "●";
+        await win.setTitle(`${prefix} STT — ${status}`);
+      } catch { /* not in Tauri */ }
+    })();
+  }, [status]);
 
   useEffect(() => {
     try {
@@ -299,6 +322,24 @@ function App() {
   stopRef.current = stop;
 
   useEffect(() => () => runtimeRef.current?.stop(), []);
+
+  // --- Listen for tray menu actions (start/stop) ---
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<string>("tray-action", (event) => {
+          if (event.payload === "start" && !connectedRef.current) {
+            void startRef.current();
+          } else if (event.payload === "stop" && connectedRef.current) {
+            stopRef.current();
+          }
+        });
+      } catch { /* not in Tauri */ }
+    })();
+    return () => { unlisten?.(); };
+  }, []);
 
   const clearLines = () => setLines([]);
 
