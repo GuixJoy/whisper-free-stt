@@ -1,6 +1,34 @@
 use rusqlite::Connection;
 use serde::Serialize;
+use tauri::{Emitter, Manager};
 use tauri_plugin_sql::{Migration, MigrationKind};
+use thiserror::Error;
+
+// ---------------------------------------------------------------------------
+// Error types (thiserror pattern from Tauri v2 docs)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Error)]
+enum AppError {
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl serde::Serialize for AppError {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(self.to_string().as_ref())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
 struct TranscriptRow {
@@ -15,18 +43,20 @@ struct TranscriptRow {
     created_at: String,
 }
 
+// ---------------------------------------------------------------------------
+// Commands
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
-fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, String> {
+fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
     let db_path = dirs_next::home_dir()
         .unwrap_or_default()
         .join(".local/share/stt/history.db");
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
-             FROM transcripts ORDER BY created_at DESC LIMIT ?1",
-        )
-        .map_err(|e| e.to_string())?;
+    let conn = Connection::open(db_path)?;
+    let mut stmt = conn.prepare(
+        "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
+         FROM transcripts ORDER BY created_at DESC LIMIT ?1",
+    )?;
     let rows = stmt
         .query_map([limit as i64], |row| {
             Ok(TranscriptRow {
@@ -40,17 +70,13 @@ fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, String> {
                 favorite: row.get(7)?,
                 created_at: row.get(8)?,
             })
-        })
-        .map_err(|e| e.to_string())?;
-    let mut result = Vec::new();
-    for row in rows {
-        result.push(row.map_err(|e| e.to_string())?);
-    }
-    Ok(result)
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 #[tauri::command]
-fn get_backend_path() -> Result<String, String> {
+fn get_backend_path() -> Result<String, AppError> {
     let candidates = vec![
         std::env::current_dir()
             .unwrap_or_default()
@@ -118,7 +144,6 @@ fn check_system_deps() -> serde_json::Value {
             "fixHint": if has_pulse { None::<&str> } else { Some("Install: sudo apt install pipewire-pulse") }
         }));
 
-        // Check if user can actually connect to the audio server (tests group membership)
         let has_audio_access = if has_pulse {
             std::process::Command::new("pactl")
                 .arg("info")
@@ -170,6 +195,10 @@ fn check_system_deps() -> serde_json::Value {
     serde_json::json!(checks)
 }
 
+// ---------------------------------------------------------------------------
+// App entry point
+// ---------------------------------------------------------------------------
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -218,12 +247,82 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_backend_path,
             get_platform_info,
             check_system_deps,
             get_history
         ])
+        .setup(|app| {
+            // --- System tray with start/stop menu ---
+            use tauri::menu::{Menu, MenuItem};
+            use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+
+            let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
+            let start_item = MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
+            let stop_item = MenuItem::with_id(app, "stop", "Stop Listening", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &quit_item])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("STT — Speech to Text")
+                .menu(&menu)
+                .show_menu_on_left_click(true)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "start" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("tray-action", "start");
+                        }
+                    }
+                    "stop" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("tray-action", "stop");
+                        }
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // --- Minimize to tray instead of closing ---
+            if let Some(window) = app.get_webview_window("main") {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        // Prevent close, minimize to tray instead
+                        api.prevent_close();
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

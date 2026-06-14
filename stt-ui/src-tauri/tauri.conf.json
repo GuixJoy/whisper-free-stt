@@ -13,12 +13,16 @@
     "windows": [
       {
         "title": "stt-ui",
-        "width": 800,
-        "height": 600
+        "width": 900,
+        "height": 680,
+        "minWidth": 600,
+        "minHeight": 400,
+        "resizable": true,
+        "center": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
     }
   },
   "bundle": {
