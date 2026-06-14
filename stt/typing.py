@@ -7,6 +7,8 @@ import subprocess
 
 from stt.config import TypingConfig
 
+_wtype_cache: dict[str, str | None] = {}
+
 
 def type_to_focused_input(text: str, config: TypingConfig) -> bool:
     """Type text into the active focused input field via wtype."""
@@ -18,9 +20,12 @@ def type_to_focused_input(text: str, config: TypingConfig) -> bool:
     if not _os.environ.get("WAYLAND_DISPLAY"):
         return False  # not on Wayland — don't hang
 
-    wtype = shutil.which(config.wtype_path)
+    path_key = config.wtype_path
+    if path_key not in _wtype_cache:
+        _wtype_cache[path_key] = shutil.which(path_key)
+    wtype = _wtype_cache[path_key]
     if wtype is None:
-        print(f"Warning: '{config.wtype_path}' not found in PATH. Typing skipped.")
+        print(f"Warning: '{path_key}' not found in PATH. Typing skipped.")
         return False
 
     try:

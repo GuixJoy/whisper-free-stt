@@ -307,14 +307,30 @@ def mic_stream(
         chunk_queue.append(indata[:, 0].copy())
         chunk_ready.set()
 
-    stream = open_input_stream(
-        device_index=device_index,
-        target_samplerate=config.sample_rate,
-        channels=config.channels,
-        dtype=config.dtype,
-        blocksize=config.blocksize,
-        callback=_callback,
-    )
+    # Retry loop: ALSA may not release the device immediately after a scan
+    import sys as _sys
+    max_attempts = 5
+    stream = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            stream = open_input_stream(
+                device_index=device_index,
+                target_samplerate=config.sample_rate,
+                channels=config.channels,
+                dtype=config.dtype,
+                blocksize=config.blocksize,
+                callback=_callback,
+            )
+            break
+        except Exception as exc:
+            if attempt < max_attempts:
+                print(f"[debug] audio: stream open attempt {attempt} failed ({exc}). "
+                      f"Retrying in 0.5s...", file=_sys.stderr, flush=True)
+                sd.sleep(500)
+            else:
+                raise RuntimeError(
+                    f"Failed to open microphone after {max_attempts} attempts: {exc}"
+                ) from exc
 
     with stream:
         if debug:

@@ -22,6 +22,7 @@ class LLMMode(str, Enum):
 class LLMProvider(str, Enum):
     OPENROUTER = "openrouter"
     DEEPSEEK = "deepseek"
+    OLLAMA = "ollama"
 
 
 class TranscriptionBackend(str, Enum):
@@ -103,6 +104,8 @@ def _detect_provider() -> LLMProvider:
 def _base_url_for(provider: LLMProvider) -> str:
     if provider is LLMProvider.DEEPSEEK:
         return "https://api.deepseek.com/chat/completions"
+    if provider is LLMProvider.OLLAMA:
+        return "http://localhost:11434/api/chat"
     return "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -115,6 +118,8 @@ def _api_key_env_for(provider: LLMProvider) -> str:
 def _default_model_for(provider: LLMProvider) -> str:
     if provider is LLMProvider.DEEPSEEK:
         return "deepseek-chat"
+    if provider is LLMProvider.OLLAMA:
+        return "qwen2.5:1.5b"
     return "openai/gpt-4o-mini"
 
 

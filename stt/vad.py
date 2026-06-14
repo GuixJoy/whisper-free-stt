@@ -15,7 +15,7 @@ def compute_rms(signal: np.ndarray) -> float:
     """Root-mean-square energy of a mono float32 signal."""
     if len(signal) == 0:
         return 0.0
-    return float(np.sqrt(np.mean(signal.astype(np.float64) ** 2)))
+    return float(np.sqrt(np.mean(signal * signal)))
 
 
 @dataclass(frozen=True)

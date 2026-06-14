@@ -5,6 +5,8 @@ Mic stays open. Transcription runs in background threads. Text prints as you spe
 
 from __future__ import annotations
 
+import asyncio as _asyncio
+import json as _json
 import signal
 import sys
 import threading
@@ -19,7 +21,7 @@ from stt.config import AppConfig, LLMMode, TranscriptionBackend
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
 from stt.vad import compute_rms, StreamingEndpointDetector
 from stt.transcription import transcribe, warm_up_backend
-from stt.llm import rewrite
+from stt.llm import rewrite, rewrite_stream, _clean_response
 from stt.clipboard import copy_to_clipboard
 from stt.typing import type_to_focused_input
 from stt.history import get_store
@@ -77,8 +79,6 @@ def _get_ws_loop():
 
 def _json_emit(config: AppConfig, event: dict) -> None:
     """Emit a JSON event to stdout and/or WebSocket clients."""
-    import json as _json
-    import asyncio as _asyncio
     payload = _json.dumps(event)
     if config.json_mode:
         print(payload, flush=True)
@@ -90,8 +90,8 @@ def _json_emit(config: AppConfig, event: dict) -> None:
 # LLM concurrency limit (prevent rate-limit pile-up from rapid speech)
 # ---------------------------------------------------------------------------
 
-_llm_semaphore = threading.Semaphore(2)  # max 2 concurrent LLM calls
-_asr_semaphore = threading.Semaphore(1)  # keep decode single-flight for low latency
+_llm_semaphore = threading.Semaphore(4)  # max 4 concurrent LLM calls (network I/O bound)
+_asr_semaphore: threading.Semaphore | None = None  # initialized in run() based on backend
 _SILENCE_HALLUCINATIONS = frozenset({
     "thank you",
     "thanks",
@@ -226,21 +226,42 @@ def _probe_hardware(config: AppConfig) -> None:
 # ---------------------------------------------------------------------------
 
 class _RingBuffer:
-    """Fixed-size sample buffer with append and slice access."""
+    """Pre-allocated numpy circular buffer — avoids per-chunk Python object overhead."""
 
     def __init__(self, max_samples: int):
-        self._buf: deque[float] = deque(maxlen=max_samples)
+        self._buf = np.zeros(max_samples, dtype=np.float32)
+        self._max = max_samples
         self._total = 0
 
     def extend(self, chunk: np.ndarray) -> None:
-        self._buf.extend(chunk.tolist())
-        self._total += len(chunk)
+        n = len(chunk)
+        if n >= self._max:
+            self._buf[:] = chunk[-self._max:]
+            self._total += n
+            return
+        pos = self._total % self._max
+        self._total += n
+        end = pos + n
+        if end <= self._max:
+            self._buf[pos:end] = chunk
+        else:
+            first = self._max - pos
+            self._buf[pos:] = chunk[:first]
+            self._buf[:n - first] = chunk[first:]
 
     def slice_range(self, start_sample: int, end_sample: int) -> np.ndarray:
-        available_start = self._total - len(self._buf)
-        start_ix = max(start_sample, available_start) - available_start
-        end_ix = max(start_ix, min(end_sample, self._total) - available_start)
-        return np.array(list(self._buf)[start_ix:end_ix], dtype=np.float32)
+        """Return a copy of samples [start_sample, end_sample)."""
+        n = end_sample - start_sample
+        if n <= 0:
+            return np.zeros(0, dtype=np.float32)
+        oldest = max(0, self._total - self._max)
+        if start_sample < oldest or end_sample > self._total:
+            return np.zeros(0, dtype=np.float32)
+        start_pos = start_sample % self._max
+        end_pos = end_sample % self._max
+        if start_pos < end_pos:
+            return self._buf[start_pos:end_pos].copy()
+        return np.concatenate([self._buf[start_pos:self._max], self._buf[:end_pos]])
 
     def total_samples(self) -> int:
         return self._total
@@ -258,8 +279,16 @@ def run(
     enable_signal_handlers: bool = True,
 ) -> None:
     """Continuous streaming: mic → adaptive VAD → transcribe → [LLM] → print."""
+    global _asr_semaphore
     telemetry = _LatencyTracker()
     stream_iter = None
+
+    # ASR concurrency: faster-whisper on GPU supports parallel decode,
+    # whisper.cpp needs serialization (global lock handles it internally).
+    if config.transcription.backend is TranscriptionBackend.FASTER_WHISPER:
+        _asr_semaphore = threading.Semaphore(3)
+    else:
+        _asr_semaphore = threading.Semaphore(1)
 
     _echo("╔══════════════════════════════════╗")
     _echo("║   STT — Local Speech-to-Text    ║")
@@ -281,6 +310,8 @@ def run(
             mic_index, mic_name, mic_rms = find_best_microphone(config.audio.sample_rate)
             _echo(f"Mic: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
             object.__setattr__(config.audio, "device_index", mic_index)
+            # Give ALSA time to fully release the device after scanning
+            time.sleep(0.3)
     except Exception as exc:
         if hooks and hooks.on_error:
             hooks.on_error(f"Microphone setup failed: {exc}")
@@ -482,118 +513,126 @@ def _transcribe_and_print(
         )
         return
 
-    # --- Transcription ---
+    # --- Transcription (ASR semaphore held until decode completes) ---
+    _json_emit(config, {"type": "state", "state": "transcribing", "utterance_id": utterance_id})
+    if hooks and hooks.on_state:
+        hooks.on_state("transcribing")
+    if hooks and hooks.on_activity:
+        hooks.on_activity("Transcribing")
+    ts_asr = time.monotonic()
     try:
-        _json_emit(config, {"type": "state", "state": "transcribing", "utterance_id": utterance_id})
+        result = _transcribe_with_partials(audio, sr, config.transcription, _on_partial)
+    except Exception as exc:
+        _debug(config, f"transcription error: {exc}")
+        if hooks and hooks.on_error:
+            hooks.on_error(f"Transcription error: {exc}")
         if hooks and hooks.on_state:
-            hooks.on_state("transcribing")
-        if hooks and hooks.on_activity:
-            hooks.on_activity("Transcribing")
-        ts_asr = time.monotonic()
-        try:
-            result = _transcribe_with_partials(audio, sr, config.transcription, _on_partial)
-        except Exception as exc:
-            _debug(config, f"transcription error: {exc}")
-            if hooks and hooks.on_error:
-                hooks.on_error(f"Transcription error: {exc}")
-            if hooks and hooks.on_state:
-                hooks.on_state("error")
-            return
+            hooks.on_state("error")
+        return
+    finally:
         asr_elapsed = time.monotonic() - ts_asr
         telemetry.record("asr", asr_elapsed)
-        _debug(config, f"transcribed {len(audio)/sr:.1f}s in {asr_elapsed:.1f}s ({result.language})")
+        _asr_semaphore.release()  # Release immediately — next utterance can start ASR
 
-        if result.is_empty:
+    _debug(config, f"transcribed {len(audio)/sr:.1f}s in {asr_elapsed:.1f}s ({result.language})")
+
+    if result.is_empty:
+        return
+
+    raw = result.text
+    norm = _normalize_text(raw)
+    # Filter common whisper silence hallucinations (e.g. "thank you")
+    # when the captured segment has very low energy.
+    if norm in _SILENCE_HALLUCINATIONS:
+        seg_rms = compute_rms(audio)
+        seg_dur = len(audio) / sr
+        if seg_rms < 0.12 and seg_dur < 3.0:
+            _json_emit(
+                config,
+                {
+                    "type": "dropped",
+                    "utterance_id": utterance_id,
+                    "reason": "silence_hallucination",
+                    "duration_sec": round(seg_dur, 3),
+                },
+            )
             return
+    # Don't duplicate partial output if the final raw matches what we already showed
+    if partials and raw.strip() == partials[-1].strip():
+        _echo(f"\n[final] {raw}  ← confirmed")
+    else:
+        _echo(f"\n[raw] {raw}")
+    _json_emit(config, {"type": "raw", "text": raw, "utterance_id": utterance_id})
+    if hooks and hooks.on_raw:
+        hooks.on_raw(raw)
 
-        raw = result.text
-        norm = _normalize_text(raw)
-        # Filter common whisper silence hallucinations (e.g. "thank you")
-        # when the captured segment has very low energy.
-        if norm in _SILENCE_HALLUCINATIONS:
-            seg_rms = compute_rms(audio)
-            seg_dur = len(audio) / sr
-            if seg_rms < 0.12 and seg_dur < 3.0:
-                _json_emit(
-                    config,
-                    {
-                        "type": "dropped",
-                        "utterance_id": utterance_id,
-                        "reason": "silence_hallucination",
-                        "duration_sec": round(seg_dur, 3),
-                    },
-                )
-                return
-        # Don't duplicate partial output if the final raw matches what we already showed
-        if partials and raw.strip() == partials[-1].strip():
-            _echo(f"\n[final] {raw}  ← confirmed")
-        else:
-            _echo(f"\n[raw] {raw}")
-        _json_emit(config, {"type": "raw", "text": raw, "utterance_id": utterance_id})
-        if hooks and hooks.on_raw:
-            hooks.on_raw(raw)
-
-        # --- LLM ---
-        if config.llm.mode is LLMMode.OFF:
-            _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
-            _copy_and_sep(config, raw)
-            if hooks and hooks.on_processed:
-                hooks.on_processed(raw)
-            if hooks and hooks.on_state:
-                hooks.on_state("copied")
-            total_elapsed = time.monotonic() - ts_total
-            telemetry.record("total", total_elapsed)
-            get_store().write_async(raw, raw, mode="off", duration_sec=total_elapsed)
-            return
-
-        _debug(config, f"LLM: mode={config.llm.mode.value}")
-        _json_emit(config, {"type": "state", "state": "rewriting", "utterance_id": utterance_id})
-        if hooks and hooks.on_state:
-            hooks.on_state("rewriting")
-        if hooks and hooks.on_activity:
-            hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
-
-        # Build few-shot context from past corrected transcripts (latency-gated)
-        few_shot_context = ""
-        try:
-            store = get_store()
-            candidates = store.recent_cleanups(limit=20)
-            if candidates:
-                before_ctx = time.monotonic()
-                few_shot_context = _build_few_shot_ctx(raw, candidates, top_k=3, max_tokens=400)
-                ctx_ms = (time.monotonic() - before_ctx) * 1000
-                if few_shot_context:
-                    _debug(config, f"few-shot: {ctx_ms:.0f}ms embedding latency")
-        except Exception:
-            pass
-
-        ts_llm = time.monotonic()
-        try:
-            with _llm_semaphore:
-                processed = rewrite(raw, config.llm, few_shot_context=few_shot_context)
-            llm_elapsed = time.monotonic() - ts_llm
-            telemetry.record("llm", llm_elapsed)
-            _echo(f"[{config.llm.mode.value}] {processed}")
-            _json_emit(config, {"type": "processed", "text": processed, "utterance_id": utterance_id})
-        except Exception as exc:
-            _echo(f"LLM error: {exc}", file=sys.stderr)
-            _json_emit(config, {"type": "error", "message": str(exc), "utterance_id": utterance_id})
-            processed = raw
-            if hooks and hooks.on_error:
-                hooks.on_error(f"LLM error: {exc}")
-            if hooks and hooks.on_state:
-                hooks.on_state("error")
-
-        _copy_and_sep(config, processed)
+    # --- LLM (no semaphore held — next utterance can start ASR in parallel) ---
+    if config.llm.mode is LLMMode.OFF:
+        _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
+        _copy_and_sep(config, raw)
         if hooks and hooks.on_processed:
-            hooks.on_processed(processed)
+            hooks.on_processed(raw)
         if hooks and hooks.on_state:
             hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
-        get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
-    finally:
-        _asr_semaphore.release()
+        get_store().write_async(raw, raw, mode="off", duration_sec=total_elapsed)
+        return
+
+    _debug(config, f"LLM: mode={config.llm.mode.value}")
+    _json_emit(config, {"type": "state", "state": "rewriting", "utterance_id": utterance_id})
+    if hooks and hooks.on_state:
+        hooks.on_state("rewriting")
+    if hooks and hooks.on_activity:
+        hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
+
+    # Build few-shot context from past corrected transcripts (latency-gated)
+    few_shot_context = ""
+    try:
+        store = get_store()
+        candidates = store.recent_cleanups(limit=20)
+        if candidates:
+            before_ctx = time.monotonic()
+            few_shot_context = _build_few_shot_ctx(raw, candidates, top_k=3, max_tokens=400)
+            ctx_ms = (time.monotonic() - before_ctx) * 1000
+            if few_shot_context:
+                _debug(config, f"few-shot: {ctx_ms:.0f}ms embedding latency")
+    except Exception:
+        pass
+
+    ts_llm = time.monotonic()
+    try:
+        collected: list[str] = []
+        with _llm_semaphore:
+            for token in rewrite_stream(raw, config.llm, few_shot_context=few_shot_context):
+                if token:
+                    collected.append(token)
+                    sys.stdout.write(token)
+                    sys.stdout.flush()
+        processed = _clean_response("".join(collected))
+        llm_elapsed = time.monotonic() - ts_llm
+        telemetry.record("llm", llm_elapsed)
+        if not collected:
+            processed = raw
+        _echo(f"\n[{config.llm.mode.value}] {processed}")
+        _json_emit(config, {"type": "processed", "text": processed, "utterance_id": utterance_id})
+    except Exception as exc:
+        _echo(f"LLM error: {exc}", file=sys.stderr)
+        _json_emit(config, {"type": "error", "message": str(exc), "utterance_id": utterance_id})
+        processed = raw
+        if hooks and hooks.on_error:
+            hooks.on_error(f"LLM error: {exc}")
+        if hooks and hooks.on_state:
+            hooks.on_state("error")
+
+    _copy_and_sep(config, processed)
+    if hooks and hooks.on_processed:
+        hooks.on_processed(processed)
+    if hooks and hooks.on_state:
+        hooks.on_state("copied")
+    total_elapsed = time.monotonic() - ts_total
+    telemetry.record("total", total_elapsed)
+    get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
 
 
 def _transcribe_with_partials(
@@ -701,9 +740,21 @@ def _transcribe_with_partials(
 
 
 def _copy_and_sep(config: AppConfig, text: str) -> None:
-    if type_to_focused_input(text, config.typing):
+    """Type text and/or copy to clipboard in parallel for minimum latency."""
+    typed = [False]
+    copied = [False]
+    threads: list[threading.Thread] = []
+    if config.typing.enabled:
+        threads.append(threading.Thread(target=lambda: typed.__setitem__(0, type_to_focused_input(text, config.typing)), daemon=True))
+    if config.clipboard.enabled:
+        threads.append(threading.Thread(target=lambda: copied.__setitem__(0, copy_to_clipboard(text, config.clipboard)), daemon=True))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+    if typed[0]:
         _echo("[typed] ✓")
-    if config.clipboard.enabled and copy_to_clipboard(text, config.clipboard):
+    if copied[0]:
         _echo("[clipboard] ✓")
     _echo("-" * 40)
 

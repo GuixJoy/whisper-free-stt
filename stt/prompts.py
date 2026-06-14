@@ -8,7 +8,9 @@ SYSTEM_PROMPT = ""  # not used — we pass everything as user message for speed
 
 _CLEANUP = (
     "Fix punctuation, capitalization, and remove filler words (um, uh). "
-    "Preserve technical terms. Return only the cleaned text."
+    "Preserve technical terms. "
+    "IMPORTANT: Return ONLY the corrected transcript text. "
+    "Do NOT add any labels, headers, commentary, safety ratings, or explanations."
 )
 
 _BULLET = (
