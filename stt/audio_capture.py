@@ -33,61 +33,73 @@ def open_input_stream(
     and resamples the incoming audio chunks transparently on-the-fly to the target rate
     before invoking the user callback.
     """
+    import threading as _threading
+    import time as _time
+
+    def _try_open(samplerate: int, blocksz: int) -> sd.InputStream | None:
+        """Attempt to open stream with a timeout to prevent hanging."""
+        result = [None]
+        def _do_open():
+            try:
+                result[0] = sd.InputStream(
+                    samplerate=samplerate,
+                    channels=channels,
+                    dtype=dtype,
+                    blocksize=blocksz,
+                    device=device_index,
+                    callback=callback,
+                )
+            except Exception:
+                pass
+        t = _threading.Thread(target=_do_open, daemon=True)
+        t.start()
+        t.join(timeout=3.0)  # 3 second timeout
+        return result[0]
+
+    # First attempt: Open at the requested sample rate natively
+    stream = _try_open(target_samplerate, blocksize)
+    if stream is not None:
+        return stream
+
+    import sys
+    print(f"[debug] Target sample rate {target_samplerate}Hz failed. Trying fallback...", file=sys.stderr, flush=True)
+
+    # Fallback attempt: Query native default sample rate for the device
     try:
-        # First attempt: Open at the requested sample rate natively
-        return sd.InputStream(
-            samplerate=target_samplerate,
-            channels=channels,
-            dtype=dtype,
-            blocksize=blocksize,
-            device=device_index,
-            callback=callback,
-        )
-    except Exception as exc:
-        import sys
-        print(f"[debug] Target sample rate {target_samplerate}Hz failed: {exc}. Trying fallback...", file=sys.stderr, flush=True)
+        device_info = sd.query_devices(device_index, "input")
+        native_samplerate = int(device_info["default_samplerate"])
+    except Exception:
+        native_samplerate = 44100  # standard safe default
 
-        # Fallback attempt: Query native default sample rate for the device
-        try:
-            device_info = sd.query_devices(device_index, "input")
-            native_samplerate = int(device_info["default_samplerate"])
-        except Exception:
-            native_samplerate = 44100  # standard safe default
+    print(f"[debug] Falling back to device native rate: {native_samplerate}Hz", file=sys.stderr, flush=True)
 
-        print(f"[debug] Falling back to device native rate: {native_samplerate}Hz", file=sys.stderr, flush=True)
+    # Calculate native blocksize to maintain similar chunk duration (~128ms)
+    native_blocksize = int((blocksize / target_samplerate) * native_samplerate)
 
-        # Calculate native blocksize to maintain similar chunk duration (~128ms)
-        # chunk duration = blocksize / target_samplerate
-        # native_blocksize = chunk duration * native_samplerate
-        native_blocksize = int((blocksize / target_samplerate) * native_samplerate)
+    # Thread-local/internal buffer to accumulate samples for continuous resampling
+    def resampling_callback(indata: np.ndarray, frames_count: int, time_info: object, status: int) -> None:
+        mono_data = indata[:, 0].copy()
+        # Resample mono data to target_samplerate using linear interpolation
+        num_samples = len(mono_data)
+        duration = num_samples / native_samplerate
+        num_target_samples = int(duration * target_samplerate)
 
-        # Thread-local/internal buffer to accumulate samples for continuous resampling
-        def resampling_callback(indata: np.ndarray, frames_count: int, time_info: object, status: int) -> None:
-            mono_data = indata[:, 0].copy()
-            # Resample mono data to target_samplerate using linear interpolation
-            num_samples = len(mono_data)
-            duration = num_samples / native_samplerate
-            num_target_samples = int(duration * target_samplerate)
+        indices = np.linspace(0, num_samples - 1, num_target_samples)
+        resampled_chunk = np.interp(indices, np.arange(num_samples), mono_data).astype(np.float32)
 
-            indices = np.linspace(0, num_samples - 1, num_target_samples)
-            resampled_chunk = np.interp(indices, np.arange(num_samples), mono_data).astype(np.float32)
+        # Since user callback expects 2D array of shape (frames, channels), we construct it:
+        if channels == 1:
+            callback_data = resampled_chunk[:, np.newaxis]
+        else:
+            callback_data = np.column_stack([resampled_chunk] * channels)
 
-            # Since user callback expects 2D array of shape (frames, channels), we construct it:
-            if channels == 1:
-                callback_data = resampled_chunk[:, np.newaxis]
-            else:
-                callback_data = np.column_stack([resampled_chunk] * channels)
+        callback(callback_data, len(resampled_chunk), time_info, status)
 
-            callback(callback_data, len(resampled_chunk), time_info, status)
+    stream = _try_open(native_samplerate, native_blocksize)
+    if stream is not None:
+        return stream
 
-        return sd.InputStream(
-            samplerate=native_samplerate,
-            channels=channels,
-            dtype=dtype,
-            blocksize=native_blocksize,
-            device=device_index,
-            callback=resampling_callback,
-        )
+    raise RuntimeError(f"Failed to open microphone device {device_index} after multiple attempts")
 
 # ---------------------------------------------------------------------------
 # One-shot recording (original)
