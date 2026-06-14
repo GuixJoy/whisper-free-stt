@@ -91,7 +91,7 @@ def _json_emit(config: AppConfig, event: dict) -> None:
 # ---------------------------------------------------------------------------
 
 _llm_semaphore = threading.Semaphore(4)  # max 4 concurrent LLM calls (network I/O bound)
-_asr_semaphore: threading.Semaphore | None = None  # initialized in run() based on backend
+_asr_semaphore = threading.Semaphore(1)  # whisper.cpp needs serialization; faster-whisper OK with 1 due to early release
 _SILENCE_HALLUCINATIONS = frozenset({
     "thank you",
     "thanks",
@@ -279,16 +279,8 @@ def run(
     enable_signal_handlers: bool = True,
 ) -> None:
     """Continuous streaming: mic → adaptive VAD → transcribe → [LLM] → print."""
-    global _asr_semaphore
     telemetry = _LatencyTracker()
     stream_iter = None
-
-    # ASR concurrency: faster-whisper on GPU supports parallel decode,
-    # whisper.cpp needs serialization (global lock handles it internally).
-    if config.transcription.backend is TranscriptionBackend.FASTER_WHISPER:
-        _asr_semaphore = threading.Semaphore(3)
-    else:
-        _asr_semaphore = threading.Semaphore(1)
 
     _echo("╔══════════════════════════════════╗")
     _echo("║   STT — Local Speech-to-Text    ║")

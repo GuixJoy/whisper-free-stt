@@ -87,6 +87,11 @@ class TranscriptionConfig:
     whisper_entropy_thold: float = 2.2
     whisper_compression_ratio_thold: float = 2.4
     whisper_logprob_thold: float = -1.0
+    # Batched inference (4-10x speedup on GPU)
+    batch_size: int = 0                    # 0 = auto (8 on GPU, 1 on CPU)
+    # Word-level timestamps + hotwords
+    word_timestamps: bool = False
+    hotwords: str = ""                     # Comma-separated terms to boost recognition
 
 
 def _env_default(key: str, fallback: str) -> str:

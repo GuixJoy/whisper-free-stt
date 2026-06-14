@@ -2,6 +2,7 @@
 
 whisper.cpp (default) is 10-16x faster on CPU.
 faster-whisper supports more models (distil-large-v3, turbo) and GPU.
+BatchedInferencePipeline gives 4-10x additional speedup on GPU.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from stt.types import TranscriptionResult, TranscriptionSegment
 _whisper_cpp_cache: dict[str, "object"] = {}  # pywhispercpp.Model
 _whisper_cpp_lock = threading.Lock()             # whisper.cpp is NOT thread-safe
 _faster_whisper_cache: dict[str, "object"] = {}  # faster_whisper.WhisperModel
+_batched_cache: dict[str, "object"] = {}  # BatchedInferencePipeline wrappers
 
 
 def _get_cpp_model(config: TranscriptionConfig):
@@ -53,6 +55,18 @@ def _get_fw_model(config: TranscriptionConfig):
             cpu_threads=config.cpu_threads,
         )
     return _faster_whisper_cache[key]
+
+
+def _get_batched_model(config: TranscriptionConfig):
+    """Return cached BatchedInferencePipeline wrapping the faster-whisper model."""
+    from faster_whisper import BatchedInferencePipeline
+
+    base_key = f"{config.model_name}|{config.device}|{config.compute_type.value}|{config.cpu_threads}"
+    batched_key = f"batched|{base_key}"
+    if batched_key not in _batched_cache:
+        base_model = _get_fw_model(config)
+        _batched_cache[batched_key] = BatchedInferencePipeline(model=base_model)
+    return _batched_cache[batched_key]
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +167,10 @@ def warm_up_backend(config: TranscriptionConfig) -> None:
         _get_cpp_model(config)
     else:
         _get_fw_model(config)
+        # Also warm up batched pipeline if batch_size > 0 or auto (GPU)
+        batch_size = config.batch_size if config.batch_size > 0 else (8 if config.device == "cuda" else 0)
+        if batch_size > 0:
+            _get_batched_model(config)
 
 
 # ---------------------------------------------------------------------------
@@ -249,16 +267,10 @@ def _transcribe_fw(
     sr: int,
     config: TranscriptionConfig,
 ) -> TranscriptionResult:
-    """
-    Transcribe the given audio using the faster-whisper backend and return a structured transcription.
+    """Transcribe via faster-whisper with batched inference, VAD, word timestamps, and hotwords.
 
-    If a CUDA/cuBLAS error occurs during transcription, the function sets CT2_FORCE_CPU and retries on CPU; other failures raise a RuntimeError.
-
-    Returns:
-        TranscriptionResult: An object containing the concatenated transcript text, the detected language (or empty string), and a tuple of TranscriptionSegment items.
-
-    Raises:
-        RuntimeError: If the faster-whisper model fails to load or if transcription fails for reasons other than a CUDA/cuBLAS error.
+    Uses BatchedInferencePipeline when batch_size > 0 (default: 8 on GPU).
+    This gives 4-10x speedup over sequential transcription.
     """
     try:
         model = _get_fw_model(config)
@@ -267,17 +279,40 @@ def _transcribe_fw(
 
     vad_kwargs = _build_vad_kwargs(config)
 
+    # Determine batch size: explicit > 0, or auto (8 on GPU, 1 on CPU)
+    batch_size = config.batch_size if config.batch_size > 0 else (8 if config.device == "cuda" else 0)
+
+    # Build common transcribe kwargs
+    transcribe_kwargs = dict(
+        beam_size=config.beam_size,
+        language=config.language,
+        condition_on_previous_text=config.condition_on_previous_text,
+        no_speech_threshold=config.whisper_no_speech_thold,
+        compression_ratio_threshold=config.whisper_compression_ratio_thold,
+        log_prob_threshold=config.whisper_logprob_thold,
+        **vad_kwargs,
+    )
+
+    # Word timestamps (only supported in non-batched mode)
+    if config.word_timestamps:
+        transcribe_kwargs["word_timestamps"] = True
+
+    # Hotwords (keyword boosting)
+    if config.hotwords:
+        transcribe_kwargs["hotwords"] = config.hotwords
+
     try:
-        raw_segments, info = model.transcribe(
-            audio,
-            beam_size=config.beam_size,
-            language=config.language,
-            condition_on_previous_text=config.condition_on_previous_text,
-            no_speech_threshold=config.whisper_no_speech_thold,
-            compression_ratio_threshold=config.whisper_compression_ratio_thold,
-            log_prob_threshold=config.whisper_logprob_thold,
-            **vad_kwargs,
-        )
+        if batch_size > 0:
+            # Batched inference — 4-10x faster on GPU
+            batched_model = _get_batched_model(config)
+            raw_segments, info = batched_model.transcribe(
+                audio,
+                batch_size=batch_size,
+                **{k: v for k, v in transcribe_kwargs.items()
+                   if k not in ("word_timestamps", "hotwords")},  # batched doesn't support these yet
+            )
+        else:
+            raw_segments, info = model.transcribe(audio, **transcribe_kwargs)
     except Exception as exc:
         err = str(exc)
         if "libcublas" in err or "cublas" in err.lower():
@@ -290,16 +325,7 @@ def _transcribe_fw(
                 compute_type="int8",
                 cpu_threads=config.cpu_threads,
             )
-            raw_segments, info = fallback.transcribe(
-                audio,
-                beam_size=config.beam_size,
-                language=config.language,
-                condition_on_previous_text=config.condition_on_previous_text,
-                no_speech_threshold=config.whisper_no_speech_thold,
-                compression_ratio_threshold=config.whisper_compression_ratio_thold,
-                log_prob_threshold=config.whisper_logprob_thold,
-                **vad_kwargs,
-            )
+            raw_segments, info = fallback.transcribe(audio, **transcribe_kwargs)
         else:
             raise RuntimeError(f"faster-whisper transcription failed: {exc}") from exc
 
