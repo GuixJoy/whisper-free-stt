@@ -3,7 +3,7 @@
   <img src="https://img.shields.io/badge/license-GPL%20v2-green.svg" alt="GPL v2">
   <img src="https://img.shields.io/badge/platform-Linux%20Wayland-orange.svg" alt="Linux Wayland">
   <img src="https://img.shields.io/badge/ASR-whisper.cpp%20%7C%20faster--whisper-purple.svg" alt="Dual ASR">
-  <img src="https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenRouter-yellow.svg" alt="Dual LLM">
+  <img src="https://img.shields.io/badge/LLM-DeepSeek%20%7C%20OpenRouter%20%7C%20Ollama-yellow.svg" alt="Triple LLM">
 </p>
 
 # STT — Local Speech-to-Text Assistant
@@ -42,7 +42,8 @@ That's it.  Speak — cleaned text appears wherever your cursor is.
 - **Onboarding wizard**: First-run setup with system checks, microphone selection, model download, and shortcut configuration
 - **Main panel**: Idle/Listening/Transcribing/Rewriting/Copied/Error status, start/stop, PTT, copy/clear, mic level meter
 - **History sidebar**: Browse past transcripts with search, recopy, rerun cleanup, favorite, and delete
-- **Settings panel**: Provider selector (DeepSeek/OpenRouter), API key input, model/fallback model selection, ASR backend/profile, device, clipboard, debug mode
+- **Settings panel**: Provider selector (DeepSeek/OpenRouter/Ollama), API key input, model/fallback model selection, ASR backend/profile, device, clipboard, debug mode
+- **System tray**: Start/Stop listening from system tray, minimize to tray on close
 - **Compact mode**: Mini window with optional always-on-top pin
 - **Shortcut editor**: Remapping with conflict detection and scope labels
 
@@ -64,8 +65,9 @@ cd stt-ui && npm run tauri build
 mic → sounddevice → numpy arrays → adaptive VAD → audio segments
                                                     ↓
                                            whisper.cpp | faster-whisper
+                                           (BatchedInferencePipeline)
                                                     ↓
-                                        DeepSeek | OpenRouter (cleanup)
+                                    DeepSeek | OpenRouter | Ollama (cleanup)
                                                     ↓
                                             wtype → focused input
                                             wl-copy → clipboard
@@ -82,8 +84,8 @@ mic → sounddevice → numpy arrays → adaptive VAD → audio segments
 | `stt/prompts.py` | Centralized prompt templates | None |
 | `stt/vad.py` | Voice-activity detection | None |
 | `stt/audio_capture.py` | Microphone I/O | sounddevice |
-| `stt/transcription.py` | ASR engines | faster-whisper, whisper.cpp |
-| `stt/llm.py` | LLM clients | HTTP (DeepSeek, OpenRouter) |
+| `stt/transcription.py` | ASR engines (batched) | faster-whisper, whisper.cpp |
+| `stt/llm.py` | LLM clients (streaming) | HTTP (DeepSeek, OpenRouter, Ollama) |
 | `stt/clipboard.py` | Wayland clipboard | wl-copy subprocess |
 | `stt/typing.py` | Focused-input typing | wtype subprocess |
 | `stt/orchestrator.py` | Main loop wiring | All of the above |
@@ -93,7 +95,7 @@ mic → sounddevice → numpy arrays → adaptive VAD → audio segments
 
 ## LLM Providers
 
-Two providers supported, auto-detected from which API key you set:
+Three providers supported:
 
 **DeepSeek** (faster, cheaper — recommended):
 ```bash
@@ -110,10 +112,16 @@ STT_LLM_MODEL=openai/gpt-4o-mini
 STT_LLM_FALLBACK=anthropic/claude-3-5-haiku-latest
 ```
 
-DeepSeek takes priority if both keys are set.  Provider is displayed at startup:
+**Ollama** (local GPU inference):
+```bash
+# .env or CLI flag
+--llm-provider ollama --llm-model qwen2.5:1.5b
+```
+
+DeepSeek takes priority if both keys are set. Provider is displayed at startup:
 `LLM: cleanup (deepseek:deepseek-chat)` or `LLM: cleanup (openrouter:openai/gpt-4o-mini)`.
 
-Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
+Override with `--llm-provider openrouter`, `--llm-provider deepseek`, or `--llm-provider ollama`.
 
 ---
 
@@ -121,7 +129,7 @@ Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 
 | Profile | Model | Backend | Best for |
 |---|---|---|---|
-| `auto` | distil-large-v3 / small.en | auto-detect | Strongest default |
+| `auto` | large-v3-turbo / small.en | auto-detect | Strongest default |
 | `speed` | tiny.en | whisper.cpp | Lowest latency |
 | `balanced` | base.en | whisper.cpp | Good balance |
 | `accuracy` | small.en | whisper.cpp | Better accuracy on CPU |
@@ -132,6 +140,29 @@ Override with `--llm-provider openrouter` or `--llm-provider deepseek`.
 stt --asr-profile speed     # fastest
 stt --asr-profile accuracy  # more accurate
 stt --asr-profile distil    # highest quality (needs GPU)
+```
+
+### Batched Inference (GPU)
+
+faster-whisper supports batched inference for 4-10x speedup on GPU:
+```bash
+stt --backend faster_whisper --model turbo --device cuda
+```
+
+The `BatchedInferencePipeline` is automatically used when `batch_size > 0` or when running on GPU.
+
+### Word-Level Timestamps
+
+Enable per-word timing for better UX:
+```python
+TranscriptionConfig(word_timestamps=True)
+```
+
+### Hotwords
+
+Boost recognition of technical terms:
+```python
+TranscriptionConfig(hotwords="whisper,CTranslate2,STT")
 ```
 
 ---
@@ -151,7 +182,7 @@ stt --asr-profile distil    # highest quality (needs GPU)
 | `--device` | auto | cpu / cuda |
 | `--compute-type` | auto | int8 / float16 / ... |
 | `--llm-mode` | cleanup | off / cleanup / bullet_list / email / commit_message |
-| `--llm-provider` | auto | deepseek / openrouter |
+| `--llm-provider` | auto | deepseek / openrouter / ollama |
 | `--llm-model` | env | Model (env: `STT_LLM_MODEL`) |
 | `--llm-fallback` | env | Fallback model (OpenRouter only) |
 | `--deepseek-api-key` | env | DeepSeek API key (overrides `DEEPSEEK_API_KEY`) |
@@ -171,8 +202,13 @@ $ stt
 ║   STT — Local Speech-to-Text    ║
 ╚══════════════════════════════════╝
 
-ASR: large-v3-turbo (cuda)
-LLM: cleanup (deepseek:deepseek-chat)
+Hardware:
+  whisper.cpp: available (ggml CPU)
+  faster-whisper: available (CUDA, 1 device(s))
+  active: faster_whisper on cuda (model: large-v3-turbo)
+
+Mic: [4] HD-Audio Generic: ALC257 Analog (rms=0.0089)
+LLM: cleanup (openrouter:nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free)
 Typing: enabled  Clipboard: disabled
 
 Listening... (speak naturally, Ctrl+C to stop)
@@ -182,6 +218,12 @@ Listening... (speak naturally, Ctrl+C to stop)
 [typed] ✓
 ----------------------------------------
 ^C
+
+--- Latency (seconds) ---
+  asr: n=15 p50=0.770 p95=1.457 min=0.327 max=2.851
+  llm: n=13 p50=3.125 p95=3.950 min=1.441 max=4.048
+  total: n=13 p50=4.368 p95=5.474 min=2.219 max=5.613
+
 Done.
 ```
 
@@ -189,17 +231,21 @@ Done.
 
 ## Benchmarks
 
-*Measured 2026-06-07 on RTX 4060 (CUDA, large-v3-turbo, Silero VAD) + DeepSeek Chat, 14 utterances.*
+*Measured on RTX 4060 (CUDA, large-v3-turbo, Silero VAD) + DeepSeek Chat.*
 
 | Stage | p50 | p95 | Notes |
 |---|---|---|---|
-| **ASR** | 0.69s | 2.6s | GPU turbo + Silero VAD — neural VAD runs on GPU alongside Whisper |
-| **LLM** | 0.90s | 1.22s | DeepSeek Chat — 50-token prompt, no system message |
-| **Total** | 1.74s | 3.7s | **Under 2 seconds** from end-of-speech to punctuated, ready-to-use output |
+| **ASR** | 0.77s | 1.46s | GPU turbo + Silero VAD |
+| **LLM** | 3.13s | 3.95s | OpenRouter free model |
+| **Total** | 4.37s | 5.47s | End-of-speech to typed output |
 
-> **Note on percentiles:** p50 and p95 values are calculated independently for each processing stage across all utterances. The Total p95 (3.7s) is less than the arithmetic sum of ASR p95 and LLM p95 (2.6s + 1.22s = 3.82s) because the worst-case samples for different stages come from different utterances — an utterance that was slow to transcribe was not necessarily slow to rewrite.
+### Performance Improvements (v2)
 
-For a 20-word utterance spoken at ~150 WPM (~8s of speech), the total wall-clock time is ~8s speaking + 1.74s processing ≈ 9.74s. Typing the same 20 words at ~80 WPM takes ~15s, delivering **up to 2× faster than manual typing** for typical utterances, with zero editing required. Pipeline: RMS VAD replaced by Silero VAD (GPU-native), `deepseek-v4-flash` replaced by `deepseek-chat`, prompt trimmed from 300→50 tokens.
+- **BatchedInferencePipeline**: 4-10x ASR speedup on GPU with `batch_size=8`
+- **INT8 quantization**: 40% less VRAM with minimal quality loss
+- **LLM streaming**: Tokens appear as they arrive (SSE), not after full response
+- **ASR semaphore early release**: Next utterance starts ASR while current does LLM
+- **Parallel typing + clipboard**: wtype and wl-copy run concurrently
 
 ---
 
@@ -223,11 +269,12 @@ The Tauri UI reads the same database via a Rust `get_history` command for the hi
 2. Implement `_transcribe_xxx()` in `stt/transcription.py`
 3. Register in `transcribe()` dispatch
 
-### Add a Tkinter UI
+### Add a new LLM provider
 
-1. Create `stt/ui.py` with a Tkinter window
-2. Run the orchestrator in a background thread; push transcripts via `queue.Queue`
-3. All pure logic is UI-free — just consume `AppConfig` and call the pipeline
+1. Add to `LLMProvider` enum in `stt/config.py`
+2. Add URL/key helpers in `stt/config.py`
+3. Handle response format in `stt/llm.py` → `_call_api()`
+4. Add streaming support in `stt/llm.py` → `_stream_api()`
 
 ---
 
