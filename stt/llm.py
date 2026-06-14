@@ -62,7 +62,7 @@ def rewrite_stream(
     user_prompt = build_user_prompt(transcript, config.mode, few_shot_context)
     payload = _build_payload(config, user_prompt)
     payload["stream"] = True
-    headers = _build_headers("", config.provider)
+    headers = _build_headers(api_key, config.provider)
 
     try:
         yield from _stream_api(config.base_url, headers, payload, config.timeout_sec)
