@@ -50,7 +50,7 @@ export const ActivityTable = forwardRef<HTMLDivElement, ActivityTableProps>(
       <div
         ref={ref}
         className={cn(
-          "flex flex-col bg-app-surface-dark rounded-card border border-white/[0.05] overflow-hidden",
+          "flex flex-col bg-app-surface-dark rounded-card border border-white/[0.03] overflow-hidden",
           className,
         )}
         {...props}

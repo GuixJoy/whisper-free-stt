@@ -29,16 +29,23 @@ export function SidebarItem({ icon, label, active, badge, onClick }: SidebarItem
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200",
+        "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200 overflow-hidden",
         active
-          ? "bg-gradient-to-r from-accent/18 to-accent/8 font-semibold text-white nav-active"
+          ? "text-white font-semibold"
           : "text-text-secondary hover:bg-white/[0.04]",
       )}
     >
-      <span className="w-[18px] h-[18px] flex-shrink-0">{icon}</span>
-      <span className="text-[15px] flex-1">{label}</span>
+      {active && (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-r from-accent/20 via-accent/8 to-transparent" />
+          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-accent via-accent-warm to-accent/40 rounded-r" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_50%,rgba(200,138,50,0.12),transparent_70%)] pointer-events-none" />
+        </>
+      )}
+      <span className="relative z-10 w-[18px] h-[18px] flex-shrink-0">{icon}</span>
+      <span className="relative z-10 text-[15px] flex-1">{label}</span>
       {badge && (
-        <span className="bg-accent text-white text-[11px] font-semibold px-2 py-0.5 rounded-[8px]">
+        <span className="relative z-10 bg-accent text-white text-[11px] font-semibold px-2 py-0.5 rounded-[8px]">
           {badge}
         </span>
       )}
@@ -70,7 +77,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       <div
         ref={ref}
         className={cn(
-          "flex flex-col h-full bg-app-sidebar border-r border-white/[0.05] p-4 w-sidebar-width",
+          "flex flex-col h-full bg-app-sidebar border-r border-white/[0.03] p-4 w-sidebar-width",
           className,
         )}
         {...props}
@@ -137,14 +144,19 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         </SidebarSection>
 
         {/* Upgrade Card */}
-        <div className="bg-app-surface-card rounded-card p-4 mb-4 border border-border-accent">
-          <p className="text-[15px] font-semibold text-accent-bright mb-1">2,000 words remaining</p>
-          <p className="text-[13px] text-text-secondary mb-3 leading-[20px]">
-            You get 2,000 words per week. Upgrade for unlimited access.
-          </p>
-          <button className="w-full h-10 bg-accent text-white rounded-button text-[14px] font-medium hover:bg-accent-warm transition-colors shadow-accent-button">
-            Upgrade to Pro
-          </button>
+        <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-accent/20">
+          <div className="absolute inset-0 bg-app-surface-card" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(200,138,50,0.10),transparent_70%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_80%,rgba(50,120,130,0.08),transparent_60%)]" />
+          <div className="relative z-10">
+            <p className="text-[15px] font-semibold text-accent-bright mb-1">2,000 words remaining</p>
+            <p className="text-[13px] text-text-secondary mb-3 leading-[20px]">
+              You get 2,000 words per week. Upgrade for unlimited access.
+            </p>
+            <button className="w-full h-10 bg-accent text-white rounded-button text-[14px] font-medium hover:bg-accent-warm transition-colors shadow-accent-button">
+              Upgrade to Pro
+            </button>
+          </div>
         </div>
 
         {/* Bottom Actions */}

@@ -1,6 +1,5 @@
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
-import { Card } from "./Card";
 
 interface StatItem {
   value: string;
@@ -14,13 +13,21 @@ interface StatsCardProps extends React.HTMLAttributes<HTMLDivElement> {
 export const StatsCard = forwardRef<HTMLDivElement, StatsCardProps>(
   ({ className, stats, ...props }, ref) => {
     return (
-      <Card
+      <div
         ref={ref}
-        variant="stats"
-        className={cn("p-6", className)}
+        className={cn(
+          "relative rounded-card p-6 overflow-hidden border border-white/[0.04]",
+          className,
+        )}
         {...props}
       >
-        <div className="flex flex-col gap-4">
+        {/* Background layers */}
+        <div className="absolute inset-0 bg-app-surface-card" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(200,138,50,0.12),transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_90%_90%,rgba(50,120,130,0.08),transparent_60%)]" />
+
+        {/* Content */}
+        <div className="relative z-10 flex flex-col gap-4">
           {stats.map((stat, index) => (
             <div key={index} className="flex items-baseline gap-2">
               <span className="stat-value text-[52px] font-bold">
@@ -32,7 +39,7 @@ export const StatsCard = forwardRef<HTMLDivElement, StatsCardProps>(
             </div>
           ))}
         </div>
-      </Card>
+      </div>
     );
   },
 );
