@@ -34,6 +34,12 @@
       "identifier": "shell:allow-stdin-write",
       "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
+    "clipboard-manager:allow-write-image",
+    "clipboard-manager:allow-write-html",
+    "clipboard-manager:allow-clear"
   ]
 }

@@ -11,6 +11,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
+import { usePermissions } from "./hooks/usePermissions";
 
 type RunMode = "ws" | "tauri";
 
@@ -303,13 +304,41 @@ function ConfigView({
   settings,
   setSettings,
   commandPreview,
+  permissions,
+  requestClipboard,
+  requestMic,
+  isCapturingMic,
+  stopMic,
 }: {
   mode: RunMode;
   setMode: (m: RunMode) => void;
   settings: RuntimeSettings;
   setSettings: React.Dispatch<React.SetStateAction<RuntimeSettings>>;
   commandPreview: string;
+  permissions: { clipboard: string; microphone: string };
+  requestClipboard: () => Promise<boolean>;
+  requestMic: () => Promise<boolean>;
+  isCapturingMic: boolean;
+  stopMic: () => void;
 }) {
+  const permissionStatusColor = (status: string) => {
+    switch (status) {
+      case "granted": return "text-green-400";
+      case "denied": return "text-red-400";
+      case "prompt": return "text-yellow-400";
+      default: return "text-text-muted";
+    }
+  };
+
+  const permissionStatusIcon = (status: string) => {
+    switch (status) {
+      case "granted": return "✓";
+      case "denied": return "✗";
+      case "prompt": return "?";
+      default: return "—";
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col p-6 overflow-auto">
       <div className="bg-app-surface rounded-card border border-border p-5 space-y-5">
@@ -341,6 +370,75 @@ function ConfigView({
                 />
               </div>
             )}
+          </div>
+        </div>
+
+        <div className="h-px bg-white/[0.04]" />
+
+        {/* Permissions */}
+        <div>
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
+            <span>🔐</span> Permissions
+          </div>
+          <div className="space-y-3">
+            {/* Clipboard Permission */}
+            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px]">📋</span>
+                <div>
+                  <div className="text-[13px] font-medium text-text-primary">Clipboard Access</div>
+                  <div className="text-[11px] text-text-muted">Copy transcribed text to clipboard</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.clipboard)}`}>
+                  {permissionStatusIcon(permissions.clipboard)} {permissions.clipboard}
+                </span>
+                {permissions.clipboard !== "granted" && (
+                  <button
+                    onClick={() => void requestClipboard()}
+                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
+                  >
+                    Grant
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Microphone Permission */}
+            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px]">🎤</span>
+                <div>
+                  <div className="text-[13px] font-medium text-text-primary">Microphone Access</div>
+                  <div className="text-[11px] text-text-muted">Capture audio for speech recognition</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.microphone)}`}>
+                  {permissionStatusIcon(permissions.microphone)} {permissions.microphone}
+                </span>
+                {permissions.microphone !== "granted" ? (
+                  <button
+                    onClick={() => void requestMic()}
+                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
+                  >
+                    Grant
+                  </button>
+                ) : (
+                  <button
+                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
+                    className={`h-7 px-3 rounded-button text-[12px] font-medium transition-colors ${
+                      isCapturingMic
+                        ? "bg-red-900/40 border border-red-500/30 text-red-400 hover:bg-red-900/60"
+                        : "bg-app-surface border border-border text-text-primary hover:bg-app-hover"
+                    }`}
+                  >
+                    {isCapturingMic ? "Stop Test" : "Test Mic"}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -483,6 +581,7 @@ function App() {
   const startRef = useRef<(overrideSettings?: RuntimeSettings) => Promise<void>>(async () => {});
   const stopRef = useRef<() => void>(() => {});
   connectedRef.current = connected;
+  const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
   useEffect(() => {
     if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
@@ -725,6 +824,11 @@ function App() {
             settings={settings}
             setSettings={setSettings}
             commandPreview={commandPreview}
+            permissions={permissions}
+            requestClipboard={requestClipboard}
+            requestMic={requestMic}
+            isCapturingMic={isCapturingMic}
+            stopMic={stopMic}
           />
         );
       case "Settings":

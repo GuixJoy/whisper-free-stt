@@ -402,8 +402,8 @@ export default function OnboardingWizard({ onFinished }: Props) {
                 <Step4Permissions
                   clipboard={clipboardEnabled}
                   typing={typingEnabled}
-                  onClipboard={() => {}}
-                  onTyping={() => {}}
+                  onClipboard={(v) => dispatch({ type: "SET_CLIPBOARD", enabled: v })}
+                  onTyping={(v) => dispatch({ type: "SET_TYPING", enabled: v })}
                   onDone={() => nextStep()}
                 />
               </motion.div>
