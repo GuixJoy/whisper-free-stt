@@ -292,18 +292,22 @@ def run(
     _probe_hardware(config)
     _echo()
 
-    # --- Auto-detect best mic ---
+    # --- Auto-detect mic ---
     try:
         if config.audio.device_index is not None:
             mic_index = config.audio.device_index
             mic_name = f"device {mic_index}"
         else:
-            _echo("Scanning microphones...")
-            mic_index, mic_name, mic_rms = find_best_microphone(config.audio.sample_rate)
-            _echo(f"Mic: [{mic_index}] {mic_name} (rms={mic_rms:.4f})")
+            # Use default mic directly — avoids scanning all devices which can
+            # destabilise PipeWire/PulseAudio's ALSA compatibility layer.
+            default = find_default_microphone()
+            if default is not None:
+                mic_index, mic_name = default, f"device {default}"
+            else:
+                _echo("Scanning microphones...")
+                mic_index, mic_name, _ = find_best_microphone(config.audio.sample_rate)
+            _echo(f"Mic: [{mic_index}] {mic_name}")
             object.__setattr__(config.audio, "device_index", mic_index)
-            # Give ALSA time to fully release the device after scanning
-            time.sleep(0.3)
     except Exception as exc:
         if hooks and hooks.on_error:
             hooks.on_error(f"Microphone setup failed: {exc}")
