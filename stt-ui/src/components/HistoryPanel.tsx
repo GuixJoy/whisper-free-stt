@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { cn } from "@/lib/utils";
 
 interface HistoryRow {
   id: number;
@@ -62,7 +63,6 @@ export default function HistoryPanel({ visible, onClose }: Props) {
     loadHistory();
   }, [visible, loadHistory]);
 
-  // Keyboard handler: Escape to close
   useEffect(() => {
     if (!visible) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -85,18 +85,23 @@ export default function HistoryPanel({ visible, onClose }: Props) {
 
   return (
     <div
-      className="history-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       role="dialog"
       aria-modal="true"
       aria-label="Transcript history"
     >
-      <div className="history-panel">
-        <div className="history-header">
-          <h2>📜 Transcript History</h2>
-          <div className="history-actions">
+      <div className="bg-app-surface rounded-card border border-border w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-lg">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-heading text-text-primary">📜 Transcript History</h2>
+          <div className="flex items-center gap-2">
             <button
-              className="sketch-btn btn-sm"
+              className={cn(
+                "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+                "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                "disabled:pointer-events-none disabled:opacity-50",
+              )}
               onClick={loadHistory}
               disabled={loading}
               aria-label="Refresh history"
@@ -104,7 +109,11 @@ export default function HistoryPanel({ visible, onClose }: Props) {
               {loading ? "⟳" : "↻"} Refresh
             </button>
             <button
-              className="sketch-btn btn-sm"
+              className={cn(
+                "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+                "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              )}
               onClick={onClose}
               aria-label="Close history"
             >
@@ -112,29 +121,39 @@ export default function HistoryPanel({ visible, onClose }: Props) {
             </button>
           </div>
         </div>
-        {error && <div className="history-error" role="alert">⚠ {error}</div>}
-        <div className="history-list" role="list">
+        {error && (
+          <div className="mx-6 mt-4 rounded-card bg-red-900/20 border border-red-500/30 px-4 py-3 text-body text-red-400" role="alert">
+            ⚠ {error}
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3" role="list">
           {rows.length === 0 && !loading && (
-            <p className="history-empty">No transcripts yet. Start recording to build your history.</p>
+            <p className="text-center text-text-muted text-body py-12">No transcripts yet. Start recording to build your history.</p>
           )}
           {rows.map((row) => (
-            <div key={row.id} className="history-card" role="listitem">
-              <div className="history-card-header">
-                <span className="history-mode">{row.mode}</span>
-                <span className="history-time">{formatDate(row.created_at)}</span>
+            <div key={row.id} className="bg-app-surface-secondary rounded-card border border-border p-4 flex flex-col gap-2" role="listitem">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">
+                  {row.mode}
+                </span>
+                <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
               </div>
-              <div className="history-card-raw">
-                <span className="history-label">Raw:</span> {row.raw_text}
+              <div className="text-body text-text-primary">
+                <span className="text-text-secondary font-medium">Raw:</span> {row.raw_text}
               </div>
               {row.processed_text && row.processed_text !== row.raw_text && (
-                <div className="history-card-proc">
-                  <span className="history-label">Corrected:</span> {row.processed_text}
+                <div className="text-body text-text-primary">
+                  <span className="text-text-secondary font-medium">Corrected:</span> {row.processed_text}
                 </div>
               )}
-              <div className="history-card-footer">
-                <span className="history-meta">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
+              <div className="flex items-center justify-between pt-1 border-t border-border">
+                <span className="text-small text-text-muted">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
                 <button
-                  className="sketch-btn btn-sm"
+                  className={cn(
+                    "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+                    "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+                  )}
                   onClick={() => copyText(row.processed_text || row.raw_text, row.id)}
                   aria-label={`Copy transcript: ${row.raw_text.substring(0, 30)}...`}
                 >
