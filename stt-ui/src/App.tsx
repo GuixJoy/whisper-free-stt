@@ -10,6 +10,8 @@ import type { AppError } from "./components/ErrorBanner";
 import HistoryPanel from "./components/HistoryPanel";
 import SettingsPanel from "./components/SettingsPanel";
 import InsightsPage from "./components/InsightsPage";
+import DictionaryPage from "./components/DictionaryPage";
+import SnippetsPage from "./components/SnippetsPage";
 import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
@@ -821,6 +823,10 @@ function App() {
         );
       case "Insights":
         return <InsightsPage />;
+      case "Dictionary":
+        return <DictionaryPage />;
+      case "Snippets":
+        return <SnippetsPage />;
       case "Settings":
         return null;
       default:
