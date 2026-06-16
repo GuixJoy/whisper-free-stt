@@ -2,6 +2,7 @@ import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/Sidebar";
 import { Bell, Minus, Square, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
@@ -11,6 +12,8 @@ interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
   ({ className, children, activeItem, onNavigate, ...props }, ref) => {
+    const win = getCurrentWindow();
+
     return (
       <div
         ref={ref}
@@ -29,8 +32,11 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden relative z-10">
           {/* Title Bar */}
-          <div className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-white/[0.05]">
-            <div className="flex items-center gap-2">
+          <div
+            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-white/[0.05]"
+            data-tauri-drag-region
+          >
+            <div className="flex items-center gap-2" data-tauri-drag-region="false">
               <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
                   <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
@@ -48,17 +54,26 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
               </button>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" data-tauri-drag-region="false">
               <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
                 <Bell size={16} className="text-text-secondary" />
               </button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                onClick={() => win.minimize()}
+              >
                 <Minus size={16} className="text-text-secondary" />
               </button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                onClick={() => win.toggleMaximize()}
+              >
                 <Square size={14} className="text-text-secondary" />
               </button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                onClick={() => win.hide()}
+              >
                 <X size={16} className="text-text-secondary" />
               </button>
             </div>
