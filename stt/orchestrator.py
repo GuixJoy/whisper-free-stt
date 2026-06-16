@@ -112,9 +112,18 @@ def _normalize_text(text: str) -> str:
 # WebSocket server (for browser UI integration)
 # ---------------------------------------------------------------------------
 
+# Audio queue: browser streams mic audio here for processing
+_ws_audio_queue: deque[np.ndarray] = deque()
+_ws_audio_ready = threading.Event()
+
+
 def start_ws_server(port: int = 8765) -> None:
-    """Start a WebSocket server in a daemon thread.  Connected clients receive
-    all JSON events emitted by the orchestrator."""
+    """Start a WebSocket server in a daemon thread.
+
+    - Clients receive all JSON events emitted by the orchestrator.
+    - Clients can send binary audio data (float32 PCM, mono, 16kHz) via WebSocket.
+      The server feeds it into the audio queue for processing.
+    """
     global _ws_loop
     import asyncio as _asyncio
     import websockets as _ws
@@ -122,7 +131,18 @@ def start_ws_server(port: int = 8765) -> None:
     async def _handler(websocket):
         _ws_clients.append(websocket)
         try:
-            await websocket.wait_closed()
+            async for message in websocket:
+                if isinstance(message, bytes):
+                    # Binary audio from browser: float32 PCM, mono, 16kHz
+                    audio = np.frombuffer(message, dtype=np.float32)
+                    if len(audio) > 0:
+                        _ws_audio_queue.append(audio)
+                        _ws_audio_ready.set()
+                elif isinstance(message, str):
+                    # JSON control messages (future use)
+                    pass
+        except Exception:
+            pass
         finally:
             if websocket in _ws_clients:
                 _ws_clients.remove(websocket)
@@ -505,6 +525,138 @@ def run(
         hooks.on_state("idle")
     if hooks and hooks.on_activity:
         hooks.on_activity("Stopped")
+
+
+# ---------------------------------------------------------------------------
+# WebSocket audio mode: browser captures mic, streams audio to Python
+# ---------------------------------------------------------------------------
+
+def run_ws_audio(
+    config: AppConfig,
+    *,
+    stop_event: threading.Event | None = None,
+    hooks: RunHooks | None = None,
+) -> None:
+    """Process audio received from browser via WebSocket.
+
+    The browser captures mic audio and sends float32 PCM chunks over WebSocket.
+    This function feeds them into the same VAD + ASR pipeline as run(), but
+    without opening the microphone directly.
+    """
+    telemetry = _LatencyTracker()
+
+    _echo("╔══════════════════════════════════╗")
+    _echo("║   STT — Browser Audio Mode      ║")
+    _echo("╚══════════════════════════════════╝")
+    _echo()
+    _echo("Waiting for browser audio stream...")
+    _echo("-" * 40)
+
+    sr = config.audio.sample_rate
+    block_size = config.audio.blocksize
+    ring = _RingBuffer(int(30 * sr))
+    detector = StreamingEndpointDetector(config.vad, sr, block_size)
+
+    if config.vad.fast_commit:
+        detector.set_fast_commit(
+            silence_duration_sec=config.vad.fast_silence_duration_sec,
+            detrigger_ratio=config.vad.fast_detrigger_ratio,
+        )
+
+    # Warm ASR backend in background
+    warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
+    warmup_thread.start()
+
+    # No calibration — browser handles mic init. Use sensible defaults.
+    detector.set_noise_floor(config.vad.silence_threshold_rms)
+
+    running = True
+    def _stop(_sig, _frame):
+        nonlocal running
+        running = False
+        if stop_event is not None:
+            stop_event.set()
+    if enable_signal_handlers:
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGINT, _stop)
+
+    chunk_count = 0
+    utterance_id = 0
+    _json_emit(config, {"type": "state", "state": "listening"})
+    if hooks and hooks.on_state:
+        hooks.on_state("listening")
+
+    try:
+        while running:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            # Wait for audio from browser (with timeout so we can check running)
+            _ws_audio_ready.wait(timeout=0.5)
+            _ws_audio_ready.clear()
+
+            while _ws_audio_queue:
+                chunk = _ws_audio_queue.popleft()
+                chunk_start = ring.total_samples()
+                ring.extend(chunk)
+                chunk_end = ring.total_samples()
+                rms = compute_rms(chunk)
+
+                if hooks and hooks.on_mic_level:
+                    hooks.on_mic_level(rms)
+                if config.json_mode and chunk_count % 8 == 0:
+                    _json_emit(config, {"type": "mic", "level": round(rms, 6)})
+
+                chunk_count += 1
+
+                if config.debug and chunk_count % 8 == 0:
+                    noise = detector.noise_floor
+                    snr_db = 10 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                    state = detector.vad_state.name
+                    _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
+
+                event = detector.update(
+                    rms=rms,
+                    chunk_start_sample=chunk_start,
+                    chunk_end_sample=chunk_end,
+                    chunk=chunk,
+                )
+                if event is None or event.kind == "start":
+                    if event:
+                        _debug(config, f"speech start at {event.start_sample/sr:.2f}s")
+                    continue
+                if event.end_sample is None:
+                    continue
+
+                segment = ring.slice_range(event.start_sample, event.end_sample)
+                if len(segment) == 0:
+                    continue
+
+                dur = len(segment) / sr
+                if dur < config.vad.min_recording_sec:
+                    continue
+
+                utterance_id += 1
+                thread = threading.Thread(
+                    target=_transcribe_and_print,
+                    args=(config, segment.copy(), sr, ring.total_samples() / sr, utterance_id, telemetry, hooks),
+                    daemon=True,
+                )
+                thread.start()
+
+    except KeyboardInterrupt:
+        pass
+
+    snap = telemetry.snapshot()
+    if snap:
+        _echo("\n--- Latency (seconds) ---")
+        for stage, stats in snap.items():
+            _echo(f"  {stage}: n={stats['count']:.0f} "
+                  f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
+                  f"min={stats['min']:.3f} max={stats['max']:.3f}")
+    _echo("\nDone.")
+    if hooks and hooks.on_state:
+        hooks.on_state("idle")
 
 
 # ---------------------------------------------------------------------------

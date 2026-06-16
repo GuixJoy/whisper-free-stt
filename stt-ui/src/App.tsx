@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "react";
 import type { STTApi, STTEvent } from "./api";
-import { createWsApi } from "./api-ws";
 import { createTauriApi } from "./api-tauri";
+import { createWebAudioApi } from "./api-web-audio";
 import { Mic } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
@@ -706,7 +706,7 @@ function App() {
     if (connected || isStartingRef.current) return;
     const activeSettings = overrideSettings ?? settings;
     isStartingRef.current = true;
-    const api: STTApi = mode === "ws" ? createWsApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
+    const api: STTApi = mode === "ws" ? createWebAudioApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
     api.onEvent(applyEvent);
     try {
       await api.start();
