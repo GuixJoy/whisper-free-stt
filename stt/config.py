@@ -66,6 +66,11 @@ class VADConfig:
     fast_commit: bool = False
     fast_silence_duration_sec: float = 0.5
     fast_detrigger_ratio: float = 0.75
+    # Spectral VAD: multi-feature detection to distinguish speech from noise
+    use_spectral_vad: bool = True
+    spectral_weight: float = 0.4          # 0 = RMS only, 1 = spectral only
+    speech_band_low_hz: int = 300         # Hz
+    speech_band_high_hz: int = 3400       # Hz
 
 
 @dataclass(frozen=True)

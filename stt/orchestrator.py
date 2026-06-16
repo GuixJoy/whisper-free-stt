@@ -19,7 +19,11 @@ import numpy as np
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
-from stt.vad import compute_rms, StreamingEndpointDetector
+from stt.vad import (
+    compute_rms, StreamingEndpointDetector,
+    compute_spectral_centroid, compute_spectral_flux,
+    compute_zero_crossing_rate, compute_band_energy_ratio,
+)
 from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite, rewrite_stream, _clean_response
 from stt.clipboard import copy_to_clipboard
@@ -349,6 +353,10 @@ def run(
     # --- Noise floor calibration ---
     _debug(config, "calibrating noise floor (1.5s)...")
     calib_rms: list[float] = []
+    calib_centroid: list[float] = []
+    calib_flux: list[float] = []
+    calib_zcr: list[float] = []
+    calib_ber: list[float] = []
     try:
         # Store generator for both calibration and main loop; cleaned up in finally.
         stream_iter = mic_stream(config.audio, debug=False)
@@ -357,6 +365,15 @@ def run(
             chunk = next(stream_iter)
             ring.extend(chunk)
             calib_rms.append(compute_rms(chunk))
+            if config.vad.use_spectral_vad:
+                calib_centroid.append(compute_spectral_centroid(chunk, sr))
+                calib_flux.append(compute_spectral_flux(chunk, sr))
+                calib_zcr.append(compute_zero_crossing_rate(chunk))
+                calib_ber.append(compute_band_energy_ratio(
+                    chunk, sr,
+                    config.vad.speech_band_low_hz,
+                    config.vad.speech_band_high_hz,
+                ))
     except StopIteration:
         pass
     except Exception as exc:
@@ -372,6 +389,22 @@ def run(
         detector.set_noise_floor(p10)
         st, et = detector.thresholds()
         _debug(config, f"calibration: p10={p10:.4f}, start_th={st:.4f}, end_th={et:.4f}")
+
+    if calib_centroid and config.vad.use_spectral_vad:
+        # Use robust percentile (p10) like RMS — not mean, which is sensitive
+        # to transient noise (mouse clicks, keyboard taps during calibration).
+        sorted_c = sorted(calib_centroid)
+        sorted_f = sorted(calib_flux)
+        sorted_z = sorted(calib_zcr)
+        sorted_b = sorted(calib_ber)
+        p10_idx = max(0, len(sorted_c) // 10)
+        avg_centroid = float(sorted_c[p10_idx])
+        avg_flux = float(sorted_f[p10_idx])
+        avg_zcr = float(sorted_z[p10_idx])
+        avg_ber = float(sorted_b[p10_idx])
+        detector.set_spectral_baselines(avg_centroid, avg_flux, avg_zcr, avg_ber)
+        _debug(config, f"calibration: centroid={avg_centroid:.0f}Hz, flux={avg_flux:.4f}, "
+               f"zcr={avg_zcr:.4f}, ber={avg_ber:.4f}")
 
     running = True
     def _stop(_sig, _frame):
@@ -409,9 +442,20 @@ def run(
 
             if config.debug and chunk_count % 8 == 0:
                 st, et = detector.thresholds()
-                _debug(config, f"live rms={rms:.6f} (start_th={st:.4f}, noise={detector.noise_floor:.4f})")
+                noise = detector.noise_floor
+                snr_db = 10 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                state = detector.vad_state.name
+                _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
+                if config.vad.use_spectral_vad:
+                    score = detector._compute_speech_score(chunk)
+                    _debug(config, f"  spectral: score={score:.4f}")
 
-            event = detector.update(rms=rms, chunk_start_sample=chunk_start, chunk_end_sample=chunk_end)
+            event = detector.update(
+                rms=rms,
+                chunk_start_sample=chunk_start,
+                chunk_end_sample=chunk_end,
+                chunk=chunk if config.vad.use_spectral_vad else None,
+            )
             if event is None or event.kind == "start":
                 if event:
                     _debug(config, f"speech start at {event.start_sample/sr:.2f}s")

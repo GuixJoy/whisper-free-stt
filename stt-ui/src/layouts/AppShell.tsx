@@ -10,9 +10,13 @@ interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
   onNavigate: (item: string) => void;
 }
 
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI__" in window;
+}
+
 export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
   ({ className, children, activeItem, onNavigate, ...props }, ref) => {
-    const win = getCurrentWindow();
+    const win = isTauri() ? getCurrentWindow() : null;
 
     return (
       <div
@@ -60,19 +64,19 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
               </button>
               <button
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
-                onClick={() => win.minimize()}
+                onClick={() => win?.minimize()}
               >
                 <Minus size={16} className="text-text-secondary" />
               </button>
               <button
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
-                onClick={() => win.toggleMaximize()}
+                onClick={() => win?.toggleMaximize()}
               >
                 <Square size={14} className="text-text-secondary" />
               </button>
               <button
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
-                onClick={() => win.hide()}
+                onClick={() => win?.hide()}
               >
                 <X size={16} className="text-text-secondary" />
               </button>

@@ -18,6 +18,21 @@ from stt.config import AudioConfig
 from stt.types import AudioSegment
 
 
+def apply_agc(audio: np.ndarray, target_level: float = 0.1, max_gain: float = 10.0) -> np.ndarray:
+    """Simple automatic gain control — scale audio to target RMS level.
+
+    Helps normalize mic input levels when user distance varies.
+    Limits gain to prevent amplifying noise.
+    """
+    from stt.vad import compute_rms
+    rms = compute_rms(audio)
+    if rms < 0.001:
+        return audio
+    gain = target_level / rms
+    gain = min(gain, max_gain)
+    return (audio * gain).astype(np.float32)
+
+
 def open_input_stream(
     device_index: int,
     target_samplerate: int,

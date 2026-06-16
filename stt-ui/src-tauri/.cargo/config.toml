@@ -1,2 +1,2 @@
-[build]
-target = "x86_64-pc-windows-msvc"
+# No hardcoded target — Cargo auto-detects host platform.
+# Build with: pnpm tauri build

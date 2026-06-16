@@ -558,7 +558,9 @@ function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [view, setView] = useState<AppView>("onboarding");
+  const [view, setView] = useState<AppView>(
+    localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
+  );
   const [errors, setErrors] = useState<AppError[]>([]);
   const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
   const [activeItem, setActiveItem] = useState("Home");
@@ -779,6 +781,7 @@ function App() {
   };
 
   const handleOnboardingComplete = () => {
+    localStorage.setItem("onboarding_completed", "true");
     setView("main");
   };
 
