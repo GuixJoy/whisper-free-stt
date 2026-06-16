@@ -287,7 +287,7 @@ function FeedView({
                       <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
                         {new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).toLocaleTimeString()}
                       </span>
-                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE]/70 truncate">
+                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE]/70 whitespace-pre-wrap break-words">
                         {item.processed || item.raw}
                       </span>
                     </div>
