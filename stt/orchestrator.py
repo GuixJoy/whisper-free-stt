@@ -151,6 +151,10 @@ def start_ws_server(port: int = 8765) -> None:
                             rows = get_store().get_recent(limit)
                             resp = _json.dumps({"type": "history", "rows": rows})
                             await websocket.send(resp)
+                        elif req.get("type") == "get_insights":
+                            data = get_store().get_insights()
+                            resp = _json.dumps({"type": "insights", "data": data})
+                            await websocket.send(resp)
                     except Exception:
                         pass
         except Exception:

@@ -213,6 +213,155 @@ class HistoryStore:
         except Exception:
             return []
 
+    def get_insights(self) -> dict[str, object]:
+        """Compute analytics for the Insights dashboard."""
+        try:
+            with self._conn() as conn:
+                # Total words (all time)
+                row = conn.execute(
+                    "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != ''"
+                ).fetchone()
+                total_words = int(row[0]) if row else 0
+
+                # Words this week vs last week for trend
+                row_now = conn.execute(
+                    """SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0)
+                       FROM transcripts WHERE raw_text != '' AND created_at >= datetime('now', '-7 days')"""
+                ).fetchone()
+                words_this_week = int(row_now[0]) if row_now else 0
+
+                row_prev = conn.execute(
+                    """SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0)
+                       FROM transcripts WHERE raw_text != '' AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')"""
+                ).fetchone()
+                words_prev_week = int(row_prev[0]) if row_prev else 0
+
+                # Words per minute (avg over all sessions with duration > 0)
+                row_wpm = conn.execute(
+                    """SELECT COALESCE(AVG(
+                         (LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)
+                       ), 0)
+                       FROM transcripts WHERE raw_text != '' AND duration_sec > 0"""
+                ).fetchone()
+                wpm = int(row_wpm[0]) if row_wpm else 0
+
+                # WPM trend (this week vs last week)
+                row_wpm_now = conn.execute(
+                    """SELECT COALESCE(AVG(
+                         (LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)
+                       ), 0)
+                       FROM transcripts WHERE raw_text != '' AND duration_sec > 0 AND created_at >= datetime('now', '-7 days')"""
+                ).fetchone()
+                wpm_now = int(row_wpm_now[0]) if row_wpm_now else 0
+
+                row_wpm_prev = conn.execute(
+                    """SELECT COALESCE(AVG(
+                         (LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)
+                       ), 0)
+                       FROM transcripts WHERE raw_text != '' AND duration_sec > 0 AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')"""
+                ).fetchone()
+                wpm_prev = int(row_wpm_prev[0]) if row_wpm_prev else 0
+
+                # AI fixes: rows where processed != raw (mode != 'off')
+                row_fixes = conn.execute(
+                    "SELECT COUNT(*) FROM transcripts WHERE processed_text != '' AND processed_text != raw_text AND mode != 'off'"
+                ).fetchone()
+                ai_fixes = int(row_fixes[0]) if row_fixes else 0
+
+                # Usage breakdown by mode
+                mode_rows = conn.execute(
+                    """SELECT mode, COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) as words
+                       FROM transcripts WHERE raw_text != '' AND mode != 'off'
+                       GROUP BY mode ORDER BY words DESC"""
+                ).fetchall()
+                mode_map = {"cleanup": "AI Prompts", "email": "Emails", "bullet_list": "Documents", "commit_message": "Messages"}
+                categories = []
+                for r in mode_rows:
+                    name = mode_map.get(r[0], r[0].title())
+                    categories.append({"name": name, "words": int(r[1]), "maxWords": max(total_words, 1)})
+                # Add uncategorized (mode='off') as 'Other'
+                row_other = conn.execute(
+                    """SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0)
+                       FROM transcripts WHERE raw_text != '' AND mode = 'off'"""
+                ).fetchone()
+                other_words = int(row_other[0]) if row_other else 0
+                if other_words > 0:
+                    categories.append({"name": "Other", "words": other_words, "maxWords": max(total_words, 1)})
+
+                # Streak: consecutive days with at least one transcript
+                streak_rows = conn.execute(
+                    """SELECT DISTINCT date(created_at) as day FROM transcripts ORDER BY day DESC"""
+                ).fetchall()
+                days = [r[0] for r in streak_rows]
+
+                current_streak = 0
+                longest_streak = 0
+                temp_streak = 0
+                if days:
+                    from datetime import datetime, timedelta
+                    today = datetime.utcnow().date()
+                    prev = None
+                    for d_str in days:
+                        d = datetime.strptime(d_str, "%Y-%m-%d").date() if isinstance(d_str, str) else d_str
+                        if prev is None:
+                            temp_streak = 1
+                            prev = d
+                        elif (prev - d).days == 1:
+                            temp_streak += 1
+                            prev = d
+                        elif (prev - d).days == 0:
+                            continue
+                        else:
+                            longest_streak = max(longest_streak, temp_streak)
+                            temp_streak = 1
+                            prev = d
+                    longest_streak = max(longest_streak, temp_streak)
+                    # Current streak: count from today backwards
+                    current_streak = 0
+                    check = today
+                    day_set = set(days)
+                    while check.isoformat() in day_set or (isinstance(day_set, set) and any(str(check) == d for d in days)):
+                        current_streak += 1
+                        check -= timedelta(days=1)
+
+                # Heatmap: transcripts per day for last 182 days
+                heatmap_rows = conn.execute(
+                    """SELECT date(created_at) as day, COUNT(*) as cnt
+                       FROM transcripts
+                       WHERE created_at >= datetime('now', '-182 days')
+                       GROUP BY day"""
+                ).fetchall()
+                heatmap = []
+                for r in heatmap_rows:
+                    cnt = int(r[1])
+                    if cnt == 0: level = 0
+                    elif cnt <= 2: level = 1
+                    elif cnt <= 5: level = 2
+                    elif cnt <= 10: level = 3
+                    else: level = 4
+                    heatmap.append({"date": r[0], "level": level})
+
+                # Trend percentages
+                wpm_trend = 0
+                if wpm_prev > 0:
+                    wpm_trend = round((wpm_now - wpm_prev) / wpm_prev * 100)
+                words_trend = 0
+                if words_prev_week > 0:
+                    words_trend = round((words_this_week - words_prev_week) / words_prev_week * 100)
+
+                return {
+                    "wpm": wpm,
+                    "wpmTrend": wpm_trend,
+                    "totalWords": total_words,
+                    "wordsTrend": words_trend,
+                    "aiFixes": ai_fixes,
+                    "categories": categories,
+                    "streak": {"current": current_streak, "longest": longest_streak},
+                    "heatmap": heatmap,
+                }
+        except Exception as e:
+            return {"wpm": 0, "wpmTrend": 0, "totalWords": 0, "wordsTrend": 0, "aiFixes": 0, "categories": [], "streak": {"current": 0, "longest": 0}, "heatmap": []}
+
 
 # Module-level singleton — initialized lazily on first use
 _store: Optional[HistoryStore] = None
