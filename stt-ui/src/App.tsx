@@ -136,6 +136,10 @@ function FeedView({
   connected,
   status,
   lines,
+  historyItems,
+  historyLoading,
+  hasMoreHistory,
+  onFeedScroll,
   start,
   stop,
   copyLatest,
@@ -150,6 +154,10 @@ function FeedView({
   connected: boolean;
   status: string;
   lines: TranscriptLine[];
+  historyItems: TranscriptLine[];
+  historyLoading: boolean;
+  hasMoreHistory: boolean;
+  onFeedScroll: () => void;
   start: (overrideSettings?: RuntimeSettings) => Promise<void>;
   stop: () => void;
   copyLatest: () => void;
@@ -234,8 +242,8 @@ function FeedView({
           </div>
 
           {/* Transcript Lines */}
-          <div className="flex-1 overflow-auto" ref={feedRef}>
-            {lines.length === 0 ? (
+          <div className="flex-1 overflow-auto" ref={feedRef} onScroll={onFeedScroll}>
+            {lines.length === 0 && historyItems.length === 0 && !historyLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
                 <Mic size={72} strokeWidth={1} className="text-[rgba(199,119,44,0.8)] mb-4" />
                 <p className="text-[#F7F4EE] text-[15px] mb-1">Start speaking to begin transcription</p>
@@ -244,31 +252,66 @@ function FeedView({
                 </p>
               </div>
             ) : (
-              lines.map((line) => (
-                <div
-                  key={line.id}
-                  className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors"
-                  style={{ paddingTop: "16px", paddingBottom: "16px" }}
-                >
-                  <div className="flex items-baseline gap-3 min-w-0">
-                    <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
-                      {new Date(line.createdAt).toLocaleTimeString()}
-                    </span>
-                    <span className="text-[16px] leading-[1.7] text-[#F7F4EE] truncate">
-                      {line.processed || line.raw}
-                    </span>
+              <>
+                {lines.map((line) => (
+                  <div
+                    key={`live-${line.id}`}
+                    className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors"
+                    style={{ paddingTop: "16px", paddingBottom: "16px" }}
+                  >
+                    <div className="flex items-baseline gap-3 min-w-0">
+                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
+                        {new Date(line.createdAt).toLocaleTimeString()}
+                      </span>
+                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE] truncate">
+                        {line.processed || line.raw}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
+                        onClick={() => void copyLine(line)}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
-                      onClick={() => void copyLine(line)}
-                      title="Copy line"
-                    >
-                      Copy
-                    </button>
+                ))}
+                {historyItems.map((item) => (
+                  <div
+                    key={`hist-${item.id}`}
+                    className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors border-t border-white/[0.03]"
+                    style={{ paddingTop: "16px", paddingBottom: "16px" }}
+                  >
+                    <div className="flex items-baseline gap-3 min-w-0">
+                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
+                        {new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).toLocaleTimeString()}
+                      </span>
+                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE]/70 truncate">
+                        {item.processed || item.raw}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
+                        onClick={() => void copyLine(item)}
+                      >
+                        Copy
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))
+                ))}
+                {historyLoading && (
+                  <div className="flex items-center justify-center py-6 text-[13px] text-[#7A7F87]">
+                    Loading history...
+                  </div>
+                )}
+                {!hasMoreHistory && historyItems.length > 0 && (
+                  <div className="flex items-center justify-center py-6 text-[13px] text-[#7A7F87]">
+                    No more history
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -564,6 +607,11 @@ function App() {
   const [errors, setErrors] = useState<AppError[]>([]);
   const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
   const [activeItem, setActiveItem] = useState("Home");
+  const [historyItems, setHistoryItems] = useState<TranscriptLine[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const historyWsRef = useRef<WebSocket | null>(null);
 
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
@@ -580,6 +628,73 @@ function App() {
       setMode("tauri");
     }
   }, []);
+
+  // Load history from backend
+  const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
+    setHistoryLoading(true);
+    try {
+      if (mode === "tauri") {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const rows = await invoke<Array<{ id: number; raw_text: string; processed_text: string; created_at: string; mode: string; language: string; duration_sec: number }>>("get_history", { limit: page * pageSize });
+        const items: TranscriptLine[] = rows.map((r) => ({
+          id: r.id,
+          raw: r.raw_text,
+          processed: r.processed_text,
+          status: "done",
+          createdAt: r.created_at,
+        }));
+        setHistoryItems(items.reverse());
+        setHasMoreHistory(rows.length >= page * pageSize);
+      } else if (mode === "ws") {
+        const ws = new WebSocket(`ws://127.0.0.1:${settings.wsPort}`);
+        historyWsRef.current = ws;
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => resolve();
+          ws.onerror = () => reject(new Error("WS failed"));
+        });
+        ws.onmessage = (msg) => {
+          try {
+            const data = JSON.parse(msg.data);
+            if (data.type === "history") {
+              const items: TranscriptLine[] = data.rows.map((r: any) => ({
+                id: r.id,
+                raw: r.raw_text,
+                processed: r.processed_text,
+                status: "done",
+                createdAt: r.created_at,
+              }));
+              setHistoryItems(items.reverse());
+              setHasMoreHistory(data.rows.length >= page * pageSize);
+              ws.close();
+            }
+          } catch { }
+        };
+        ws.send(JSON.stringify({ type: "get_history", limit: page * pageSize }));
+      }
+    } catch {
+      setHasMoreHistory(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [mode, settings.wsPort]);
+
+  // Load history on mount
+  useEffect(() => {
+    if (view === "main") {
+      fetchHistory(1);
+    }
+  }, [view, fetchHistory]);
+
+  // Infinite scroll: load more when scrolling to bottom
+  const handleFeedScroll = useCallback(() => {
+    const el = feedRef.current;
+    if (!el || historyLoading || !hasMoreHistory) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+      const nextPage = historyPage + 1;
+      setHistoryPage(nextPage);
+      fetchHistory(nextPage);
+    }
+  }, [historyLoading, hasMoreHistory, historyPage, fetchHistory]);
 
   useEffect(() => {
     const setVH = () => {
@@ -838,6 +953,10 @@ function App() {
             connected={connected}
             status={status}
             lines={lines}
+            historyItems={historyItems}
+            historyLoading={historyLoading}
+            hasMoreHistory={hasMoreHistory}
+            onFeedScroll={handleFeedScroll}
             start={start}
             stop={stop}
             copyLatest={copyLatest}

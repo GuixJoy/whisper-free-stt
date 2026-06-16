@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface HistoryRow {
@@ -23,7 +23,7 @@ interface Props {
 
 const formatDate = (iso: string): string => {
   try {
-    const d = new Date(iso);
+    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
     return d.toLocaleString();
   } catch {
     return iso;
@@ -35,22 +35,51 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      if (!isTauri()) {
-        setError("History only available in the desktop app (Tauri)");
-        setLoading(false);
-        return;
+      if (isTauri()) {
+        // Tauri mode: use Rust command
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<HistoryRow[]>("get_history", { limit: 100 });
+        setRows(result);
+      } else {
+        // Browser mode: fetch via WebSocket
+        const ws = new WebSocket(`ws://127.0.0.1:8765`);
+        wsRef.current = ws;
+
+        await new Promise<void>((resolve, reject) => {
+          ws.onopen = () => resolve();
+          ws.onerror = () => reject(new Error("WebSocket connection failed"));
+        });
+
+        ws.onmessage = (msg) => {
+          try {
+            const data = JSON.parse(msg.data);
+            if (data.type === "history") {
+              setRows(data.rows);
+              setLoading(false);
+              ws.close();
+            }
+          } catch { }
+        };
+
+        ws.send(JSON.stringify({ type: "get_history", limit: 100 }));
+
+        // Timeout in case no response
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            setError("Timeout fetching history");
+            setLoading(false);
+            ws.close();
+          }
+        }, 5000);
       }
-      const { invoke } = await import("@tauri-apps/api/core");
-      const result = await invoke<HistoryRow[]>("get_history", { limit: 100 });
-      setRows(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
       setLoading(false);
     }
   }, []);
@@ -61,6 +90,11 @@ export default function HistoryPanel({ visible, onClose }: Props) {
       return;
     }
     loadHistory();
+    return () => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
+    };
   }, [visible, loadHistory]);
 
   useEffect(() => {

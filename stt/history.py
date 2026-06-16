@@ -184,6 +184,35 @@ class HistoryStore:
         except Exception:
             return []
 
+    def get_recent(self, limit: int = 100) -> list[dict[str, object]]:
+        """Return recent transcript rows for UI display."""
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT id, raw_text, processed_text, language, mode, model,
+                              duration_sec, favorite, created_at
+                       FROM transcripts
+                       ORDER BY created_at DESC
+                       LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+                return [
+                    {
+                        "id": r[0],
+                        "raw_text": r[1],
+                        "processed_text": r[2],
+                        "language": r[3],
+                        "mode": r[4],
+                        "model": r[5],
+                        "duration_sec": r[6],
+                        "favorite": r[7],
+                        "created_at": r[8],
+                    }
+                    for r in rows
+                ]
+        except Exception:
+            return []
+
 
 # Module-level singleton — initialized lazily on first use
 _store: Optional[HistoryStore] = None

@@ -4,13 +4,8 @@ import {
   Home,
   BarChart3,
   BookOpen,
-  Scissors,
-  Type,
-  Shuffle,
-  FileText,
+  Clock,
   SlidersHorizontal,
-  Users,
-  Gift,
   Settings,
   HelpCircle,
 } from "lucide-react";
@@ -118,28 +113,10 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             onClick={() => onNavigate?.("Dictionary")}
           />
           <SidebarItem
-            icon={<Scissors size={18} />}
-            label="Snippets"
-            active={activeItem === "Snippets"}
-            onClick={() => onNavigate?.("Snippets")}
-          />
-          <SidebarItem
-            icon={<Type size={18} />}
-            label="Style"
-            active={activeItem === "Style"}
-            onClick={() => onNavigate?.("Style")}
-          />
-          <SidebarItem
-            icon={<Shuffle size={18} />}
-            label="Transforms"
-            active={activeItem === "Transforms"}
-            onClick={() => onNavigate?.("Transforms")}
-          />
-          <SidebarItem
-            icon={<FileText size={18} />}
-            label="Scratchpad"
-            active={activeItem === "Scratchpad"}
-            onClick={() => onNavigate?.("Scratchpad")}
+            icon={<Clock size={18} />}
+            label="History"
+            active={activeItem === "History"}
+            onClick={() => onNavigate?.("History")}
           />
           <SidebarItem
             icon={<SlidersHorizontal size={18} />}
@@ -165,16 +142,6 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         {/* Bottom Actions */}
         <SidebarSection>
           <Divider className="mb-2" />
-          <SidebarItem
-            icon={<Users size={18} />}
-            label="Invite your team"
-            onClick={() => onNavigate?.("Invite")}
-          />
-          <SidebarItem
-            icon={<Gift size={18} />}
-            label="Get a free month"
-            onClick={() => onNavigate?.("FreeMonth")}
-          />
           <SidebarItem
             icon={<Settings size={18} />}
             label="Settings"

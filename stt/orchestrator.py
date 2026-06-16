@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import asyncio as _asyncio
 import json as _json
+import os
+import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -139,8 +142,17 @@ def start_ws_server(port: int = 8765) -> None:
                         _ws_audio_queue.append(audio)
                         _ws_audio_ready.set()
                 elif isinstance(message, str):
-                    # JSON control messages (future use)
-                    pass
+                    # JSON control messages from browser
+                    try:
+                        import json as _json
+                        req = _json.loads(message)
+                        if req.get("type") == "get_history":
+                            limit = req.get("limit", 100)
+                            rows = get_store().get_recent(limit)
+                            resp = _json.dumps({"type": "history", "rows": rows})
+                            await websocket.send(resp)
+                    except Exception:
+                        pass
         except Exception:
             pass
         finally:
@@ -289,6 +301,84 @@ class _RingBuffer:
 
     def total_samples(self) -> int:
         return self._total
+
+
+# ---------------------------------------------------------------------------
+# System resource collection
+# ---------------------------------------------------------------------------
+
+_CLK_TCK: int | None = None
+
+def _collect_system_stats() -> dict[str, str]:
+    """Collect CPU, memory, and GPU usage at end of run.
+
+    Uses /proc for CPU/memory (zero deps) and nvidia-smi for GPU.
+    Returns dict of label → formatted string, or empty dict on failure.
+    """
+    stats: dict[str, str] = {}
+
+    try:
+        # --- CPU usage (process-level, average over lifetime) ---
+        with open("/proc/self/stat") as f:
+            parts = f.read().split()
+        utime = int(parts[13])
+        stime = int(parts[14])
+        cutime = int(parts[15])
+        cstime = int(parts[16])
+        total_ticks = utime + stime + cutime + cstime
+
+        global _CLK_TCK
+        if _CLK_TCK is None:
+            _CLK_TCK = int(os.sysconf(os.sysconf_names["SC_CLK_TCK"]))
+        cpu_seconds = total_ticks / _CLK_TCK
+
+        with open("/proc/uptime") as f:
+            uptime_seconds = float(f.read().split()[0])
+
+        with open("/proc/self/status") as f:
+            status = f.read()
+
+        # Process start time from /proc/self/stat (field 22, 0-indexed 21)
+        start_ticks = int(parts[21])
+        elapsed_seconds = uptime_seconds - (start_ticks / _CLK_TCK)
+
+        if elapsed_seconds > 0:
+            cpu_pct = 100.0 * cpu_seconds / elapsed_seconds
+            stats["cpu"] = f"{cpu_pct:.1f}% avg ({cpu_seconds:.1f}s of {elapsed_seconds:.0f}s wall)"
+
+        # --- Memory (VmRSS) ---
+        m = re.search(r"VmRSS:\s+(\d+)\s+kB", status)
+        if m:
+            rss_mb = int(m.group(1)) / 1024
+            stats["memory"] = f"{rss_mb:.0f} MB RSS"
+
+        # --- GPU via nvidia-smi ---
+        try:
+            gpu_out = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True, text=True, timeout=3,
+            )
+            if gpu_out.returncode == 0:
+                line = gpu_out.stdout.strip()
+                if line:
+                    parts_gpu = line.split(", ")
+                    if len(parts_gpu) >= 4:
+                        gpu_util = parts_gpu[0]
+                        mem_used = parts_gpu[1]
+                        mem_total = parts_gpu[2]
+                        gpu_temp = parts_gpu[3]
+                        stats["gpu"] = f"{gpu_util}% util, {mem_used}/{mem_total} MB, {gpu_temp}°C"
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    return stats
 
 
 # ---------------------------------------------------------------------------
@@ -520,6 +610,11 @@ def run(
             _echo(f"  {stage}: n={stats['count']:.0f} "
                   f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
                   f"min={stats['min']:.3f} max={stats['max']:.3f}")
+    sys_stats = _collect_system_stats()
+    if sys_stats:
+        _echo("\n--- System ---")
+        for k, v in sys_stats.items():
+            _echo(f"  {k}: {v}")
     _echo("\nDone.")
     if hooks and hooks.on_state:
         hooks.on_state("idle")
@@ -654,6 +749,11 @@ def run_ws_audio(
             _echo(f"  {stage}: n={stats['count']:.0f} "
                   f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
                   f"min={stats['min']:.3f} max={stats['max']:.3f}")
+    sys_stats = _collect_system_stats()
+    if sys_stats:
+        _echo("\n--- System ---")
+        for k, v in sys_stats.items():
+            _echo(f"  {k}: {v}")
     _echo("\nDone.")
     if hooks and hooks.on_state:
         hooks.on_state("idle")
