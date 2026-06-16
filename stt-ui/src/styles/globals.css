@@ -92,3 +92,19 @@ body {
 .progress-fill {
   background: linear-gradient(90deg, #c88a32, #e8a848);
 }
+
+/* Mic button pulse animation */
+@keyframes mic-pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 40px rgba(199, 119, 44, 0.35);
+  }
+  50% {
+    transform: scale(1.03);
+    box-shadow: 0 0 50px rgba(199, 119, 44, 0.45);
+  }
+}
+
+.animate-mic-pulse {
+  animation: mic-pulse 2.5s ease-in-out infinite;
+}

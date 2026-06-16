@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "r
 import type { STTApi, STTEvent } from "./api";
 import { createWsApi } from "./api-ws";
 import { createTauriApi } from "./api-tauri";
+import { Mic } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
-import MicSelector from "./components/MicSelector";
+import MicButton from "./components/MicButton";
 import ErrorBanner from "./components/ErrorBanner";
 import type { AppError } from "./components/ErrorBanner";
 import HistoryPanel from "./components/HistoryPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import InsightsPage from "./components/InsightsPage";
 import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
@@ -103,14 +105,6 @@ function buildWsCommand(settings: RuntimeSettings): string {
   return `stt ${args.join(" ")}`;
 }
 
-const STATUS_ICON: Record<string, string> = {
-  listening: "🎙",
-  transcribing: "✍",
-  rewriting: "🔄",
-  error: "⚠",
-  idle: "◎",
-};
-
 function detectRunMode(): RunMode {
   if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
     return "tauri";
@@ -165,116 +159,110 @@ function FeedView({
   setShowErrors: (v: boolean | ((s: boolean) => boolean)) => void;
   dismissError: (id: string) => void;
 }) {
-  const statusColors: Record<string, string> = {
-    error: "bg-red-900/40 text-red-400 border-red-500/30",
-    rewriting: "bg-blue-900/40 text-blue-400 border-blue-500/30",
-    transcribing: "bg-yellow-900/40 text-yellow-400 border-yellow-500/30",
-    listening: "bg-green-900/40 text-green-400 border-green-500/30",
+  const handleToggle = () => {
+    if (connected) {
+      stop();
+    } else {
+      void start();
+    }
   };
-  const statusClass = statusColors[status] ?? "bg-app-surface text-text-secondary border-border";
-  const statusIcon = STATUS_ICON[status] ?? "◎";
+
+  const statusLabel = (() => {
+    switch (status) {
+      case "listening": return "Listening";
+      case "transcribing": return "Transcribing";
+      case "rewriting": return "Rewriting";
+      case "error": return "Error";
+      default: return "Idle";
+    }
+  })();
 
   return (
     <div className="flex h-full">
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
-        {/* Top bar */}
-        <div className="flex items-center gap-3 mb-4">
-          <MicSelector
-            selectedIndex={null}
-            onSelect={() => {}}
-            onTest={() => {}}
-            compact
+        {/* Centered mic area */}
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <MicButton
+            status={status}
+            connected={connected}
+            onToggle={handleToggle}
           />
-          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-badge text-[13px] font-medium border ${statusClass}`}>
-            <span>{statusIcon}</span>
-            {status}
-          </span>
-          {!connected ? (
+          <p className="text-[13px] text-[#7A7F87]">
+            {statusLabel} &middot; {lines.length} lines
+          </p>
+          <div className="flex items-center gap-2">
             <button
-              className="inline-flex items-center gap-2 h-8 px-3 rounded-button text-[13px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors shadow-accent-button"
-              onClick={() => void start()}
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-40"
+              onClick={() => void copyLatest()}
+              disabled={lines.length === 0}
             >
-              ▶ Start
+              Copy
             </button>
-          ) : (
             <button
-              className="inline-flex items-center gap-2 h-8 px-3 rounded-button text-[13px] font-medium bg-red-900/40 border border-red-500/30 text-red-400 hover:bg-red-900/60 transition-colors"
-              onClick={stop}
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-40"
+              onClick={clearLines}
+              disabled={lines.length === 0}
             >
-              ■ Stop
+              Clear
             </button>
-          )}
-          <button
-            className="inline-flex items-center gap-2 h-8 px-3 rounded-button text-[13px] font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors disabled:opacity-40"
-            onClick={() => void copyLatest()}
-            disabled={lines.length === 0}
-          >
-            📋 Copy last
-          </button>
-          <button
-            className="inline-flex items-center gap-2 h-8 px-3 rounded-button text-[13px] font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors disabled:opacity-40"
-            onClick={clearLines}
-            disabled={lines.length === 0}
-          >
-            🗑 Clear
-          </button>
-          {errors.filter((e) => !e.dismissed).length > 0 && (
-            <button
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-[13px] font-medium bg-red-900/30 border border-red-500/30 text-red-400 hover:bg-red-900/50 transition-colors"
-              onClick={() => setShowErrors((s) => !s)}
-            >
-              ⚠️ Errors ({errors.filter((e) => !e.dismissed).length})
-            </button>
-          )}
+            {errors.filter((e) => !e.dismissed).length > 0 && (
+              <button
+                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors"
+                onClick={() => setShowErrors((s) => !s)}
+              >
+                Errors ({errors.filter((e) => !e.dismissed).length})
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Feed */}
-        <div className="flex-1 bg-app-surface rounded-card border border-border overflow-hidden flex flex-col">
+        <div
+          className="flex-1 bg-[#0B0F14] rounded-[28px] border border-white/[0.04] overflow-hidden flex flex-col"
+        >
+          {/* Feed Header */}
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.04]">
             <LiveFeedMicMeter />
             <div className="flex items-center gap-2 text-[12px]">
-              <span className={connected ? "text-green-400" : "text-text-muted"}>
-                {connected ? "● live" : "○ off"}
+              <span className={connected ? "text-green-400" : "text-[#7A7F87]"}>
+                {connected ? "● Live" : "○ Idle"}
               </span>
-              <span className="text-text-muted">{lines.length} lines</span>
+              <span className="text-[#7A7F87]">{lines.length} lines</span>
             </div>
           </div>
 
+          {/* Transcript Lines */}
           <div className="flex-1 overflow-auto" ref={feedRef}>
             {lines.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <div className="text-4xl mb-3">🎙</div>
-                <p className="text-text-secondary text-[15px] mb-1">Listening output will appear here…</p>
-                <p className="text-text-muted text-[13px]">
-                  Press <kbd className="px-1.5 py-0.5 bg-app-surface-secondary border border-border rounded text-text-secondary text-[11px]">Space</kbd> or click <strong className="text-text-primary">Start</strong> to begin
+                <Mic size={72} strokeWidth={1} className="text-[rgba(199,119,44,0.8)] mb-4" />
+                <p className="text-[#F7F4EE] text-[15px] mb-1">Start speaking to begin transcription</p>
+                <p className="text-[#7A7F87] text-[13px]">
+                  Press <kbd className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.08] rounded text-[#7A7F87] text-[11px]">Space</kbd> to start or stop
                 </p>
               </div>
             ) : (
               lines.map((line) => (
                 <div
                   key={line.id}
-                  className="flex items-center justify-between px-4 py-3 border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
+                  className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors"
+                  style={{ paddingTop: "16px", paddingBottom: "16px" }}
                 >
                   <div className="flex items-baseline gap-3 min-w-0">
-                    <span className="text-[12px] text-time shrink-0 w-16">
+                    <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
                       {new Date(line.createdAt).toLocaleTimeString()}
                     </span>
-                    <span className="text-[14px] text-text-primary truncate">
+                    <span className="text-[16px] leading-[1.7] text-[#F7F4EE] truncate">
                       {line.processed || line.raw}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0 ml-3">
-                    <span className={`w-2 h-2 rounded-full ${
-                      line.status === "done" ? "bg-green-400" :
-                      line.status === "error" ? "bg-red-400" :
-                      "bg-yellow-400"
-                    }`} />
+                  <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
-                      className="text-[14px] opacity-40 hover:opacity-100 transition-opacity"
+                      className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
                       onClick={() => void copyLine(line)}
                       title="Copy line"
                     >
-                      📋
+                      Copy
                     </button>
                   </div>
                 </div>
@@ -831,6 +819,8 @@ function App() {
             stopMic={stopMic}
           />
         );
+      case "Insights":
+        return <InsightsPage />;
       case "Settings":
         return null;
       default:

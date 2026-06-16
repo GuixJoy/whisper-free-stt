@@ -38,9 +38,8 @@ export function SidebarItem({ icon, label, active, badge, onClick }: SidebarItem
     >
       {active && (
         <>
-          <div className="absolute inset-0 bg-gradient-to-r from-accent/20 via-accent/8 to-transparent" />
-          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-accent via-accent-warm to-accent/40 rounded-r" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_50%,rgba(200,138,50,0.12),transparent_70%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-white/[0.06]" />
+          <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-r" />
         </>
       )}
       <span className="relative z-10 w-[18px] h-[18px] flex-shrink-0">{icon}</span>
@@ -151,10 +150,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         </SidebarSection>
 
         {/* Upgrade Card */}
-        <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-accent/20">
-          <div className="absolute inset-0 bg-app-surface-card" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,rgba(200,138,50,0.10),transparent_70%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_80%,rgba(50,120,130,0.08),transparent_60%)]" />
+        <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-white/[0.06] bg-[#0A0E14]">
           <div className="relative z-10">
             <p className="text-[15px] font-semibold text-accent-bright mb-1">2,000 words remaining</p>
             <p className="text-[13px] text-text-secondary mb-3 leading-[20px]">

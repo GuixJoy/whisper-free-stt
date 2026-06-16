@@ -27,4 +27,4 @@ node_modules/
 
 # Optional: Ignore npm lock file if you are using pnpm
 package-lock.json
-gui/node_modules
+gui/node_modules 
