@@ -45,6 +45,10 @@
     "clipboard-manager:allow-read-image",
     "clipboard-manager:allow-write-image",
     "clipboard-manager:allow-write-html",
-    "clipboard-manager:allow-clear"
+    "clipboard-manager:allow-clear",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all"
   ]
 }

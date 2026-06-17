@@ -362,6 +362,66 @@ class HistoryStore:
         except Exception as e:
             return {"wpm": 0, "wpmTrend": 0, "totalWords": 0, "wordsTrend": 0, "aiFixes": 0, "categories": [], "streak": {"current": 0, "longest": 0}, "heatmap": []}
 
+    def search_history(self, query: str, limit: int = 50) -> list[dict[str, object]]:
+        """Full-text search across transcript history."""
+        try:
+            with self._conn() as conn:
+                terms = " OR ".join(
+                    w for w in query.lower().split()
+                    if len(w) > 2 and w.isalpha()
+                )
+                if not terms:
+                    return []
+                rows = conn.execute(
+                    """SELECT t.id, t.raw_text, t.processed_text, t.language, t.mode,
+                              t.model, t.duration_sec, t.favorite, t.created_at
+                       FROM transcripts t
+                       JOIN transcripts_fts fts ON t.id = fts.rowid
+                       WHERE transcripts_fts MATCH ?
+                       ORDER BY rank LIMIT ?""",
+                    (terms, limit),
+                ).fetchall()
+                return [
+                    {
+                        "id": r[0], "raw_text": r[1], "processed_text": r[2],
+                        "language": r[3], "mode": r[4], "model": r[5],
+                        "duration_sec": r[6], "favorite": r[7], "created_at": r[8],
+                    }
+                    for r in rows
+                ]
+        except Exception:
+            return []
+
+    def export_csv(self, limit: int = 1000) -> str:
+        """Export history as CSV string."""
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT id, raw_text, processed_text, language, mode, model,
+                              duration_sec, created_at
+                       FROM transcripts ORDER BY created_at DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+            lines = ["id,raw_text,processed_text,language,mode,model,duration_sec,created_at"]
+            for r in rows:
+                raw = r[1].replace('"', '""')
+                proc = r[2].replace('"', '""')
+                lines.append(f'{r[0]},"{raw}","{proc}",{r[3]},{r[4]},{r[5]},{r[6]},{r[7]}')
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def delete_entry(self, entry_id: int) -> bool:
+        """Delete a single transcript entry by ID."""
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    conn.execute("DELETE FROM transcripts WHERE id = ?", (entry_id,))
+                    conn.commit()
+                    return True
+        except Exception:
+            return False
+
 
 # Module-level singleton — initialized lazily on first use
 _store: Optional[HistoryStore] = None

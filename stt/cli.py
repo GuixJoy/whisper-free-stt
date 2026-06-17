@@ -118,6 +118,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cpu-threads", type=int, default=4, help="CPU threads")
     parser.add_argument("--language", type=str, default=None, help="Force transcription language (e.g., 'en')")
     parser.add_argument("--beam-size", type=int, default=None, help="Beam size (default: profile-dependent)")
+    parser.add_argument("--hotwords", type=str, default="", help="Comma-separated terms to boost recognition")
 
     # LLM — defaults=None so we can fall back to env/.env
     parser.add_argument(
@@ -215,6 +216,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             language=args.language,
             beam_size=beam_size,
             condition_on_previous_text=profile.condition_on_previous_text,
+            hotwords=args.hotwords,
         ),
         llm=LLMConfig(
             mode=llm_mode,

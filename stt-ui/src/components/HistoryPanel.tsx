@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { cn } from "@/lib/utils";
+import { Search, Download, Trash2 } from "lucide-react";
 
 interface HistoryRow {
   id: number;
@@ -35,164 +35,182 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searching, setSearching] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+
+  const sendWs = useCallback(async (msg: object): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:8765`);
+      wsRef.current = ws;
+      ws.onopen = () => ws.send(JSON.stringify(msg));
+      ws.onmessage = (e) => {
+        try { resolve(JSON.parse(e.data)); } catch { resolve(null); }
+        ws.close();
+      };
+      ws.onerror = () => { reject(new Error("WS failed")); };
+      setTimeout(() => { if (ws.readyState === WebSocket.OPEN) ws.close(); }, 10000);
+    });
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       if (isTauri()) {
-        // Tauri mode: use Rust command
         const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke<HistoryRow[]>("get_history", { limit: 100 });
         setRows(result);
       } else {
-        // Browser mode: fetch via WebSocket
-        const ws = new WebSocket(`ws://127.0.0.1:8765`);
-        wsRef.current = ws;
-
-        await new Promise<void>((resolve, reject) => {
-          ws.onopen = () => resolve();
-          ws.onerror = () => reject(new Error("WebSocket connection failed"));
-        });
-
-        ws.onmessage = (msg) => {
-          try {
-            const data = JSON.parse(msg.data);
-            if (data.type === "history") {
-              setRows(data.rows);
-              setLoading(false);
-              ws.close();
-            }
-          } catch { }
-        };
-
-        ws.send(JSON.stringify({ type: "get_history", limit: 100 }));
-
-        // Timeout in case no response
-        setTimeout(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            setError("Timeout fetching history");
-            setLoading(false);
-            ws.close();
-          }
-        }, 5000);
+        const data = await sendWs({ type: "get_history", limit: 100 });
+        if (data?.type === "history") setRows(data.rows);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sendWs]);
+
+  const searchHistory = useCallback(async () => {
+    if (!searchQuery.trim()) { loadHistory(); return; }
+    setSearching(true);
+    try {
+      if (isTauri()) {
+        // Tauri doesn't have search yet, fall back to load all
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<HistoryRow[]>("get_history", { limit: 500 });
+        const q = searchQuery.toLowerCase();
+        setRows(result.filter(r => r.raw_text.toLowerCase().includes(q) || r.processed_text.toLowerCase().includes(q)));
+      } else {
+        const data = await sendWs({ type: "search_history", query: searchQuery });
+        if (data?.type === "history") setRows(data.rows);
+      }
+    } catch { }
+    finally { setSearching(false); }
+  }, [searchQuery, loadHistory, sendWs]);
+
+  const exportHistory = useCallback(async () => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const csv = await invoke<string>("export_history");
+        downloadCsv(csv);
+      } else {
+        const data = await sendWs({ type: "export_history" });
+        if (data?.csv) downloadCsv(data.csv);
+      }
+    } catch { }
+  }, [sendWs]);
+
+  const downloadCsv = (csv: string) => {
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stt-history-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const deleteEntry = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("delete_entry", { id });
+      } else {
+        await sendWs({ type: "delete_entry", id });
+      }
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch { }
+  }, [sendWs]);
 
   useEffect(() => {
-    if (!visible) {
-      setRows([]);
-      return;
-    }
+    if (!visible) { setRows([]); setSearchQuery(""); return; }
     loadHistory();
-    return () => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-    };
+    return () => { if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.close(); };
   }, [visible, loadHistory]);
 
   useEffect(() => {
     if (!visible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [visible, onClose]);
 
   const copyText = async (text: string, id: number) => {
     if (!navigator.clipboard) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    } catch { /* clipboard denied */ }
+    try { await navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch { }
   };
 
   if (!visible) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Transcript history"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true">
       <div className="bg-app-surface rounded-card border border-border w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-lg">
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-heading text-text-primary">📜 Transcript History</h2>
           <div className="flex items-center gap-2">
-            <button
-              className={cn(
-                "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
-                "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                "disabled:pointer-events-none disabled:opacity-50",
-              )}
-              onClick={loadHistory}
-              disabled={loading}
-              aria-label="Refresh history"
-            >
-              {loading ? "⟳" : "↻"} Refresh
+            <button onClick={exportHistory} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export CSV">
+              <Download size={14} /> Export
             </button>
-            <button
-              className={cn(
-                "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
-                "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-              )}
-              onClick={onClose}
-              aria-label="Close history"
-            >
-              ✕ Close
+            <button onClick={loadHistory} disabled={loading} className="inline-flex items-center justify-center h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors disabled:opacity-50">
+              {loading ? "⟳" : "↻"}
             </button>
+            <button onClick={onClose} className="inline-flex items-center justify-center h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors">✕</button>
           </div>
         </div>
-        {error && (
-          <div className="mx-6 mt-4 rounded-card bg-red-900/20 border border-red-500/30 px-4 py-3 text-body text-red-400" role="alert">
-            ⚠ {error}
+
+        {/* Search bar */}
+        <div className="px-6 py-3 border-b border-border">
+          <div className="flex items-center gap-2">
+            <Search size={16} className="text-text-muted shrink-0" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") searchHistory(); }}
+              placeholder="Search transcripts..."
+              className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+            />
+            {searchQuery && (
+              <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-text-muted hover:text-text-primary text-sm">Clear</button>
+            )}
           </div>
-        )}
+        </div>
+
+        {error && <div className="mx-6 mt-4 rounded-card bg-red-900/20 border border-red-500/30 px-4 py-3 text-body text-red-400">⚠ {error}</div>}
+
+        {/* List */}
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3" role="list">
           {rows.length === 0 && !loading && (
-            <p className="text-center text-text-muted text-body py-12">No transcripts yet. Start recording to build your history.</p>
+            <p className="text-center text-text-muted text-body py-12">{searching ? "No results found." : "No transcripts yet."}</p>
           )}
           {rows.map((row) => (
-            <div key={row.id} className="bg-app-surface-secondary rounded-card border border-border p-4 flex flex-col gap-2" role="listitem">
+            <div key={row.id} className="group bg-app-surface-secondary rounded-card border border-border p-4 flex flex-col gap-2" role="listitem">
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">
-                  {row.mode}
-                </span>
+                <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">{row.mode}</span>
                 <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
               </div>
-              <div className="text-body text-text-primary">
+              <div className="text-body text-text-primary whitespace-pre-wrap break-words">
                 <span className="text-text-secondary font-medium">Raw:</span> {row.raw_text}
               </div>
               {row.processed_text && row.processed_text !== row.raw_text && (
-                <div className="text-body text-text-primary">
+                <div className="text-body text-text-primary whitespace-pre-wrap break-words">
                   <span className="text-text-secondary font-medium">Corrected:</span> {row.processed_text}
                 </div>
               )}
               <div className="flex items-center justify-between pt-1 border-t border-border">
                 <span className="text-small text-text-muted">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
-                <button
-                  className={cn(
-                    "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
-                    "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
-                  )}
-                  onClick={() => copyText(row.processed_text || row.raw_text, row.id)}
-                  aria-label={`Copy transcript: ${row.raw_text.substring(0, 30)}...`}
-                >
-                  {copiedId === row.id ? "Copied!" : "📋 Copy"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors">
+                    {copiedId === row.id ? "Copied!" : "📋 Copy"}
+                  </button>
+                  <button onClick={() => deleteEntry(row.id)} className="inline-flex items-center h-8 px-2 rounded-button text-small font-medium text-red-400 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100" title="Delete">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

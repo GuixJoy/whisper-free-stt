@@ -140,6 +140,43 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
               Show keys
             </label>
           </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-subheading text-text-primary">🎤 Speech Recognition</h3>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-language" className="text-label text-text-secondary">Language</label>
+              <select
+                id="settings-language"
+                className={inputClass}
+                value={local.language}
+                onChange={(e) => update({ language: e.target.value })}
+              >
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-hotwords" className="text-label text-text-secondary">Custom Vocabulary</label>
+              <input
+                id="settings-hotwords"
+                className={inputClass}
+                value={local.hotwords}
+                onChange={(e) => update({ hotwords: e.target.value })}
+                placeholder="e.g. WhisperFlow, Tauri, PyTorch"
+              />
+              <p className="text-small text-text-muted">Comma-separated words to boost recognition accuracy.</p>
+            </div>
+          </div>
         </div>
         <div className="flex items-center justify-end px-6 py-4 border-t border-border">
           <button

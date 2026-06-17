@@ -155,6 +155,21 @@ def start_ws_server(port: int = 8765) -> None:
                             data = get_store().get_insights()
                             resp = _json.dumps({"type": "insights", "data": data})
                             await websocket.send(resp)
+                        elif req.get("type") == "search_history":
+                            query = req.get("query", "")
+                            rows = get_store().search_history(query)
+                            resp = _json.dumps({"type": "history", "rows": rows})
+                            await websocket.send(resp)
+                        elif req.get("type") == "export_history":
+                            csv = get_store().export_csv()
+                            resp = _json.dumps({"type": "export", "csv": csv})
+                            await websocket.send(resp)
+                        elif req.get("type") == "delete_entry":
+                            entry_id = req.get("id")
+                            if entry_id:
+                                get_store().delete_entry(entry_id)
+                                resp = _json.dumps({"type": "deleted", "id": entry_id})
+                                await websocket.send(resp)
                     except Exception:
                         pass
         except Exception:

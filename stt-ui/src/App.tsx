@@ -16,6 +16,7 @@ import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
 import { usePermissions } from "./hooks/usePermissions";
+import Waveform from "./components/Waveform";
 
 type RunMode = "ws" | "tauri";
 
@@ -42,6 +43,8 @@ export interface RuntimeSettings {
   typing: boolean;
   clipboard: boolean;
   debug: boolean;
+  hotwords: string;
+  language: string;
 }
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
@@ -59,6 +62,8 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   typing: false,
   clipboard: false,
   debug: false,
+  hotwords: "",
+  language: "",
 };
 
 const LOCAL_STORAGE_KEY = "stt-settings";
@@ -89,6 +94,8 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   if (!settings.typing) args.push("--no-type");
   if (settings.clipboard) args.push("--clipboard");
   if (settings.debug) args.push("--debug");
+  if (settings.hotwords.trim()) args.push("--hotwords", settings.hotwords.trim());
+  if (settings.language.trim()) args.push("--language", settings.language.trim());
   return args;
 }
 
@@ -129,6 +136,33 @@ function LiveFeedMicMeter() {
     <div className="flex-1 h-1.5 rounded-full bg-app-surface-secondary overflow-hidden">
       <div ref={fillRef} className="h-full bg-accent rounded-full transition-[width] duration-75" style={{ width: "0%" }} />
     </div>
+  );
+}
+
+function SessionStats({ lines }: { lines: TranscriptLine[] }) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    const interval = setInterval(() => { setElapsed(Date.now() - startRef.current); }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const totalWords = lines.reduce((sum, l) => {
+    const text = l.processed || l.raw;
+    return sum + (text ? text.split(/\s+/).filter(Boolean).length : 0);
+  }, 0);
+
+  const minutes = Math.max(elapsed / 60000, 0.01);
+  const wpm = Math.round(totalWords / minutes);
+
+  return (
+    <>
+      <span>{wpm} WPM</span>
+      <span>{totalWords} words</span>
+      <span>{Math.round(elapsed / 60000)}m</span>
+    </>
   );
 }
 
@@ -233,12 +267,18 @@ function FeedView({
           {/* Feed Header */}
           <div className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.04]">
             <LiveFeedMicMeter />
+            {connected && <Waveform width={120} height={24} barCount={16} />}
             <div className="flex items-center gap-2 text-[12px]">
               <span className={connected ? "text-green-400" : "text-[#7A7F87]"}>
                 {connected ? "● Live" : "○ Idle"}
               </span>
-              <span className="text-[#7A7F87]">{lines.length} lines</span>
+              <span className="text-[#7A7F87]">{lines.length + historyItems.length} lines</span>
             </div>
+            {connected && (
+              <div className="ml-auto flex items-center gap-4 text-[12px] text-[#7A7F87]">
+                <SessionStats lines={lines} />
+              </div>
+            )}
           </div>
 
           {/* Transcript Lines */}
@@ -854,6 +894,7 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenShortcut: (() => void) | undefined;
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -865,8 +906,18 @@ function App() {
           }
         });
       } catch { /* not in Tauri */ }
+      // Register global shortcut Super+Space
+      try {
+        const { register } = await import("@tauri-apps/plugin-global-shortcut");
+        await register("Super+Space", (event) => {
+          if (event.state === "Pressed") {
+            if (connectedRef.current) stopRef.current();
+            else void startRef.current();
+          }
+        });
+      } catch { /* not in Tauri or shortcut blocked */ }
     })();
-    return () => { unlisten?.(); };
+    return () => { unlisten?.(); unlistenShortcut?.(); };
   }, []);
 
   const clearLines = () => setLines([]);
