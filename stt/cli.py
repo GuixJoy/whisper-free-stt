@@ -164,6 +164,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
     parser.add_argument("--list-microphones", action="store_true", help="List available microphones and exit")
     parser.add_argument("--download-model", type=str, default=None, help="Download a specific model and exit")
+    parser.add_argument("--log-file", type=str, default=None, help="Write logs to file (e.g., stt.log)")
 
     return parser
 
@@ -322,6 +323,16 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
     config = build_config(args)
+
+    # Configure log file if specified
+    if args.log_file:
+        import logging
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+        file_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(file_handler)
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if args.list_microphones:
         _list_microphones(config)

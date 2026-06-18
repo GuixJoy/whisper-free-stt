@@ -91,8 +91,27 @@ def _get_ws_loop():
 
 
 def _json_emit(config: AppConfig, event: dict) -> None:
-    """Emit a JSON event to stdout, WebSocket clients, and Socket.IO."""
+    """Emit a JSON event to stdout, WebSocket clients, Socket.IO, and kakashi logger."""
     payload = _json.dumps(event)
+    # Log every event via kakashi
+    event_type = event.get("type", "event")
+    if event_type == "mic":
+        logger.debug("mic_level", level=event.get("level", 0))
+    elif event_type == "state":
+        logger.info("state_change", state=event.get("state"), utterance_id=event.get("utterance_id"))
+    elif event_type == "raw":
+        logger.info("transcription_raw", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "processed":
+        logger.info("transcription_processed", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "llm_partial":
+        logger.debug("llm_partial", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "error":
+        logger.error("error", message=event.get("message"), utterance_id=event.get("utterance_id"))
+    elif event_type == "dropped":
+        logger.warning("dropped", reason=event.get("reason"), utterance_id=event.get("utterance_id"))
+    else:
+        logger.debug("event", type=event_type, payload=payload[:200])
+    # Print to stdout for frontend consumption
     if config.json_mode:
         print(payload, flush=True)
     # Try legacy WebSocket broadcast
