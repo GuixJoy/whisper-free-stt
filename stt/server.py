@@ -14,6 +14,8 @@ from typing import Any
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from socketio import AsyncServer
+from asyncutilsx import asyncplus
 from stt.log import setup_logger, get_logger
 
 logger = get_logger(__name__)
