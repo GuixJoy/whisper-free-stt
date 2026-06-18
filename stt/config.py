@@ -171,6 +171,14 @@ class TypingConfig:
 
 
 @dataclass(frozen=True)
+class DiarizationConfig:
+    enabled: bool = False
+    method: str = "resemblyzer"  # "resemblyzer" | "spectral"
+    similarity_threshold: float = 0.65
+    enrollment_chunks: int = 5
+
+
+@dataclass(frozen=True)
 class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
@@ -178,6 +186,7 @@ class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
     typing: TypingConfig = field(default_factory=TypingConfig)
+    diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
     debug: bool = False
     json_mode: bool = False
 

@@ -21,6 +21,7 @@ sst = "stt.cli:main"
 llm = []  # uses stdlib urllib — no extra deps
 clipboard = []  # uses stdlib subprocess — no extra deps
 embeddings = ["sentence-transformers>=3.0.0"]
+diarization = ["resemblyzer>=0.1.3"]
 
 [tool.setuptools.packages.find]
 include = ["stt*"]

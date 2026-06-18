@@ -940,6 +940,19 @@ function App() {
     return () => { unlisten?.(); unlistenShortcut?.(); };
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      if (connectedRef.current) stopRef.current();
+      else void startRef.current();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const clearLines = () => setLines([]);
 
   const copyText = async (text: string, label: string) => {

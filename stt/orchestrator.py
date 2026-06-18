@@ -22,6 +22,7 @@ import numpy as np
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
+from stt.speaker import SpeakerVerifier
 from stt.vad import (
     compute_rms, StreamingEndpointDetector,
     compute_spectral_centroid, compute_spectral_flux,
@@ -164,6 +165,16 @@ def start_ws_server(port: int = 8765) -> None:
                             csv = get_store().export_csv()
                             resp = _json.dumps({"type": "export", "csv": csv})
                             await websocket.send(resp)
+                        elif req.get("type") == "export_text":
+                            text = get_store().export_text()
+                            resp = _json.dumps({"type": "export", "text": text})
+                            await websocket.send(resp)
+                        elif req.get("type") == "toggle_favorite":
+                            entry_id = req.get("id")
+                            if entry_id:
+                                new_state = get_store().toggle_favorite(entry_id)
+                                resp = _json.dumps({"type": "favorited", "id": entry_id, "favorite": new_state})
+                                await websocket.send(resp)
                         elif req.get("type") == "delete_entry":
                             entry_id = req.get("id")
                             if entry_id:
@@ -535,6 +546,34 @@ def run(
         _debug(config, f"calibration: centroid={avg_centroid:.0f}Hz, flux={avg_flux:.4f}, "
                f"zcr={avg_zcr:.4f}, ber={avg_ber:.4f}")
 
+    # --- Speaker enrollment ---
+    speaker_verifier: SpeakerVerifier | None = None
+    speaker_profile: NDArray[np.float32] | None = None
+    if config.diarization.enabled:
+        from numpy import NDArray
+        speaker_verifier = SpeakerVerifier(method=config.diarization.method)
+        enrollment_embs: list[NDArray[np.float32]] = []
+        n_chunks = config.diarization.enrollment_chunks
+        _debug(config, f"speaker enrollment: collecting {n_chunks} chunks...")
+        try:
+            for _ in range(n_chunks):
+                chunk = next(stream_iter)
+                ring.extend(chunk)
+                emb = speaker_verifier.embed(chunk, sr)
+                enrollment_embs.append(emb)
+            if len(enrollment_embs) >= 2:
+                speaker_profile = speaker_verifier.enroll(enrollment_embs)
+                _debug(config, f"speaker profile created ({len(enrollment_embs)} chunks)")
+            else:
+                _debug(config, "speaker enrollment: insufficient audio, skipping")
+                speaker_profile = None
+        except StopIteration:
+            _debug(config, "speaker enrollment: stream ended early")
+            speaker_profile = None
+        except Exception as exc:
+            _debug(config, f"speaker enrollment failed: {exc}")
+            speaker_profile = None
+
     running = True
     def _stop(_sig, _frame):
         nonlocal running
@@ -603,6 +642,14 @@ def run(
 
             if dur < config.vad.min_recording_sec:
                 continue
+
+            # Speaker gate: reject segments that don't match enrolled speaker
+            if config.diarization.enabled and speaker_verifier is not None and speaker_profile is not None:
+                accepted, score = speaker_verifier.verify(segment, sr, speaker_profile, threshold=config.diarization.similarity_threshold)
+                _json_emit(config, {"type": "speaker", "accepted": accepted, "similarity": round(score, 4)})
+                if not accepted:
+                    _debug(config, f"speaker rejected: sim={score:.3f}")
+                    continue
 
             utterance_id += 1
             thread = threading.Thread(

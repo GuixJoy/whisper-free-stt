@@ -12,6 +12,7 @@ from stt.config import (
     AudioConfig,
     ClipboardConfig,
     ComputeType,
+    DiarizationConfig,
     LLMConfig,
     LLMMode,
     LLMProvider,
@@ -119,6 +120,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--language", type=str, default=None, help="Force transcription language (e.g., 'en')")
     parser.add_argument("--beam-size", type=int, default=None, help="Beam size (default: profile-dependent)")
     parser.add_argument("--hotwords", type=str, default="", help="Comma-separated terms to boost recognition")
+
+    # Diarization
+    parser.add_argument("--diarization", action="store_true", help="Enable speaker verification (reject non-enrolled speakers)")
+    parser.add_argument("--diarization-threshold", type=float, default=0.65, help="Cosine similarity threshold (default: 0.65)")
 
     # LLM — defaults=None so we can fall back to env/.env
     parser.add_argument(
@@ -231,6 +236,10 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         typing=TypingConfig(
             enabled=not args.no_type,
             wtype_path=args.type_path,
+        ),
+        diarization=DiarizationConfig(
+            enabled=args.diarization,
+            similarity_threshold=args.diarization_threshold,
         ),
         debug=args.debug,
         json_mode=args.json_mode,

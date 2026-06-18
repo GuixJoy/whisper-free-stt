@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, Download, Trash2 } from "lucide-react";
+import { Search, Download, Trash2, Star } from "lucide-react";
 
 interface HistoryRow {
   id: number;
@@ -113,6 +113,44 @@ export default function HistoryPanel({ visible, onClose }: Props) {
     URL.revokeObjectURL(url);
   };
 
+  const downloadText = (text: string) => {
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stt-history-${new Date().toISOString().split("T")[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportText = useCallback(async () => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const text = await invoke<string>("export_text");
+        downloadText(text);
+      } else {
+        const data = await sendWs({ type: "export_text" });
+        if (data?.text) downloadText(data.text);
+      }
+    } catch { }
+  }, [sendWs]);
+
+  const toggleFavorite = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<{ id: number; favorite: number }>("toggle_favorite", { id });
+        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
+      } else {
+        const data = await sendWs({ type: "toggle_favorite", id });
+        if (data?.type === "favorited") {
+          setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: data.favorite ? 1 : 0 } : r));
+        }
+      }
+    } catch { }
+  }, [sendWs]);
+
   const deleteEntry = useCallback(async (id: number) => {
     try {
       if (isTauri()) {
@@ -155,6 +193,9 @@ export default function HistoryPanel({ visible, onClose }: Props) {
             <button onClick={exportHistory} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export CSV">
               <Download size={14} /> Export
             </button>
+            <button onClick={exportText} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export Text">
+              <Download size={14} /> Text
+            </button>
             <button onClick={loadHistory} disabled={loading} className="inline-flex items-center justify-center h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors disabled:opacity-50">
               {loading ? "⟳" : "↻"}
             </button>
@@ -191,7 +232,12 @@ export default function HistoryPanel({ visible, onClose }: Props) {
             <div key={row.id} className="group bg-app-surface-secondary rounded-card border border-border p-4 flex flex-col gap-2" role="listitem">
               <div className="flex items-center justify-between">
                 <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">{row.mode}</span>
-                <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => toggleFavorite(row.id)} className={`inline-flex items-center h-6 px-1 rounded-button transition-colors ${row.favorite ? "text-yellow-400" : "text-text-muted hover:text-yellow-400"}`} title={row.favorite ? "Unfavorite" : "Favorite"}>
+                    <Star size={14} fill={row.favorite ? "currentColor" : "none"} />
+                  </button>
+                  <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
+                </div>
               </div>
               <div className="text-body text-text-primary whitespace-pre-wrap break-words">
                 <span className="text-text-secondary font-medium">Raw:</span> {row.raw_text}

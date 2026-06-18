@@ -411,6 +411,82 @@ class HistoryStore:
         except Exception:
             return ""
 
+    def export_text(self, limit: int = 1000) -> str:
+        """Export history as a formatted text file."""
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT id, raw_text, processed_text, language, mode, model,
+                              duration_sec, favorite, created_at
+                       FROM transcripts ORDER BY created_at DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+
+            if not rows:
+                return "STT Transcript History\n========================\n\nNo transcripts found.\n"
+
+            earliest = rows[-1][8]
+            latest = rows[0][8]
+
+            lines = [
+                "STT Transcript History",
+                "=" * 40,
+                f"Date range: {earliest} — {latest}",
+                f"Total transcripts: {len(rows)}",
+                "",
+                "-" * 40,
+                "",
+            ]
+
+            for r in rows:
+                raw_text = r[1]
+                processed_text = r[2]
+                mode = r[4]
+                created_at = r[8]
+
+                lines.append(f"[{created_at}] {mode}")
+                lines.append(f"  {raw_text}")
+                if processed_text and processed_text != raw_text:
+                    lines.append(f"  → {processed_text}")
+                lines.append("")
+
+            total_words = sum(
+                len(r[1].split()) for r in rows if r[1]
+            )
+            ai_fixes = sum(
+                1 for r in rows if r[2] and r[2] != r[1] and r[4] != "off"
+            )
+
+            lines.extend([
+                "-" * 40,
+                f"Summary: {len(rows)} transcripts, {total_words} total words, {ai_fixes} AI-corrected",
+                "",
+            ])
+
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def toggle_favorite(self, entry_id: int) -> Optional[bool]:
+        """Toggle the favorite status of a transcript entry. Returns new state or None on failure."""
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    row = conn.execute(
+                        "SELECT favorite FROM transcripts WHERE id = ?", (entry_id,)
+                    ).fetchone()
+                    if row is None:
+                        return None
+                    new_val = 0 if row[0] else 1
+                    conn.execute(
+                        "UPDATE transcripts SET favorite = ? WHERE id = ?",
+                        (new_val, entry_id),
+                    )
+                    conn.commit()
+                    return bool(new_val)
+        except Exception:
+            return None
+
     def delete_entry(self, entry_id: int) -> bool:
         """Delete a single transcript entry by ID."""
         try:
