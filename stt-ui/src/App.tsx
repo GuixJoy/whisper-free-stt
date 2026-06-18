@@ -121,6 +121,24 @@ function detectRunMode(): RunMode {
   return "ws";
 }
 
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
 function LiveFeedMicMeter() {
   const fillRef = useRef<HTMLDivElement>(null);
 
@@ -317,15 +335,17 @@ function FeedView({
                     </div>
                   </div>
                 ))}
-                {historyItems.map((item) => (
+                {historyItems
+                  .filter((item) => !lines.some((l) => (l.processed || l.raw) === (item.processed || item.raw) && Math.abs(new Date(l.createdAt).getTime() - new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).getTime()) < 5000))
+                  .map((item) => (
                   <div
                     key={`hist-${item.id}`}
                     className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors border-t border-white/[0.03]"
                     style={{ paddingTop: "16px", paddingBottom: "16px" }}
                   >
                     <div className="flex items-baseline gap-3 min-w-0">
-                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
-                        {new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).toLocaleTimeString()}
+                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[140px]">
+                        {formatTimestamp(item.createdAt)}
                       </span>
                       <span className="text-[16px] leading-[1.7] text-[#F7F4EE]/70 whitespace-pre-wrap break-words">
                         {item.processed || item.raw}
