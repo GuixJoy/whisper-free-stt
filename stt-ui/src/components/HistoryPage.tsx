@@ -1,0 +1,223 @@
+import { useEffect, useState, useCallback } from "react";
+import { Search, Download, Trash2, ArrowLeft } from "lucide-react";
+
+interface HistoryRow {
+  id: number;
+  raw_text: string;
+  processed_text: string;
+  language: string;
+  mode: string;
+  model: string;
+  duration_sec: number;
+  favorite: number;
+  created_at: string;
+}
+
+const isTauri = (): boolean =>
+  typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+const API_BASE = "http://127.0.0.1:8765/api";
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
+interface Props {
+  onBack: () => void;
+}
+
+export default function HistoryPage({ onBack }: Props) {
+  const [rows, setRows] = useState<HistoryRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const apiFetch = useCallback(async (path: string, options?: RequestInit): Promise<any> => {
+    const resp = await fetch(`${API_BASE}${path}`, options);
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    return resp.json();
+  }, []);
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<HistoryRow[]>("get_history", { limit: 500 });
+        setRows(result);
+      } else {
+        const data = await apiFetch("/history?limit=500");
+        setRows(data);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  const searchHistory = useCallback(async () => {
+    if (!searchQuery.trim()) { loadHistory(); return; }
+    setLoading(true);
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<HistoryRow[]>("get_history", { limit: 500 });
+        const q = searchQuery.toLowerCase();
+        setRows(result.filter(r => r.raw_text.toLowerCase().includes(q) || r.processed_text.toLowerCase().includes(q)));
+      } else {
+        const data = await apiFetch(`/history/search?q=${encodeURIComponent(searchQuery)}`);
+        setRows(data);
+      }
+    } catch { }
+    finally { setLoading(false); }
+  }, [searchQuery, loadHistory, apiFetch]);
+
+  const exportHistory = useCallback(async (format: "csv" | "text") => {
+    try {
+      const resp = await fetch(`${API_BASE}/export/${format}`);
+      const content = await resp.text();
+      const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stt-history-${new Date().toISOString().split("T")[0]}.${format === "csv" ? "csv" : "txt"}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { }
+  }, []);
+
+  const deleteEntry = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("delete_entry", { id });
+      } else {
+        await apiFetch(`/history/${id}`, { method: "DELETE" });
+      }
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch { }
+  }, [apiFetch]);
+
+  const toggleFavorite = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<{ favorite: number }>("toggle_favorite", { id });
+        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
+      } else {
+        const result = await apiFetch(`/history/${id}/favorite`, { method: "POST" });
+        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
+      }
+    } catch { }
+  }, [apiFetch]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const copyText = async (text: string, id: number) => {
+    if (!navigator.clipboard) return;
+    try { await navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch { }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col p-6 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-white/[0.04] transition-colors">
+            <ArrowLeft size={18} className="text-text-secondary" />
+          </button>
+          <h1 className="text-[32px] font-semibold text-[#F7F4EE]">History</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => exportHistory("csv")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors">
+            <Download size={14} /> CSV
+          </button>
+          <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors">
+            <Download size={14} /> Text
+          </button>
+          <button onClick={loadHistory} disabled={loading} className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-50">
+            {loading ? "⟳" : "↻"}
+          </button>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="flex items-center gap-2 mb-4">
+        <Search size={16} className="text-[#7A7F87] shrink-0" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") searchHistory(); }}
+          placeholder="Search transcripts..."
+          className="flex-1 h-10 px-4 bg-[#0F131A] border border-white/[0.06] rounded-[12px] text-[14px] text-[#F7F4EE] placeholder:text-[#7A7F87] focus:outline-none focus:border-[#C7772C]/50"
+        />
+        {searchQuery && (
+          <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-[#7A7F87] hover:text-[#F7F4EE] text-[13px]">Clear</button>
+        )}
+      </div>
+
+      {error && <div className="mb-4 rounded-[12px] bg-red-900/20 border border-red-500/30 px-4 py-3 text-[14px] text-red-400">⚠ {error}</div>}
+
+      {/* List */}
+      <div className="flex-1 overflow-auto space-y-3">
+        {rows.length === 0 && !loading && (
+          <p className="text-center text-[#7A7F87] text-[15px] py-12">No transcripts yet.</p>
+        )}
+        {rows.map((row) => (
+          <div key={row.id} className="group bg-[#0F131A] rounded-[16px] border border-white/[0.05] p-4 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button onClick={() => toggleFavorite(row.id)} className={`text-lg transition-colors ${row.favorite ? "text-yellow-400" : "text-[#7A7F87] hover:text-yellow-400"}`}>
+                  {row.favorite ? "★" : "☆"}
+                </button>
+                <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-[#C7772C]/10 border border-[#C7772C]/20 text-[#C7772C]">
+                  {row.mode}
+                </span>
+              </div>
+              <span className="text-[12px] text-[#7A7F87]">{formatTimestamp(row.created_at)}</span>
+            </div>
+            <div className="text-[15px] text-[#F7F4EE] whitespace-pre-wrap break-words">
+              {row.processed_text && row.processed_text !== row.raw_text ? (
+                <>
+                  <span className="text-[#7A7F87]">Raw:</span> {row.raw_text}
+                  <br />
+                  <span className="text-[#7A7F87]">Cleaned:</span> {row.processed_text}
+                </>
+              ) : (
+                row.raw_text
+              )}
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-white/[0.04]">
+              <span className="text-[12px] text-[#7A7F87]">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-[10px] text-[12px] font-medium bg-white/[0.04] border border-white/[0.06] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors">
+                  {copiedId === row.id ? "Copied!" : "Copy"}
+                </button>
+                <button onClick={() => deleteEntry(row.id)} className="inline-flex items-center h-8 px-2 rounded-[10px] text-[12px] font-medium text-red-400 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

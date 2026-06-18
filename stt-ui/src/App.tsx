@@ -7,7 +7,7 @@ import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
 import ErrorBanner from "./components/ErrorBanner";
 import type { AppError } from "./components/ErrorBanner";
-import HistoryPanel from "./components/HistoryPanel";
+import HistoryPage from "./components/HistoryPage";
 import SettingsPanel from "./components/SettingsPanel";
 import InsightsPage from "./components/InsightsPage";
 import DictionaryPage from "./components/DictionaryPage";
@@ -658,7 +658,6 @@ function App() {
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
-  const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [view, setView] = useState<AppView>(
@@ -999,8 +998,6 @@ function App() {
     setActiveItem(item);
     if (item === "Settings") {
       setShowSettings(true);
-    } else if (item === "History") {
-      setShowHistory(true);
     }
   };
 
@@ -1027,6 +1024,8 @@ function App() {
         return <DictionaryPage />;
       case "Snippets":
         return <SnippetsPage />;
+      case "History":
+        return <HistoryPage onBack={() => setActiveItem("Home")} />;
       case "Settings":
         return null;
       default:
@@ -1065,7 +1064,6 @@ function App() {
           {toast}
         </div>
       )}
-      <HistoryPanel visible={showHistory} onClose={() => setShowHistory(false)} />
       <SettingsPanel
         visible={showSettings}
         settings={settings}
