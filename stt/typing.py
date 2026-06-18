@@ -5,7 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 
-from kakashi import get_logger
+from stt.log import get_logger
 
 from stt.config import TypingConfig
 

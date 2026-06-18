@@ -13,7 +13,7 @@ from typing import Callable, Iterator
 
 import numpy as np
 import sounddevice as sd
-from kakashi import get_logger
+from stt.log import get_logger
 
 from stt.config import AudioConfig
 from stt.types import AudioSegment

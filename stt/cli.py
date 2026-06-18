@@ -8,7 +8,7 @@ import sys
 import threading
 from dataclasses import dataclass
 
-from kakashi import get_logger
+from stt.log import get_logger
 
 from stt.config import (
     AppConfig,

@@ -10,7 +10,7 @@ import os
 import urllib.request
 import json as _json
 
-from kakashi import get_logger
+from stt.log import get_logger
 
 from stt.config import LLMConfig, LLMMode, LLMProvider
 from stt.prompts import build_user_prompt

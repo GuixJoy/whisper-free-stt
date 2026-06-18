@@ -14,13 +14,12 @@ from typing import Any
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from kakashi import setup_logging, get_logger
-from socketio import AsyncServer
+from stt.log import setup_logger, get_logger
 
-from asyncutilsx import asyncplus
-
-setup_logging('production', service_name='stt-server')
 logger = get_logger(__name__)
+
+# Setup logging at import time
+setup_logger(service_name="stt-server")
 
 from stt.config import AppConfig
 from stt.history import get_store

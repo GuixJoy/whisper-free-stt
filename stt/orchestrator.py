@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
-from kakashi import get_logger
+from stt.log import get_logger
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
 

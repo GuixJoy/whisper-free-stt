@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from kakashi import get_logger
+from stt.log import get_logger
 
 logger = get_logger(__name__)
 
