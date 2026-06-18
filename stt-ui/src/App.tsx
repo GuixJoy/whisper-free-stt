@@ -671,7 +671,6 @@ function App() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
-  const historyWsRef = useRef<WebSocket | null>(null);
 
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
@@ -705,31 +704,21 @@ function App() {
         }));
         setHistoryItems(items);
         setHasMoreHistory(rows.length >= page * pageSize);
-      } else if (mode === "ws") {
-        const ws = new WebSocket(`ws://127.0.0.1:${settings.wsPort}`);
-        historyWsRef.current = ws;
-        await new Promise<void>((resolve, reject) => {
-          ws.onopen = () => resolve();
-          ws.onerror = () => reject(new Error("WS failed"));
-        });
-        ws.onmessage = (msg) => {
-          try {
-            const data = JSON.parse(msg.data);
-            if (data.type === "history") {
-              const items: TranscriptLine[] = data.rows.map((r: any) => ({
-                id: r.id,
-                raw: r.raw_text,
-                processed: r.processed_text,
-                status: "done",
-                createdAt: r.created_at,
-              }));
-              setHistoryItems(items);
-              setHasMoreHistory(data.rows.length >= page * pageSize);
-              ws.close();
-            }
-          } catch { }
-        };
-        ws.send(JSON.stringify({ type: "get_history", limit: page * pageSize }));
+      } else {
+        // Use REST API
+        const resp = await fetch(`http://127.0.0.1:${settings.wsPort}/api/history?limit=${page * pageSize}`);
+        if (resp.ok) {
+          const rows = await resp.json();
+          const items: TranscriptLine[] = rows.map((r: any) => ({
+            id: r.id,
+            raw: r.raw_text,
+            processed: r.processed_text,
+            status: "done",
+            createdAt: r.created_at,
+          }));
+          setHistoryItems(items);
+          setHasMoreHistory(rows.length >= page * pageSize);
+        }
       }
     } catch {
       setHasMoreHistory(false);
@@ -1010,6 +999,8 @@ function App() {
     setActiveItem(item);
     if (item === "Settings") {
       setShowSettings(true);
+    } else if (item === "History") {
+      setShowHistory(true);
     }
   };
 
