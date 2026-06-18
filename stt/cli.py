@@ -8,6 +8,8 @@ import sys
 import threading
 from dataclasses import dataclass
 
+from kakashi import get_logger
+
 from stt.config import (
     AppConfig,
     AudioConfig,
@@ -24,6 +26,8 @@ from stt.config import (
     load_dotenv,
 )
 from stt.orchestrator import run, run_file, run_ws_audio, start_ws_server
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -340,8 +344,8 @@ def main(argv: list[str] | None = None) -> None:
         def _run_server():
             uvicorn.run(asgi_app, host="127.0.0.1", port=args.ws_port, log_level="warning")
         threading.Thread(target=_run_server, daemon=True).start()
-        print(f"[server] listening on http://127.0.0.1:{args.ws_port}", flush=True)
-        print(f"[server] API docs at http://127.0.0.1:{args.ws_port}/docs", flush=True)
+        logger.info("listening on http://127.0.0.1:%s", args.ws_port)
+        logger.info("API docs at http://127.0.0.1:%s/docs", args.ws_port)
 
     if args.input_file:
         run_file(config, args.input_file)
@@ -357,7 +361,7 @@ def main(argv: list[str] | None = None) -> None:
             def _run_server():
                 uvicorn.run(asgi_app, host="127.0.0.1", port=8765, log_level="warning")
             threading.Thread(target=_run_server, daemon=True).start()
-            print(f"[server] listening on http://127.0.0.1:8765", flush=True)
+            logger.info("listening on http://127.0.0.1:8765")
         run_ws_audio(config)
     else:
         run(config)

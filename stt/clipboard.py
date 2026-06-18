@@ -5,7 +5,11 @@ from __future__ import annotations
 import subprocess
 import shutil
 
+from kakashi import get_logger
+
 from stt.config import ClipboardConfig
+
+logger = get_logger(__name__)
 
 _wl_copy_cache: dict[str, str | None] = {}
 
@@ -20,13 +24,13 @@ def copy_to_clipboard(text: str, config: ClipboardConfig) -> bool:
         _wl_copy_cache[path_key] = shutil.which(path_key)
     wl_copy = _wl_copy_cache[path_key]
     if wl_copy is None:
-        print(f"Warning: '{path_key}' not found. Clipboard skipped.")
+        logger.warning("'%s' not found. Clipboard skipped.", path_key)
         return False
     try:
         proc = subprocess.run([wl_copy], input=text, text=True, timeout=10)
         return proc.returncode == 0
     except Exception as exc:
-        print(f"wl-copy error: {exc}")
+        logger.error("wl-copy error: %s", exc)
         return False
 
 

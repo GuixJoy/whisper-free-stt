@@ -19,8 +19,11 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
+from kakashi import get_logger
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
+
+logger = get_logger(__name__)
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
 from stt.speaker import SpeakerVerifier
 from stt.vad import (
@@ -56,12 +59,14 @@ class RunHooks:
 # ---------------------------------------------------------------------------
 
 def _echo(*args, **kwargs) -> None:
-    print(*args, **kwargs, flush=True)
+    msg = " ".join(str(a) for a in args)
+    logger.info(msg)
 
 
 def _debug(config: AppConfig, *args, **kwargs) -> None:
     if config.debug:
-        print("[debug]", *args, **kwargs, flush=True)
+        msg = " ".join(str(a) for a in args)
+        logger.debug(msg)
 
 
 # WebSocket broadcast (populated when --ws-port is set)
@@ -208,7 +213,7 @@ def start_ws_server(port: int = 8765) -> None:
         _ws_loop.run_until_complete(_serve())
 
     threading.Thread(target=_run, daemon=True).start()
-    print(f"[ws] listening on ws://127.0.0.1:{port}", flush=True)
+    logger.info("listening on ws://127.0.0.1:%s", port)
 
 
 # ---------------------------------------------------------------------------
@@ -987,7 +992,7 @@ def _transcribe_and_print(
         _echo(f"\n[{config.llm.mode.value}] {processed}")
         _json_emit(config, {"type": "processed", "text": processed, "utterance_id": utterance_id})
     except Exception as exc:
-        _echo(f"LLM error: {exc}", file=sys.stderr)
+        logger.error("LLM error: %s", exc)
         _json_emit(config, {"type": "error", "message": str(exc), "utterance_id": utterance_id})
         processed = raw
         if hooks and hooks.on_error:
@@ -1160,6 +1165,6 @@ def run_file(config: AppConfig, wav_path: str) -> None:
                 processed = rewrite(result.text, config.llm)
             _echo(f"[{config.llm.mode.value}] {processed}")
         except Exception as exc:
-            _echo(f"LLM error: {exc}", file=sys.stderr)
+            logger.error("LLM error: %s", exc)
 
     _echo("Done.")

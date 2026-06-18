@@ -13,9 +13,12 @@ from typing import Callable, Iterator
 
 import numpy as np
 import sounddevice as sd
+from kakashi import get_logger
 
 from stt.config import AudioConfig
 from stt.types import AudioSegment
+
+logger = get_logger(__name__)
 
 
 def apply_agc(audio: np.ndarray, target_level: float = 0.1, max_gain: float = 10.0) -> np.ndarray:
@@ -76,8 +79,7 @@ def open_input_stream(
     if stream is not None:
         return stream
 
-    import sys
-    print(f"[debug] Target sample rate {target_samplerate}Hz failed. Trying fallback...", file=sys.stderr, flush=True)
+    logger.debug("Target sample rate %sHz failed. Trying fallback...", target_samplerate)
 
     # Fallback attempt: Query native default sample rate for the device
     try:
@@ -86,7 +88,7 @@ def open_input_stream(
     except Exception:
         native_samplerate = 44100  # standard safe default
 
-    print(f"[debug] Falling back to device native rate: {native_samplerate}Hz", file=sys.stderr, flush=True)
+    logger.debug("Falling back to device native rate: %sHz", native_samplerate)
 
     # Calculate native blocksize to maintain similar chunk duration (~128ms)
     native_blocksize = int((blocksize / target_samplerate) * native_samplerate)
@@ -130,8 +132,7 @@ def _make_callback(
 ) -> Callable[[np.ndarray, int, object, int], None]:
     def _callback(indata: np.ndarray, frames_count: int, time_info: object, status: int) -> None:
         if status:
-            import sys
-            print(f"audio stream status: {status}", file=sys.stderr)
+            logger.warning("audio stream status: %s", status)
         frames.append(indata[:, 0].copy())
         start_event.set()
     return _callback
@@ -296,8 +297,7 @@ def record_utterance(
         raise RuntimeError("No microphone found.")
 
     if debug:
-        print(f"[debug] audio: opening InputStream(device={device_index}, "
-              f"sr={config.sample_rate}, blocksize={config.blocksize})", flush=True)
+        logger.debug("audio: opening InputStream(device=%s, sr=%s, blocksize=%s)", device_index, config.sample_rate, config.blocksize)
 
     frames: _FramesDeque = deque()
     start_event = threading.Event()
@@ -319,19 +319,18 @@ def record_utterance(
             raise RuntimeError("Microphone stream started but no data received.")
 
         if debug:
-            print("[debug] audio: first chunk received, accumulating...", flush=True)
+            logger.debug("audio: first chunk received, accumulating...")
 
         while not should_stop(_collect_frames(frames)):
             sd.sleep(int(config.blocksize / config.sample_rate * 1000))
             chunk_count += 1
             if debug and chunk_count % 10 == 0:
                 dur = len(_collect_frames(frames)) / config.sample_rate
-                print(f"[debug] audio: {dur:.1f}s accumulated ({chunk_count} chunks)...", flush=True)
+                logger.debug("audio: %.1fs accumulated (%s chunks)...", dur, chunk_count)
 
     data = _collect_frames(frames)
     if debug:
-        print(f"[debug] audio: recording stopped, total {len(data)/config.sample_rate:.1f}s "
-              f"({len(data)} samples)", flush=True)
+        logger.debug("audio: recording stopped, total %.1fs (%s samples)", len(data)/config.sample_rate, len(data))
 
     return AudioSegment(data=data, sample_rate=config.sample_rate, start_time=0.0,
                         end_time=len(data) / config.sample_rate)
@@ -368,12 +367,10 @@ def mic_stream(
 
     def _callback(indata: np.ndarray, frames_count: int, time_info: object, status: int) -> None:
         if status:
-            import sys
-            print(f"audio stream status: {status}", file=sys.stderr)
+            logger.warning("audio stream status: %s", status)
         chunk_queue.append(indata[:, 0].copy())
         chunk_ready.set()
 
-    import sys as _sys
     last_error: Exception | None = None
     stream: sd.InputStream | None = None
     chosen_device: int | None = None
@@ -398,8 +395,7 @@ def mic_stream(
         except Exception as exc:
             last_error = exc
             if attempt < 3:
-                print(f"[debug] audio: device {device_index} attempt {attempt} failed ({exc}). "
-                      f"Retrying in 0.5s...", file=_sys.stderr, flush=True)
+                logger.debug("audio: device %s attempt %s failed (%s). Retrying in 0.5s...", device_index, attempt, exc)
                 sd.sleep(500)
 
     # If primary device failed, build fallback list and try others
@@ -426,12 +422,10 @@ def mic_stream(
                 except Exception as exc:
                     last_error = exc
                     if attempt < 2:
-                        print(f"[debug] audio: device {dev_idx} attempt {attempt} failed ({exc}). "
-                              f"Retrying in 0.5s...", file=_sys.stderr, flush=True)
+                        logger.debug("audio: device %s attempt %s failed (%s). Retrying in 0.5s...", dev_idx, attempt, exc)
                         sd.sleep(500)
             if stream is not None:
-                print(f"[debug] audio: using fallback device {dev_idx} "
-                      f"(preferred {device_index} failed)", file=_sys.stderr, flush=True)
+                logger.debug("audio: using fallback device %s (preferred %s failed)", dev_idx, device_index)
                 break
 
     if stream is None:
@@ -441,8 +435,7 @@ def mic_stream(
         raise RuntimeError(msg)
 
     if chosen_device != device_index:
-        print(f"[debug] audio: using fallback device {chosen_device} "
-              f"(preferred {device_index} failed)", file=_sys.stderr, flush=True)
+        logger.debug("audio: using fallback device %s (preferred %s failed)", chosen_device, device_index)
         # Update config so subsequent code uses the working device
         object.__setattr__(config, "device_index", chosen_device)
 
@@ -461,7 +454,7 @@ def mic_stream(
         raise RuntimeError(f"Stream start timed out on device {chosen_device}")
 
     if debug:
-        print("[debug] audio: persistent stream active", flush=True)
+        logger.debug("audio: persistent stream active")
 
     try:
         while True:

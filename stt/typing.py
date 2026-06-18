@@ -5,7 +5,11 @@ from __future__ import annotations
 import shutil
 import subprocess
 
+from kakashi import get_logger
+
 from stt.config import TypingConfig
+
+logger = get_logger(__name__)
 
 _wtype_cache: dict[str, str | None] = {}
 
@@ -25,7 +29,7 @@ def type_to_focused_input(text: str, config: TypingConfig) -> bool:
         _wtype_cache[path_key] = shutil.which(path_key)
     wtype = _wtype_cache[path_key]
     if wtype is None:
-        print(f"Warning: '{path_key}' not found in PATH. Typing skipped.")
+        logger.warning("'%s' not found in PATH. Typing skipped.", path_key)
         return False
 
     try:
@@ -36,8 +40,8 @@ def type_to_focused_input(text: str, config: TypingConfig) -> bool:
         )
         return proc.returncode == 0
     except subprocess.TimeoutExpired:
-        print("wtype timed out while typing.")
+        logger.warning("wtype timed out while typing.")
         return False
     except Exception as exc:
-        print(f"wtype error: {exc}")
+        logger.error("wtype error: %s", exc)
         return False

@@ -14,9 +14,13 @@ from typing import Any
 import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from kakashi import setup_logging, get_logger
 from socketio import AsyncServer
 
 from asyncutilsx import asyncplus
+
+setup_logging('production', service_name='stt-server')
+logger = get_logger(__name__)
 
 from stt.config import AppConfig
 from stt.history import get_store
@@ -40,14 +44,14 @@ _browser_clients: set[str] = set()
 async def connect(sid: str, environ: dict):
     """Browser connected via Socket.IO."""
     _browser_clients.add(sid)
-    print(f"[sio] client connected: {sid}", flush=True)
+    logger.info("client connected: %s", sid)
 
 
 @sio.event
 async def disconnect(sid: str):
     """Browser disconnected."""
     _browser_clients.discard(sid)
-    print(f"[sio] client disconnected: {sid}", flush=True)
+    logger.info("client disconnected: %s", sid)
 
 
 @sio.event

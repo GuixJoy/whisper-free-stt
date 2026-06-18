@@ -17,6 +17,10 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from kakashi import get_logger
+
+logger = get_logger(__name__)
+
 
 class HistoryStore:
     """Thread-safe async transcript store backed by local SQLite."""
@@ -98,7 +102,7 @@ class HistoryStore:
                     conn.commit()
                     return cur.lastrowid
         except Exception as exc:
-            print(f"[history] write failed: {exc}", flush=True)
+            logger.error("history write failed: %s", exc)
             return None
 
     def write_async(

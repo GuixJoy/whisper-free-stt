@@ -10,8 +10,12 @@ import os
 import urllib.request
 import json as _json
 
+from kakashi import get_logger
+
 from stt.config import LLMConfig, LLMMode, LLMProvider
 from stt.prompts import build_user_prompt
+
+logger = get_logger(__name__)
 
 
 def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -> str:
@@ -21,7 +25,7 @@ def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -
 
     api_key = os.environ.get(config.api_key_env, "")
     if not api_key:
-        print(f"Warning: {config.api_key_env} not set. Returning raw transcript.", flush=True)
+        logger.warning("%s not set. Returning raw transcript.", config.api_key_env)
         return transcript
 
     user_prompt = build_user_prompt(transcript, config.mode, few_shot_context)
@@ -33,13 +37,13 @@ def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -
         return result
 
     if config.fallback_model and config.provider is LLMProvider.OPENROUTER:
-        print(f"Fallback to {config.fallback_model}...")
+        logger.warning("Fallback to %s...", config.fallback_model)
         payload["model"] = config.fallback_model
         result = _call_api(config.base_url, headers, payload, config.timeout_sec)
         if result is not None:
             return result
 
-    print("LLM call failed. Returning raw transcript.")
+    logger.warning("LLM call failed. Returning raw transcript.")
     return transcript
 
 
@@ -67,7 +71,7 @@ def rewrite_stream(
     try:
         yield from _stream_api(config.base_url, headers, payload, config.timeout_sec)
     except Exception as exc:
-        print(f"LLM streaming failed ({exc}), falling back to sync...", flush=True)
+        logger.warning("LLM streaming failed (%s), falling back to sync...", exc)
         payload["stream"] = False
         result = _call_api(config.base_url, headers, payload, config.timeout_sec)
         yield result if result else transcript
@@ -99,9 +103,7 @@ def _build_payload(config: LLMConfig, user_prompt: str) -> dict[str, object]:
     if config.mode in (LLMMode.EMAIL, LLMMode.BULLET_LIST):
         mode_min = 512
         if max_tokens < mode_min:
-            import sys
-            print(f"Warning: mode {config.mode.value} needs >= {mode_min} tokens; "
-                  f"overriding config max_tokens ({max_tokens})", file=sys.stderr, flush=True)
+            logger.warning("mode %s needs >= %s tokens; overriding config max_tokens (%s)", config.mode.value, mode_min, max_tokens)
             max_tokens = mode_min
     return {
         "model": config.model,
@@ -147,7 +149,7 @@ def _call_api(url: str, headers: dict[str, str], payload: dict[str, object], tim
             return None
         return _clean_response(text.strip())
     except Exception as exc:
-        print(f"LLM API call failed: {exc}", flush=True)
+        logger.error("LLM API call failed: %s", exc)
         return None
 
 
