@@ -753,9 +753,9 @@ def run_ws_audio(
                 break
 
             # Wait for audio from browser (with timeout so we can check running)
-            _ws_audio_ready.wait(timeout=0.5)
-            _ws_audio_ready.clear()
+            _ws_audio_ready.wait(timeout=0.2)
 
+            # Process all queued chunks (don't clear — new chunks may arrive during processing)
             while _ws_audio_queue:
                 chunk = _ws_audio_queue.popleft()
                 chunk_start = ring.total_samples()
@@ -925,7 +925,9 @@ def _transcribe_and_print(
         hooks.on_raw(raw)
 
     # --- LLM (no semaphore held — next utterance can start ASR in parallel) ---
-    if config.llm.mode is LLMMode.OFF:
+    word_count = len(raw.split())
+    if config.llm.mode is LLMMode.OFF or word_count <= 5:
+        # Skip LLM for very short utterances (saves 2-3s per "Hi", "Ok", etc.)
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
         _copy_and_sep(config, raw)
         if hooks and hooks.on_processed:
@@ -934,7 +936,7 @@ def _transcribe_and_print(
             hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
-        get_store().write_async(raw, raw, mode="off", duration_sec=total_elapsed)
+        get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
@@ -967,6 +969,8 @@ def _transcribe_and_print(
                     collected.append(token)
                     sys.stdout.write(token)
                     sys.stdout.flush()
+                    # Stream partial LLM result to browser in real-time
+                    _json_emit(config, {"type": "llm_partial", "text": "".join(collected), "utterance_id": utterance_id})
         processed = _clean_response("".join(collected))
         llm_elapsed = time.monotonic() - ts_llm
         telemetry.record("llm", llm_elapsed)

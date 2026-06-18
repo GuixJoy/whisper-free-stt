@@ -871,6 +871,13 @@ function App() {
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
     }
+    if (event.type === "llm_partial") {
+      const id = event.utterance_id;
+      if (!id) return;
+      setLines((prev) => prev.map((line) =>
+        line.id === id ? { ...line, processed: event.text, status: "rewriting" } : line
+      ));
+    }
   };
 
   const dismissErrorsOfCategory = (category: AppError["category"]) => {
