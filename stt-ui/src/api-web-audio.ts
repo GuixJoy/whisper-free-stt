@@ -1,5 +1,6 @@
 // ── Web Audio mode: browser captures mic, streams PCM to Python via WebSocket ──
 import { type STTApi, type STTEvent } from "./api";
+import { micLevelEmitter } from "./utils/mic-emitter";
 
 interface WebAudioState {
   stream: MediaStream;
@@ -7,6 +8,7 @@ interface WebAudioState {
   source: MediaStreamAudioSourceNode;
   processor: ScriptProcessorNode | AudioWorkletNode | null;
   ws: WebSocket | null;
+  levelAnimId: number | null;
 }
 
 let state: WebAudioState | null = null;
@@ -87,11 +89,26 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       source.connect(processor);
       processor.connect(audioContext.destination); // needed for onaudioprocess to fire
 
-      state = { stream, audioContext, source, processor, ws };
+      // Feed mic levels to waveform via micLevelEmitter
+      const levelAnalyser = audioContext.createAnalyser();
+      levelAnalyser.fftSize = 256;
+      source.connect(levelAnalyser);
+      const levelData = new Uint8Array(levelAnalyser.frequencyBinCount);
+      let levelAnimId: number | null = null;
+      const emitLevel = () => {
+        levelAnalyser.getByteFrequencyData(levelData);
+        const avg = levelData.reduce((a, b) => a + b, 0) / levelData.length;
+        micLevelEmitter.emit(avg / 255);
+        levelAnimId = requestAnimationFrame(emitLevel);
+      };
+      levelAnimId = requestAnimationFrame(emitLevel);
+
+      state = { stream, audioContext, source, processor, ws, levelAnimId };
     },
 
     stop() {
       if (state) {
+        if (state.levelAnimId) cancelAnimationFrame(state.levelAnimId);
         state.processor?.disconnect();
         state.source.disconnect();
         state.stream.getTracks().forEach((track) => track.stop());
@@ -99,6 +116,7 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
         state.ws?.close();
         state = null;
       }
+      micLevelEmitter.emit(0);
       listeners = [];
     },
   };
