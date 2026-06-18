@@ -293,7 +293,7 @@ function FeedView({
               </div>
             ) : (
               <>
-                {lines.map((line) => (
+                {[...lines].reverse().map((line) => (
                   <div
                     key={`live-${line.id}`}
                     className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors"
@@ -683,7 +683,7 @@ function App() {
           status: "done",
           createdAt: r.created_at,
         }));
-        setHistoryItems(items.reverse());
+        setHistoryItems(items);
         setHasMoreHistory(rows.length >= page * pageSize);
       } else if (mode === "ws") {
         const ws = new WebSocket(`ws://127.0.0.1:${settings.wsPort}`);
@@ -703,7 +703,7 @@ function App() {
                 status: "done",
                 createdAt: r.created_at,
               }));
-              setHistoryItems(items.reverse());
+              setHistoryItems(items);
               setHasMoreHistory(data.rows.length >= page * pageSize);
               ws.close();
             }
@@ -754,7 +754,7 @@ function App() {
 
   useEffect(() => {
     if (!feedRef.current) return;
-    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    feedRef.current.scrollTop = 0;
   }, [lines]);
 
   useEffect(() => {
