@@ -4,31 +4,38 @@ import logging
 
 
 class _FallbackLogger:
-    """Stdlib logger wrapper that accepts kakashi-style keyword arguments."""
+    """Stdlib logger wrapper that accepts both kakashi and stdlib-style logging."""
 
     def __init__(self, name: str):
         self._logger = logging.getLogger(name)
 
-    def _format_msg(self, msg: str, kwargs: dict) -> str:
+    def _log(self, level: int, msg: str, args: tuple, kwargs: dict):
+        if args:
+            try:
+                formatted = msg % args
+            except (TypeError, KeyError):
+                formatted = f"{msg} {args}"
+        else:
+            formatted = msg
         if kwargs:
             fields = " ".join(f"{k}={v}" for k, v in kwargs.items())
-            return f"{msg} {fields}"
-        return msg
+            formatted = f"{formatted} {fields}"
+        self._logger._log(level, formatted, ())
 
-    def debug(self, msg: str, **kwargs):
-        self._logger.debug(self._format_msg(msg, kwargs))
+    def debug(self, msg: str, *args, **kwargs):
+        self._log(logging.DEBUG, msg, args, kwargs)
 
-    def info(self, msg: str, **kwargs):
-        self._logger.info(self._format_msg(msg, kwargs))
+    def info(self, msg: str, *args, **kwargs):
+        self._log(logging.INFO, msg, args, kwargs)
 
-    def warning(self, msg: str, **kwargs):
-        self._logger.warning(self._format_msg(msg, kwargs))
+    def warning(self, msg: str, *args, **kwargs):
+        self._log(logging.WARNING, msg, args, kwargs)
 
-    def error(self, msg: str, **kwargs):
-        self._logger.error(self._format_msg(msg, kwargs))
+    def error(self, msg: str, *args, **kwargs):
+        self._log(logging.ERROR, msg, args, kwargs)
 
-    def critical(self, msg: str, **kwargs):
-        self._logger.critical(self._format_msg(msg, kwargs))
+    def critical(self, msg: str, *args, **kwargs):
+        self._log(logging.CRITICAL, msg, args, kwargs)
 
 
 try:
