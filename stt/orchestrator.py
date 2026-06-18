@@ -86,12 +86,20 @@ def _get_ws_loop():
 
 
 def _json_emit(config: AppConfig, event: dict) -> None:
-    """Emit a JSON event to stdout and/or WebSocket clients."""
+    """Emit a JSON event to stdout, WebSocket clients, and Socket.IO."""
     payload = _json.dumps(event)
     if config.json_mode:
         print(payload, flush=True)
+    # Try legacy WebSocket broadcast
     if _ws_clients and _ws_loop and _ws_loop.is_running():
         _asyncio.run_coroutine_threadsafe(_ws_broadcast(payload), _ws_loop)
+    # Try Socket.IO emit via server module
+    try:
+        from stt.server import emit_event
+        event_type = event.get("type", "event")
+        emit_event(event_type, event)
+    except ImportError:
+        pass
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import { Search, Download, Trash2, Star } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
+import { Search, Download, Trash2 } from "lucide-react";
 
 interface HistoryRow {
   id: number;
@@ -15,6 +15,8 @@ interface HistoryRow {
 
 const isTauri = (): boolean =>
   typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+const API_BASE = "http://127.0.0.1:8765/api";
 
 interface Props {
   visible: boolean;
@@ -36,21 +38,11 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searching, setSearching] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
 
-  const sendWs = useCallback(async (msg: object): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:8765`);
-      wsRef.current = ws;
-      ws.onopen = () => ws.send(JSON.stringify(msg));
-      ws.onmessage = (e) => {
-        try { resolve(JSON.parse(e.data)); } catch { resolve(null); }
-        ws.close();
-      };
-      ws.onerror = () => { reject(new Error("WS failed")); };
-      setTimeout(() => { if (ws.readyState === WebSocket.OPEN) ws.close(); }, 10000);
-    });
+  const apiFetch = useCallback(async (path: string, options?: RequestInit): Promise<any> => {
+    const resp = await fetch(`${API_BASE}${path}`, options);
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    return resp.json();
   }, []);
 
   const loadHistory = useCallback(async () => {
@@ -62,94 +54,56 @@ export default function HistoryPanel({ visible, onClose }: Props) {
         const result = await invoke<HistoryRow[]>("get_history", { limit: 100 });
         setRows(result);
       } else {
-        const data = await sendWs({ type: "get_history", limit: 100 });
-        if (data?.type === "history") setRows(data.rows);
+        const data = await apiFetch("/history?limit=100");
+        setRows(data);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [sendWs]);
+  }, [apiFetch]);
 
   const searchHistory = useCallback(async () => {
     if (!searchQuery.trim()) { loadHistory(); return; }
-    setSearching(true);
+    setLoading(true);
     try {
       if (isTauri()) {
-        // Tauri doesn't have search yet, fall back to load all
         const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke<HistoryRow[]>("get_history", { limit: 500 });
         const q = searchQuery.toLowerCase();
         setRows(result.filter(r => r.raw_text.toLowerCase().includes(q) || r.processed_text.toLowerCase().includes(q)));
       } else {
-        const data = await sendWs({ type: "search_history", query: searchQuery });
-        if (data?.type === "history") setRows(data.rows);
+        const data = await apiFetch(`/history/search?q=${encodeURIComponent(searchQuery)}`);
+        setRows(data);
       }
     } catch { }
-    finally { setSearching(false); }
-  }, [searchQuery, loadHistory, sendWs]);
+    finally { setLoading(false); }
+  }, [searchQuery, loadHistory, apiFetch]);
 
-  const exportHistory = useCallback(async () => {
+  const exportHistory = useCallback(async (format: "csv" | "text") => {
     try {
       if (isTauri()) {
         const { invoke } = await import("@tauri-apps/api/core");
-        const csv = await invoke<string>("export_history");
-        downloadCsv(csv);
+        const content = await invoke<string>("export_history");
+        downloadFile(content, format);
       } else {
-        const data = await sendWs({ type: "export_history" });
-        if (data?.csv) downloadCsv(data.csv);
+        const resp = await fetch(`${API_BASE}/export/${format}`);
+        const content = await resp.text();
+        downloadFile(content, format);
       }
     } catch { }
-  }, [sendWs]);
+  }, []);
 
-  const downloadCsv = (csv: string) => {
-    const blob = new Blob([csv], { type: "text/csv" });
+  const downloadFile = (content: string, format: string) => {
+    const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `stt-history-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `stt-history-${new Date().toISOString().split("T")[0]}.${format === "csv" ? "csv" : "txt"}`;
     a.click();
     URL.revokeObjectURL(url);
   };
-
-  const downloadText = (text: string) => {
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `stt-history-${new Date().toISOString().split("T")[0]}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const exportText = useCallback(async () => {
-    try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const text = await invoke<string>("export_text");
-        downloadText(text);
-      } else {
-        const data = await sendWs({ type: "export_text" });
-        if (data?.text) downloadText(data.text);
-      }
-    } catch { }
-  }, [sendWs]);
-
-  const toggleFavorite = useCallback(async (id: number) => {
-    try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const result = await invoke<{ id: number; favorite: number }>("toggle_favorite", { id });
-        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
-      } else {
-        const data = await sendWs({ type: "toggle_favorite", id });
-        if (data?.type === "favorited") {
-          setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: data.favorite ? 1 : 0 } : r));
-        }
-      }
-    } catch { }
-  }, [sendWs]);
 
   const deleteEntry = useCallback(async (id: number) => {
     try {
@@ -157,16 +111,28 @@ export default function HistoryPanel({ visible, onClose }: Props) {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("delete_entry", { id });
       } else {
-        await sendWs({ type: "delete_entry", id });
+        await apiFetch(`/history/${id}`, { method: "DELETE" });
       }
       setRows((prev) => prev.filter((r) => r.id !== id));
     } catch { }
-  }, [sendWs]);
+  }, [apiFetch]);
+
+  const toggleFavorite = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<{ favorite: number }>("toggle_favorite", { id });
+        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
+      } else {
+        const result = await apiFetch(`/history/${id}/favorite`, { method: "POST" });
+        setRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
+      }
+    } catch { }
+  }, [apiFetch]);
 
   useEffect(() => {
     if (!visible) { setRows([]); setSearchQuery(""); return; }
     loadHistory();
-    return () => { if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.close(); };
   }, [visible, loadHistory]);
 
   useEffect(() => {
@@ -190,10 +156,10 @@ export default function HistoryPanel({ visible, onClose }: Props) {
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-heading text-text-primary">📜 Transcript History</h2>
           <div className="flex items-center gap-2">
-            <button onClick={exportHistory} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export CSV">
-              <Download size={14} /> Export
+            <button onClick={() => exportHistory("csv")} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export CSV">
+              <Download size={14} /> CSV
             </button>
-            <button onClick={exportText} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export Text">
+            <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors" title="Export Text">
               <Download size={14} /> Text
             </button>
             <button onClick={loadHistory} disabled={loading} className="inline-flex items-center justify-center h-8 px-3 rounded-button text-small font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors disabled:opacity-50">
@@ -226,18 +192,18 @@ export default function HistoryPanel({ visible, onClose }: Props) {
         {/* List */}
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3" role="list">
           {rows.length === 0 && !loading && (
-            <p className="text-center text-text-muted text-body py-12">{searching ? "No results found." : "No transcripts yet."}</p>
+            <p className="text-center text-text-muted text-body py-12">No transcripts yet.</p>
           )}
           {rows.map((row) => (
             <div key={row.id} className="group bg-app-surface-secondary rounded-card border border-border p-4 flex flex-col gap-2" role="listitem">
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">{row.mode}</span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => toggleFavorite(row.id)} className={`inline-flex items-center h-6 px-1 rounded-button transition-colors ${row.favorite ? "text-yellow-400" : "text-text-muted hover:text-yellow-400"}`} title={row.favorite ? "Unfavorite" : "Favorite"}>
-                    <Star size={14} fill={row.favorite ? "currentColor" : "none"} />
+                  <button onClick={() => toggleFavorite(row.id)} className={`text-lg transition-colors ${row.favorite ? "text-yellow-400" : "text-text-muted hover:text-yellow-400"}`} title="Toggle favorite">
+                    {row.favorite ? "★" : "☆"}
                   </button>
-                  <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
+                  <span className="inline-flex items-center rounded-badge px-3 py-1 text-label font-semibold bg-accent-muted border border-accent-muted-border text-accent-light">{row.mode}</span>
                 </div>
+                <span className="text-small text-text-muted">{formatDate(row.created_at)}</span>
               </div>
               <div className="text-body text-text-primary whitespace-pre-wrap break-words">
                 <span className="text-text-secondary font-medium">Raw:</span> {row.raw_text}

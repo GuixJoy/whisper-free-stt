@@ -48,22 +48,12 @@ export default function InsightsPage() {
         const data = await invoke<InsightsData>("get_insights");
         applyData(data);
       } else {
-        const ws = new WebSocket("ws://127.0.0.1:8765");
-        wsRef.current = ws;
-        await new Promise<void>((resolve, reject) => {
-          ws.onopen = () => resolve();
-          ws.onerror = () => reject(new Error("WS failed"));
-        });
-        ws.onmessage = (msg) => {
-          try {
-            const parsed = JSON.parse(msg.data);
-            if (parsed.type === "insights") {
-              applyData(parsed.data);
-              ws.close();
-            }
-          } catch { }
-        };
-        ws.send(JSON.stringify({ type: "get_insights" }));
+        // Use REST API
+        const resp = await fetch("http://127.0.0.1:8765/api/insights");
+        if (resp.ok) {
+          const data = await resp.json();
+          applyData(data);
+        }
       }
     } catch {
       // Fallback to empty state

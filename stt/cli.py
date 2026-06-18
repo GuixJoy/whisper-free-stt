@@ -327,16 +327,36 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.ws_port:
-        start_ws_server(args.ws_port)
+        # Start FastAPI + Socket.IO server
+        import uvicorn
+        from stt.server import asgi_app, sio
+        # Store config in server module for the orchestrator to use
+        import stt.server as _server_mod
+        _server_mod._config = config
         object.__setattr__(config, "json_mode", True)  # ws implies json
+
+        # Run server in background thread
+        def _run_server():
+            uvicorn.run(asgi_app, host="127.0.0.1", port=args.ws_port, log_level="warning")
+        threading.Thread(target=_run_server, daemon=True).start()
+        print(f"[server] listening on http://127.0.0.1:{args.ws_port}", flush=True)
+        print(f"[server] API docs at http://127.0.0.1:{args.ws_port}/docs", flush=True)
 
     if args.input_file:
         run_file(config, args.input_file)
     elif args.ws_audio:
-        # Browser mic mode: wait for audio via WebSocket
+        # Browser mic mode: wait for audio via Socket.IO
         if not args.ws_port:
-            start_ws_server(8765)
+            import uvicorn
+            from stt.server import asgi_app
+            import stt.server as _server_mod
+            _server_mod._config = config
             object.__setattr__(config, "json_mode", True)
+
+            def _run_server():
+                uvicorn.run(asgi_app, host="127.0.0.1", port=8765, log_level="warning")
+            threading.Thread(target=_run_server, daemon=True).start()
+            print(f"[server] listening on http://127.0.0.1:8765", flush=True)
         run_ws_audio(config)
     else:
         run(config)

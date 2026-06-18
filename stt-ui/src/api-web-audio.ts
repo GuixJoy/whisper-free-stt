@@ -1,20 +1,19 @@
-// ── Web Audio mode: browser captures mic, streams PCM to Python via WebSocket ──
+// ── Web Audio mode: browser captures mic, streams PCM via Socket.IO ──
 import { type STTApi, type STTEvent } from "./api";
 import { micLevelEmitter } from "./utils/mic-emitter";
+import { io, Socket } from "socket.io-client";
 
 interface WebAudioState {
   stream: MediaStream;
   audioContext: AudioContext;
   source: MediaStreamAudioSourceNode;
-  processor: ScriptProcessorNode | AudioWorkletNode | null;
-  ws: WebSocket | null;
+  processor: ScriptProcessorNode | null;
+  socket: Socket;
   levelAnimId: number | null;
 }
 
 let state: WebAudioState | null = null;
 
-// Float32 PCM chunks are sent to Python via WebSocket.
-// Python runs VAD + ASR and sends back STTEvent JSON.
 export function createWebAudioApi(wsPort: number = 8765): STTApi {
   let listeners: Array<(e: STTEvent) => void> = [];
 
@@ -28,7 +27,7 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: false,  // let Python handle noise reduction
+          noiseSuppression: false,
           autoGainControl: false,
         },
       });
@@ -36,34 +35,39 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       const audioContext = new AudioContext({ sampleRate: 16000 });
       const source = audioContext.createMediaStreamSource(stream);
 
-      // 2. Connect to Python WebSocket
-      const ws = new WebSocket(`ws://127.0.0.1:${wsPort}`);
-      await new Promise<void>((resolve, reject) => {
-        ws.onopen = () => resolve();
-        ws.onerror = () => reject(new Error("WebSocket connection failed"));
+      // 2. Connect to Socket.IO
+      const socket = io(`http://127.0.0.1:${wsPort}`, {
+        transports: ["websocket"],
       });
 
-      ws.onmessage = (msg) => {
-        try {
-          const event: STTEvent = JSON.parse(msg.data);
-          for (const cb of listeners) cb(event);
-        } catch { }
-      };
-      ws.onclose = () => {
-        for (const cb of listeners) cb({ type: "state", state: "idle" });
-      };
+      await new Promise<void>((resolve, reject) => {
+        socket.on("connect", () => resolve());
+        socket.on("connect_error", (err) => reject(new Error(`Socket.IO failed: ${err.message}`)));
+      });
 
-      // 3. Capture audio via ScriptProcessorNode (widely supported)
-      // Buffer size 4096 = 256ms at 16kHz — good balance of latency vs overhead
+      // Listen for events from server
+      const eventTypes = ["state", "raw", "processed", "llm_partial", "mic", "error", "dropped"];
+      for (const eventType of eventTypes) {
+        socket.on(eventType, (data: any) => {
+          const event = { type: eventType, ...data } as STTEvent;
+          for (const cb of listeners) cb(event);
+        });
+      }
+
+      socket.on("disconnect", () => {
+        for (const cb of listeners) cb({ type: "state", state: "idle" });
+      });
+
+      // 3. Capture audio via ScriptProcessorNode
       const bufferSize = 4096;
       const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
 
       processor.onaudioprocess = (event) => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!socket.connected) return;
         const inputBuffer = event.inputBuffer;
-        const inputData = inputBuffer.getChannelData(0); // mono
+        const inputData = inputBuffer.getChannelData(0);
 
-        // Resample if AudioContext sampleRate differs from 16kHz
+        // Resample if needed
         let chunk: Float32Array;
         if (audioContext.sampleRate !== 16000) {
           const ratio = 16000 / audioContext.sampleRate;
@@ -82,14 +86,14 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
           chunk.set(inputData);
         }
 
-        // Send as binary (float32 PCM)
-        ws.send(chunk.buffer);
+        // Send as binary via Socket.IO
+        socket.emit("audio_chunk", chunk.buffer);
       };
 
       source.connect(processor);
-      processor.connect(audioContext.destination); // needed for onaudioprocess to fire
+      processor.connect(audioContext.destination);
 
-      // Feed mic levels to waveform via micLevelEmitter
+      // Feed mic levels to waveform
       const levelAnalyser = audioContext.createAnalyser();
       levelAnalyser.fftSize = 256;
       source.connect(levelAnalyser);
@@ -103,7 +107,7 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       };
       levelAnimId = requestAnimationFrame(emitLevel);
 
-      state = { stream, audioContext, source, processor, ws, levelAnimId };
+      state = { stream, audioContext, source, processor, socket, levelAnimId };
     },
 
     stop() {
@@ -113,7 +117,7 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
         state.source.disconnect();
         state.stream.getTracks().forEach((track) => track.stop());
         state.audioContext.close();
-        state.ws?.close();
+        state.socket.disconnect();
         state = null;
       }
       micLevelEmitter.emit(0);

@@ -25,6 +25,7 @@
     "lucide-react": "^0.400.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "socket.io-client": "^4.8.3",
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {
