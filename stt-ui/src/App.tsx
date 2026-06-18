@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "react";
+import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
 import { createWebAudioApi } from "./api-web-audio";
@@ -17,6 +18,29 @@ import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } 
 import { micLevelEmitter } from "./utils/mic-emitter";
 import { usePermissions } from "./hooks/usePermissions";
 import Waveform from "./components/Waveform";
+
+const SettingsSchema = z.object({
+  wsPort: z.number().int().min(1).max(65535),
+  asrProfile: z.enum(["auto", "speed", "balanced", "accuracy", "distil", "turbo"]),
+  backend: z.enum(["auto", "whisper_cpp", "faster_whisper"]),
+  model: z.string().max(100),
+  llmMode: z.enum(["cleanup", "off", "bullet_list", "email", "commit_message"]),
+  llmProvider: z.enum(["deepseek", "openrouter"]),
+  llmModel: z.string().max(100),
+  llmFallback: z.string().max(100),
+  deepseekApiKey: z.string().max(200),
+  openrouterApiKey: z.string().max(200),
+  fastCommit: z.boolean(),
+  typing: z.boolean(),
+  clipboard: z.boolean(),
+  debug: z.boolean(),
+  hotwords: z.string().max(200),
+  language: z.string().max(10),
+});
+
+function validateSettings(settings: unknown): settings is RuntimeSettings {
+  return SettingsSchema.safeParse(settings).success;
+}
 
 type RunMode = "ws" | "tauri";
 
@@ -73,7 +97,11 @@ function getInitialSettings(): RuntimeSettings {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (validateSettings(parsed)) {
+        return { ...DEFAULT_SETTINGS, ...parsed };
+      }
+      console.warn("Invalid settings in localStorage, using defaults");
     }
   } catch (e) {
     console.error("Failed to load settings", e);
@@ -778,7 +806,11 @@ function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+      if (validateSettings(settings)) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+      } else {
+        console.error("Invalid settings, not saving to localStorage");
+      }
     } catch (e) {
       console.error("Failed to save settings", e);
     }
@@ -933,19 +965,6 @@ function App() {
       } catch { /* not in Tauri or shortcut blocked */ }
     })();
     return () => { unlisten?.(); unlistenShortcut?.(); };
-  }, []);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
-      if (e.code !== "Space") return;
-      e.preventDefault();
-      if (connectedRef.current) stopRef.current();
-      else void startRef.current();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   const clearLines = () => setLines([]);

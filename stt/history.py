@@ -11,6 +11,7 @@ Schema mirrors stt-ui/src-tauri/src/lib.rs migrations:
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import threading
 import time
@@ -22,11 +23,22 @@ from stt.log import get_logger
 logger = get_logger(__name__)
 
 
+def default_db_path() -> Path:
+    """Get the default history database path.
+    
+    Uses $STT_DATA_DIR if set, otherwise ~/.local/share/stt/history.db
+    """
+    if data_dir := os.environ.get("STT_DATA_DIR"):
+        return Path(data_dir).expanduser() / "history.db"
+    return Path("~/.local/share/stt/history.db").expanduser()
+
+
 class HistoryStore:
     """Thread-safe async transcript store backed by local SQLite."""
 
-    def __init__(self, db_path: str | Path = "~/.local/share/stt/history.db") -> None:
-        resolved = Path(db_path).expanduser().resolve()
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        path = Path(db_path) if db_path else default_db_path()
+        resolved = path.expanduser().resolve()
         resolved.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = str(resolved)
         self._write_lock = threading.Lock()
@@ -132,6 +144,17 @@ class HistoryStore:
     # Query (for few-shot context injection)
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _sanitize_fts_query(text: str) -> str:
+        """Sanitize text for FTS5 MATCH query.
+        
+        Removes FTS5 special characters and operators to prevent injection.
+        Only keeps alphanumeric terms longer than 2 characters.
+        """
+        import re
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        return " OR ".join(words) if words else ""
+
     def search_similar(
         self,
         raw_text: str,
@@ -140,12 +163,7 @@ class HistoryStore:
         """FTS5 full-text search for similar past transcripts (fast, no embedding needed)."""
         try:
             with self._conn() as conn:
-                # Use FTS5 simple query — matches any term in the raw_text
-                # sanitize: drop punctuation, keep alphanumeric terms
-                terms = " OR ".join(
-                    w for w in raw_text.lower().split()
-                    if len(w) > 2 and w.isalpha()
-                )
+                terms = self._sanitize_fts_query(raw_text)
                 if not terms:
                     return []
 
@@ -370,10 +388,7 @@ class HistoryStore:
         """Full-text search across transcript history."""
         try:
             with self._conn() as conn:
-                terms = " OR ".join(
-                    w for w in query.lower().split()
-                    if len(w) > 2 and w.isalpha()
-                )
+                terms = self._sanitize_fts_query(query)
                 if not terms:
                     return []
                 rows = conn.execute(

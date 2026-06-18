@@ -75,6 +75,9 @@ export function usePermissions() {
   }, []);
 
   const requestMic = useCallback(async () => {
+    if (isCapturingMic) {
+      return true;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -91,6 +94,7 @@ export function usePermissions() {
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const emitLevel = () => {
+        if (!analyserRef.current) return;
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
         const normalizedLevel = average / 255;
@@ -105,7 +109,7 @@ export function usePermissions() {
       setPermissions((p) => ({ ...p, microphone: "denied" }));
       return false;
     }
-  }, []);
+  }, [isCapturingMic]);
 
   const stopMic = useCallback(() => {
     if (animFrameRef.current) {
@@ -121,13 +125,17 @@ export function usePermissions() {
     micLevelEmitter.emit(0);
   }, []);
 
-  useEffect(() => {
+  const checkPermissions = useCallback(() => {
     checkClipboardPermission();
     checkMicPermission();
+  }, [checkClipboardPermission, checkMicPermission]);
+
+  useEffect(() => {
+    checkPermissions();
     return () => {
       stopMic();
     };
-  }, [checkClipboardPermission, checkMicPermission, stopMic]);
+  }, [checkPermissions, stopMic]);
 
   return {
     permissions,

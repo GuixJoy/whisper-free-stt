@@ -23,17 +23,11 @@
     "store:default",
     {
       "identifier": "shell:allow-execute",
-      "allow": [
-        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
-        {"name": "sh", "cmd": "/bin/sh", "args": true}
-      ]
+      "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
     {
       "identifier": "shell:allow-spawn",
-      "allow": [
-        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
-        {"name": "sh", "cmd": "/bin/sh", "args": true}
-      ]
+      "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
     {
       "identifier": "shell:allow-stdin-write",

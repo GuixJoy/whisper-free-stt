@@ -15,6 +15,9 @@ enum AppError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Tauri error: {0}")]
+    Tauri(#[from] tauri::Error),
 }
 
 impl serde::Serialize for AppError {
@@ -47,31 +50,46 @@ struct TranscriptRow {
 // Commands
 // ---------------------------------------------------------------------------
 
+fn history_db_path() -> Result<std::path::PathBuf, AppError> {
+    // Support STT_DATA_DIR env var for consistent path with Python backend
+    let base = if let Ok(data_dir) = std::env::var("STT_DATA_DIR") {
+        std::path::PathBuf::from(data_dir)
+    } else {
+        let home = dirs_next::home_dir().ok_or_else(|| {
+            AppError::Io(std::io::Error::other("Could not determine home directory"))
+        })?;
+        home.join(".local/share/stt")
+    };
+    Ok(base.join("history.db"))
+}
+
 #[tauri::command]
-fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
-    let db_path = dirs_next::home_dir()
-        .unwrap_or_default()
-        .join(".local/share/stt/history.db");
-    let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(
-        "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
-         FROM transcripts ORDER BY created_at DESC LIMIT ?1",
-    )?;
-    let rows = stmt
-        .query_map([limit as i64], |row| {
-            Ok(TranscriptRow {
-                id: row.get(0)?,
-                raw_text: row.get(1)?,
-                processed_text: row.get(2)?,
-                language: row.get(3)?,
-                mode: row.get(4)?,
-                model: row.get(5)?,
-                duration_sec: row.get(6)?,
-                favorite: row.get(7)?,
-                created_at: row.get(8)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
+    let db_path = history_db_path()?;
+    let rows = tauri::async_runtime::spawn_blocking(move || {
+        let conn = Connection::open(db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
+             FROM transcripts ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map([limit as i64], |row| {
+                Ok(TranscriptRow {
+                    id: row.get(0)?,
+                    raw_text: row.get(1)?,
+                    processed_text: row.get(2)?,
+                    language: row.get(3)?,
+                    mode: row.get(4)?,
+                    model: row.get(5)?,
+                    duration_sec: row.get(6)?,
+                    favorite: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok::<Vec<TranscriptRow>, AppError>(rows)
+    })
+    .await??;
     Ok(rows)
 }
 
