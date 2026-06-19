@@ -11,6 +11,14 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+// Detect backdrop-filter support (WebKitGTK on Linux often lacks it)
+function supportsBackdropFilter(): boolean {
+  if (typeof CSS === "undefined") return false;
+  return CSS.supports("backdrop-filter", "blur(1px)") || CSS.supports("-webkit-backdrop-filter", "blur(1px)");
+}
+
+const HAS_BLUR = supportsBackdropFilter();
+
 function WaveformBars({ level }: { level: number }) {
   const bars = 12;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -206,12 +214,18 @@ export default function WidgetView() {
           className="absolute inset-0 rounded-[14px]"
           style={{
             background: isActive
-              ? "linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(245,158,11,0.04) 50%, rgba(217,119,6,0.10) 100%)"
+              ? HAS_BLUR
+                ? "linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(245,158,11,0.04) 50%, rgba(217,119,6,0.10) 100%)"
+                : "rgba(30,20,10,0.92)"
               : isError
-                ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.04) 50%, rgba(239,68,68,0.08) 100%)"
-                : "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.05) 100%)",
-            backdropFilter: "blur(24px) saturate(180%)",
-            WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                ? HAS_BLUR
+                  ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.04) 50%, rgba(239,68,68,0.08) 100%)"
+                  : "rgba(30,10,10,0.92)"
+                : HAS_BLUR
+                  ? "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.05) 100%)"
+                  : "rgba(20,20,20,0.92)",
+            backdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
+            WebkitBackdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
             border: isActive
               ? "1px solid rgba(251,191,36,0.25)"
               : isError
@@ -271,8 +285,8 @@ export default function WidgetView() {
               : isError
                 ? "1px solid rgba(239,68,68,0.15)"
                 : "1px solid rgba(255,255,255,0.08)",
-            backdropFilter: "blur(8px)",
-            WebkitBackdropFilter: "blur(8px)",
+            backdropFilter: HAS_BLUR ? "blur(8px)" : "none",
+            WebkitBackdropFilter: HAS_BLUR ? "blur(8px)" : "none",
           }}
           aria-label={connected ? "Stop transcription" : "Start transcription"}
         >
@@ -327,8 +341,8 @@ export default function WidgetView() {
         }`}
         style={{
           background: "linear-gradient(135deg, rgba(24,24,24,0.96) 0%, rgba(12,12,12,0.98) 100%)",
-          backdropFilter: "blur(32px) saturate(200%)",
-          WebkitBackdropFilter: "blur(32px) saturate(200%)",
+          backdropFilter: HAS_BLUR ? "blur(32px) saturate(200%)" : "none",
+          WebkitBackdropFilter: HAS_BLUR ? "blur(32px) saturate(200%)" : "none",
           border: "1px solid rgba(255,255,255,0.08)",
           boxShadow: "0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.05)",
         }}

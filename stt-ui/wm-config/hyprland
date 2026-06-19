@@ -2,6 +2,8 @@
 # Add these lines to your ~/.config/hypr/hyprland.conf
 
 # Float, pin (always on top), and disable animation for the widget
-windowrulev2 = float, class:(stt-widget)
-windowrulev2 = pin, class:(stt-widget)
-windowrulev2 = noanim, class:(stt-widget)
+# WM_CLASS is typically "stt-ui" (Tauri product name) — use regex to match
+windowrulev2 = float, class:^(stt-ui)$
+windowrulev2 = pin, class:^(stt-ui)$
+windowrulev2 = noanim, class:^(stt-ui)$
+windowrulev2 = size 220 56, class:^(stt-ui)$

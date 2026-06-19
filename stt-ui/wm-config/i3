@@ -2,4 +2,5 @@
 # Add these lines to your ~/.config/i3/config
 
 # Float the widget window and make it sticky (visible on all workspaces)
-for_window [class="stt-widget"] floating enable, sticky enable, border pixel 0
+# WM_CLASS is typically "stt-ui" (Tauri product name)
+for_window [class="stt-ui"] floating enable, sticky enable, border pixel 0
