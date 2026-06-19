@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Maximize2, X } from "lucide-react";
 import { MicIcon } from "./icons/MicIcon";
 import { MicOffIcon } from "./icons/MicOffIcon";
+import { LanguagesIcon } from "./icons/LanguagesIcon";
 import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -116,6 +117,7 @@ export default function WidgetView() {
   const [micLevel, setMicLevel] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -293,6 +295,24 @@ export default function WidgetView() {
           {connected ? <MicIcon size={18} /> : <MicOffIcon size={18} />}
         </button>
 
+        {/* Languages button (coming soon) */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowComingSoon(true);
+            setTimeout(() => setShowComingSoon(false), 2000);
+          }}
+          className="relative z-10 w-[32px] h-[32px] shrink-0 rounded-[8px] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none"
+          style={{
+            color: "rgba(255,255,255,0.25)",
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.05)",
+          }}
+          aria-label="Language selection (coming soon)"
+        >
+          <LanguagesIcon size={15} />
+        </button>
+
         {/* Expanded area: waveform + status */}
         <div
           className="flex items-center gap-2 flex-1 pr-4 pl-2 h-full overflow-hidden"
@@ -330,6 +350,24 @@ export default function WidgetView() {
           }}
         />
       </div>
+
+      {/* Coming soon tooltip */}
+      {showComingSoon && (
+        <div
+          className="absolute z-50 px-2.5 py-1 rounded-lg text-[11px] font-medium text-amber-200/90 whitespace-nowrap pointer-events-none"
+          style={{
+            top: -32,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "linear-gradient(135deg, rgba(24,24,24,0.96) 0%, rgba(12,12,12,0.98) 100%)",
+            border: "1px solid rgba(251,191,36,0.2)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            animation: "widget-fade-in 200ms ease-out",
+          }}
+        >
+          Coming soon
+        </div>
+      )}
 
       {/* Context Menu */}
       <div
@@ -372,6 +410,10 @@ export default function WidgetView() {
         @keyframes widget-dot-pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(0.75); }
+        }
+        @keyframes widget-fade-in {
+          from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+          to { opacity: 1; transform: translateX(-50%) translateY(0); }
         }
       `}</style>
     </div>
