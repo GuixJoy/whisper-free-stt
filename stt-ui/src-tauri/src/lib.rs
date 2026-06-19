@@ -1,3 +1,5 @@
+mod widget;
+
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -273,7 +275,14 @@ pub fn run() {
             get_backend_path,
             get_platform_info,
             check_system_deps,
-            get_history
+            get_history,
+            widget::show_widget,
+            widget::hide_widget,
+            widget::get_widget_visible,
+            widget::get_widget_position,
+            widget::set_widget_position,
+            widget::toggle_widget,
+            widget::detect_window_manager
         ])
         .setup(|app| {
             // --- System tray with start/stop menu ---
@@ -283,8 +292,9 @@ pub fn run() {
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let start_item = MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
             let stop_item = MenuItem::with_id(app, "stop", "Stop Listening", true, None::<&str>)?;
+            let toggle_widget_item = MenuItem::with_id(app, "toggle_widget", "Toggle Widget", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &toggle_widget_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -308,6 +318,9 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("tray-action", "stop");
                         }
+                    }
+                    "toggle_widget" => {
+                        let _ = widget::toggle_widget(app.clone());
                     }
                     "quit" => app.exit(0),
                     _ => {}

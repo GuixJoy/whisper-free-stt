@@ -939,6 +939,41 @@ function App() {
 
   useEffect(() => () => runtimeRef.current?.stop(), []);
 
+  // --- Widget: emit status to widget window ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const { emit } = await import("@tauri-apps/api/event");
+        await emit("widget-status", status);
+      } catch { /* not in Tauri */ }
+    })();
+  }, [status]);
+
+  // --- Widget: listen for toggle and show-main events ---
+  useEffect(() => {
+    let unlistenToggle: (() => void) | undefined;
+    let unlistenShowMain: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlistenToggle = await listen("widget-toggle", () => {
+          if (connectedRef.current) stopRef.current();
+          else void startRef.current();
+        });
+        unlistenShowMain = await listen("widget-show-main", async () => {
+          try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            await win.unminimize();
+            await win.show();
+            await win.setFocus();
+          } catch { /* not in Tauri */ }
+        });
+      } catch { /* not in Tauri */ }
+    })();
+    return () => { unlistenToggle?.(); unlistenShowMain?.(); };
+  }, []);
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let unlistenShortcut: (() => void) | undefined;

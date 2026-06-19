@@ -1,0 +1,5 @@
+# STT Widget — i3 Configuration
+# Add these lines to your ~/.config/i3/config
+
+# Float the widget window and make it sticky (visible on all workspaces)
+for_window [class="stt-widget"] floating enable, sticky enable, border pixel 0

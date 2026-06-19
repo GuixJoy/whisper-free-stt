@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "stt-ui",
         "width": 900,
         "height": 680,
@@ -20,6 +21,20 @@
         "resizable": true,
         "center": true,
         "decorations": false
+      },
+      {
+        "label": "widget",
+        "title": "",
+        "url": "/index.html?window=widget",
+        "width": 210,
+        "height": 56,
+        "decorations": false,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "transparent": true,
+        "shadow": false
       }
     ],
     "security": {

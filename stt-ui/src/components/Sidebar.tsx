@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useEffect, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
   Home,
@@ -8,9 +8,14 @@ import {
   SlidersHorizontal,
   Settings,
   HelpCircle,
+  CircleDot,
 } from "lucide-react";
 import { Badge } from "./Badge";
 import { Divider } from "./Divider";
+
+function isTauri(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -68,6 +73,32 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
   ({ className, activeItem = "Home", onNavigate, ...props }, ref) => {
+    const [widgetVisible, setWidgetVisible] = useState(false);
+
+    const toggleWidget = useCallback(async () => {
+      if (!isTauri()) return;
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const visible = await invoke<boolean>("toggle_widget");
+        setWidgetVisible(visible);
+      } catch (err) {
+        console.error("[Widget] toggle failed:", err);
+      }
+    }, []);
+
+    useEffect(() => {
+      if (!isTauri()) return;
+      let unlisten: (() => void) | undefined;
+      (async () => {
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          unlisten = await listen<boolean>("widget-visibility-changed", (event) => {
+            setWidgetVisible(event.payload);
+          });
+        } catch { /* not in Tauri */ }
+      })();
+      return () => { unlisten?.(); };
+    }, []);
     return (
       <div
         ref={ref}
@@ -123,6 +154,12 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             label="Config"
             active={activeItem === "Config"}
             onClick={() => onNavigate?.("Config")}
+          />
+          <SidebarItem
+            icon={<CircleDot size={18} />}
+            label="Widget"
+            active={widgetVisible}
+            onClick={toggleWidget}
           />
         </SidebarSection>
 

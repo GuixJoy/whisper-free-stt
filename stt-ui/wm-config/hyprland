@@ -1,0 +1,7 @@
+# STT Widget — Hyprland Configuration
+# Add these lines to your ~/.config/hypr/hyprland.conf
+
+# Float, pin (always on top), and disable animation for the widget
+windowrulev2 = float, class:(stt-widget)
+windowrulev2 = pin, class:(stt-widget)
+windowrulev2 = noanim, class:(stt-widget)
