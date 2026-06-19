@@ -859,6 +859,13 @@ function App() {
     }
     if (event.type === "mic") {
       micLevelEmitter.emit(event.level);
+      // Forward mic level to widget
+      (async () => {
+        try {
+          const { emit } = await import("@tauri-apps/api/event");
+          await emit("widget-mic-level", event.level);
+        } catch { /* not in Tauri */ }
+      })();
       return;
     }
     if (event.type === "error") {

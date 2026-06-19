@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Maximize2, X } from "lucide-react";
+import { MicIcon } from "./icons/MicIcon";
+import { MicOffIcon } from "./icons/MicOffIcon";
+import { listen, emit } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
 type WidgetStatus = "idle" | "listening" | "transcribing" | "rewriting" | "error";
 
@@ -7,25 +11,13 @@ function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-function MicIcon({ active }: { active: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="transition-colors duration-300">
-      <path
-        d="M12 1C10.34 1 9 2.34 9 4V12C9 13.66 10.34 15 12 15C13.66 15 15 13.66 15 12V4C15 2.34 13.66 1 12 1Z"
-        fill={active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}
-      />
-      <path
-        d="M17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12H5C5 15.53 7.61 18.43 11 18.93V22H13V18.93C16.39 18.43 19 15.53 19 12H17Z"
-        fill={active ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.4)"}
-      />
-    </svg>
-  );
-}
-
-function WaveformBars() {
-  const bars = 10;
+function WaveformBars({ level }: { level: number }) {
+  const bars = 12;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
+  const levelRef = useRef(0);
+
+  levelRef.current = level;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -34,7 +26,7 @@ function WaveformBars() {
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const w = 100;
+    const w = 120;
     const h = 28;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
@@ -44,35 +36,40 @@ function WaveformBars() {
 
     const barWidth = 3;
     const gap = (w - bars * barWidth) / (bars - 1);
-    const maxHeight = h - 4;
-    const time = { v: 0 };
+    const maxHeight = h - 6;
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, h);
+    gradient.addColorStop(0, "rgba(251, 191, 36, 0.9)");
+    gradient.addColorStop(0.5, "rgba(245, 158, 11, 1)");
+    gradient.addColorStop(1, "rgba(217, 119, 6, 0.8)");
+
+    let t = 0;
 
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
-      time.v += 0.04;
+      t += 0.045;
+
+      const micLevel = Math.min(1, levelRef.current * 2.5);
+      ctx.fillStyle = gradient;
+      ctx.shadowColor = "rgba(251, 191, 36, 0.3)";
+      ctx.shadowBlur = 4;
 
       for (let i = 0; i < bars; i++) {
-        const phase = i * 0.7;
-        const wave1 = Math.sin(time.v * 3 + phase) * 0.4;
-        const wave2 = Math.sin(time.v * 2.3 + phase * 1.5) * 0.25;
-        const wave3 = Math.sin(time.v * 4.1 + phase * 0.8) * 0.15;
-        const amplitude = 0.25 + (wave1 + wave2 + wave3 + 0.4) * 0.55;
+        const noise1 = Math.sin(t * 5.3 + i * 2.1) * 0.5 + 0.5;
+        const noise2 = Math.sin(t * 3.7 + i * 4.3) * 0.5 + 0.5;
+        const base = 0.15 + micLevel * 0.4;
+        const amplitude = Math.min(1, base + (noise1 * 0.6 + noise2 * 0.4) * (0.2 + micLevel * 0.6));
         const barH = Math.max(3, amplitude * maxHeight);
 
         const x = i * (barWidth + gap);
         const y = (h - barH) / 2;
 
-        const gradient = ctx.createLinearGradient(0, y, 0, y + barH);
-        gradient.addColorStop(0, "rgba(199,119,44,0.9)");
-        gradient.addColorStop(0.5, "rgba(232,168,72,0.95)");
-        gradient.addColorStop(1, "rgba(199,119,44,0.8)");
-
-        ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.roundRect(x, y, barWidth, barH, 1.5);
         ctx.fill();
       }
 
+      ctx.shadowBlur = 0;
       animRef.current = requestAnimationFrame(draw);
     };
 
@@ -83,47 +80,74 @@ function WaveformBars() {
   return <canvas ref={canvasRef} className="shrink-0" />;
 }
 
+function StatusLabel({ status }: { status: WidgetStatus }) {
+  const label = (() => {
+    switch (status) {
+      case "listening": return "Listening";
+      case "transcribing": return "Transcribing";
+      case "rewriting": return "Rewriting";
+      case "error": return "Error";
+      default: return "";
+    }
+  })();
+
+  if (!label) return null;
+
+  return (
+    <span className={`text-[11px] font-medium tracking-wide whitespace-nowrap transition-colors duration-300 ${
+      status === "error" ? "text-red-400/90" : "text-amber-200/80"
+    }`}>
+      {label}
+    </span>
+  );
+}
+
 export default function WidgetView() {
   const [status, setStatus] = useState<WidgetStatus>("idle");
   const [connected, setConnected] = useState(false);
+  const [micLevel, setMicLevel] = useState(0);
   const [showMenu, setShowMenu] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
-    let unlisten: (() => void) | undefined;
-    (async () => {
-      const { listen } = await import("@tauri-apps/api/event");
-      unlisten = await listen<WidgetStatus>("widget-status", (event) => {
+
+    let unlistenStatus: (() => void) | undefined;
+    let unlistenLevel: (() => void) | undefined;
+
+    const init = async () => {
+      unlistenStatus = await listen<WidgetStatus>("widget-status", (event) => {
         setStatus(event.payload);
-        setConnected(
-          event.payload === "listening" ||
-          event.payload === "transcribing" ||
-          event.payload === "rewriting"
-        );
+        setConnected(["listening", "transcribing", "rewriting"].includes(event.payload));
       });
-    })();
-    return () => { unlisten?.(); };
+
+      unlistenLevel = await listen<number>("widget-mic-level", (event) => {
+        setMicLevel(event.payload);
+      });
+    };
+
+    init();
+
+    return () => {
+      unlistenStatus?.();
+      unlistenLevel?.();
+    };
   }, []);
 
   const handleToggle = useCallback(async () => {
     if (!isTauri()) return;
-    const { emit } = await import("@tauri-apps/api/event");
     await emit("widget-toggle");
   }, []);
 
   const handleShowMain = useCallback(async () => {
     if (!isTauri()) return;
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("show_widget");
-    const { emit } = await import("@tauri-apps/api/event");
     await emit("widget-show-main");
     setShowMenu(false);
   }, []);
 
   const handleQuit = useCallback(async () => {
     if (!isTauri()) return;
-    const { invoke } = await import("@tauri-apps/api/core");
     await invoke("hide_widget");
     setShowMenu(false);
   }, []);
@@ -147,18 +171,20 @@ export default function WidgetView() {
       }
       if (e.code === "Escape") {
         handleQuit();
+        setShowMenu(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleToggle, handleQuit]);
 
-  const isActive = status === "listening" || status === "transcribing" || status === "rewriting";
+  const isActive = ["listening", "transcribing", "rewriting"].includes(status);
   const isError = status === "error";
+  const expanded = isActive || isError;
 
   return (
     <div
-      className="select-none w-full h-full flex items-center justify-center"
+      className="select-none w-full h-full flex items-center justify-center relative"
       style={{ background: "transparent" }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -167,42 +193,60 @@ export default function WidgetView() {
     >
       <div
         data-tauri-drag-region
-        className={`
-          relative h-[44px] rounded-[14px] cursor-grab active:cursor-grabbing
-          flex items-center gap-0 overflow-hidden
-          transition-all duration-500 ease-out
-          ${isActive
-            ? "w-[190px] shadow-[0_0_32px_rgba(199,119,44,0.25),0_4px_24px_rgba(0,0,0,0.4)]"
-            : isError
-              ? "w-[190px] shadow-[0_0_32px_rgba(239,68,68,0.2),0_4px_24px_rgba(0,0,0,0.4)]"
-              : "w-[52px] shadow-[0_4px_24px_rgba(0,0,0,0.5)]"
-          }
-        `}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className="relative h-[44px] rounded-[14px] cursor-grab active:cursor-grabbing flex items-center overflow-hidden"
         style={{
-          background: isActive
-            ? "linear-gradient(135deg, rgba(199,119,44,0.12) 0%, rgba(200,138,50,0.06) 50%, rgba(199,119,44,0.10) 100%)"
-            : isError
-              ? "linear-gradient(135deg, rgba(239,68,68,0.10) 0%, rgba(220,38,38,0.05) 50%, rgba(239,68,68,0.08) 100%)"
-              : "linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.04) 100%)",
-          backdropFilter: "blur(24px) saturate(180%)",
-          WebkitBackdropFilter: "blur(24px) saturate(180%)",
-          border: isActive
-            ? "1px solid rgba(199,119,44,0.22)"
-            : isError
-              ? "1px solid rgba(239,68,68,0.18)"
-              : "1px solid rgba(255,255,255,0.08)",
+          width: expanded ? 220 : hovered ? 64 : 48,
+          transition: "width 450ms cubic-bezier(0.22, 1, 0.36, 1)",
         }}
       >
-        {/* Top highlight */}
+        {/* Premium Liquid Glass Body */}
+        <div
+          className="absolute inset-0 rounded-[14px]"
+          style={{
+            background: isActive
+              ? "linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(245,158,11,0.04) 50%, rgba(217,119,6,0.10) 100%)"
+              : isError
+                ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.04) 50%, rgba(239,68,68,0.08) 100%)"
+                : "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.05) 100%)",
+            backdropFilter: "blur(24px) saturate(180%)",
+            WebkitBackdropFilter: "blur(24px) saturate(180%)",
+            border: isActive
+              ? "1px solid rgba(251,191,36,0.25)"
+              : isError
+                ? "1px solid rgba(239,68,68,0.2)"
+                : "1px solid rgba(255,255,255,0.1)",
+            boxShadow: isActive
+              ? "0 8px 32px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.1)"
+              : isError
+                ? "0 8px 32px rgba(239,68,68,0.15), inset 0 1px 0 rgba(255,255,255,0.1)"
+                : "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+          }}
+        />
+
+        {/* Top highlight arc for glass refraction */}
         <div
           className="absolute inset-0 rounded-[14px] pointer-events-none"
-          style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, transparent 45%)" }}
+          style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 40%)" }}
         />
-        {/* Bottom shadow */}
+
+        {/* Bottom depth shadow */}
         <div
           className="absolute inset-0 rounded-[14px] pointer-events-none"
-          style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.12) 0%, transparent 35%)" }}
+          style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.15) 0%, transparent 30%)" }}
         />
+
+        {/* Idle breathing glow */}
+        {!expanded && (
+          <div
+            className="absolute inset-0 rounded-[14px] pointer-events-none"
+            style={{
+              background: "radial-gradient(circle at center, rgba(251,191,36,0.08) 0%, transparent 70%)",
+              animation: "widget-breathe 4s ease-in-out infinite",
+            }}
+          />
+        )}
 
         {/* Mic button */}
         <button
@@ -210,84 +254,112 @@ export default function WidgetView() {
             e.stopPropagation();
             handleToggle();
           }}
-          className={`
-            relative z-10 w-[44px] h-[44px] shrink-0 rounded-[11px] ml-[3px]
-            flex items-center justify-center
-            transition-all duration-300 ease-out
-            ${isActive
-              ? "bg-[#C7772C]/25 hover:bg-[#C7772C]/35"
-              : isError
-                ? "bg-red-500/15 hover:bg-red-500/25"
-                : "bg-white/[0.04] hover:bg-white/[0.08]"
-            }
-          `}
+          className="relative z-10 w-[40px] h-[40px] shrink-0 rounded-[10px] ml-[4px] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:ring-offset-2 focus:ring-offset-transparent"
           style={{
-            border: isActive
-              ? "1px solid rgba(199,119,44,0.25)"
+            color: isActive
+              ? "rgba(251,191,36,0.95)"
               : isError
-                ? "1px solid rgba(239,68,68,0.2)"
-                : "1px solid rgba(255,255,255,0.06)",
+                ? "rgba(239,68,68,0.95)"
+                : "rgba(255,255,255,0.4)",
+            background: isActive
+              ? "rgba(251,191,36,0.15)"
+              : isError
+                ? "rgba(239,68,68,0.12)"
+                : "rgba(255,255,255,0.05)",
+            border: isActive
+              ? "1px solid rgba(251,191,36,0.2)"
+              : isError
+                ? "1px solid rgba(239,68,68,0.15)"
+                : "1px solid rgba(255,255,255,0.08)",
             backdropFilter: "blur(8px)",
             WebkitBackdropFilter: "blur(8px)",
           }}
           aria-label={connected ? "Stop transcription" : "Start transcription"}
         >
-          <MicIcon active={isActive || isError} />
+          {connected ? <MicIcon size={18} /> : <MicOffIcon size={18} />}
         </button>
 
-        {/* Waveform area */}
-        {(isActive || isError) && (
-          <div className="flex items-center flex-1 pr-3 pl-1 h-full">
-            {isActive ? (
-              <WaveformBars />
-            ) : (
-              <div className="flex items-center gap-1.5 pl-2">
-                <span className="text-[11px] font-medium text-red-400/80">Error</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Status dot */}
-        <div className={`absolute top-1.5 right-1.5 z-20 w-[5px] h-[5px] rounded-full transition-all duration-300 ${
-          isActive
-            ? "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]"
-            : isError
-              ? "bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]"
-              : "bg-white/20"
-        }`} />
-      </div>
-
-      {/* Context menu */}
-      {showMenu && (
+        {/* Expanded area: waveform + status */}
         <div
-          ref={menuRef}
-          className="absolute top-full mt-1 left-1/2 -translate-x-1/2 z-50 min-w-[140px] rounded-xl overflow-hidden"
+          className="flex items-center gap-2 flex-1 pr-4 pl-2 h-full overflow-hidden"
           style={{
-            background: "linear-gradient(135deg, rgba(20,20,20,0.95) 0%, rgba(15,15,15,0.98) 100%)",
-            backdropFilter: "blur(24px) saturate(180%)",
-            WebkitBackdropFilter: "blur(24px) saturate(180%)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            boxShadow: "0 16px 48px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.03)",
+            opacity: expanded ? 1 : 0,
+            transform: expanded ? "translateX(0)" : "translateX(-8px)",
+            transition: "opacity 300ms ease 150ms, transform 300ms ease 150ms",
+            pointerEvents: expanded ? "auto" : "none",
           }}
         >
-          <button
-            onClick={handleShowMain}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-[#f0ebe3] hover:bg-white/[0.06] transition-colors"
-          >
-            <Maximize2 size={14} />
-            Open Main Window
-          </button>
-          <div className="h-px bg-white/[0.06] mx-2" />
-          <button
-            onClick={handleQuit}
-            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-red-400 hover:bg-red-500/[0.08] transition-colors"
-          >
-            <X size={14} />
-            Hide Widget
-          </button>
+          {isActive && <WaveformBars level={micLevel} />}
+          <StatusLabel status={status} />
         </div>
-      )}
+
+        {/* Status indicator dot */}
+        <div
+          className="absolute z-20"
+          style={{
+            top: 6,
+            right: 6,
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: isActive
+              ? "#fbbf24"
+              : isError
+                ? "#ef4444"
+                : "rgba(255,255,255,0.2)",
+            boxShadow: isActive
+              ? "0 0 8px rgba(251,191,36,0.8)"
+              : isError
+                ? "0 0 8px rgba(239,68,68,0.8)"
+                : "none",
+            animation: isActive ? "widget-dot-pulse 1.5s ease-in-out infinite" : "none",
+          }}
+        />
+      </div>
+
+      {/* Context Menu */}
+      <div
+        ref={menuRef}
+        className={`absolute top-full mt-2 left-1/2 -translate-x-1/2 z-50 min-w-[160px] rounded-xl overflow-hidden transition-all duration-200 ease-out ${
+          showMenu
+            ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+            : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
+        }`}
+        style={{
+          background: "linear-gradient(135deg, rgba(24,24,24,0.96) 0%, rgba(12,12,12,0.98) 100%)",
+          backdropFilter: "blur(32px) saturate(200%)",
+          WebkitBackdropFilter: "blur(32px) saturate(200%)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.05)",
+        }}
+      >
+        <button
+          onClick={handleShowMain}
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-[#f0ebe3] hover:bg-white/[0.06] transition-colors focus:outline-none focus:bg-white/[0.06]"
+        >
+          <Maximize2 size={14} />
+          Open Main Window
+        </button>
+        <div className="h-px bg-white/[0.06] mx-2" />
+        <button
+          onClick={handleQuit}
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-red-400 hover:bg-red-500/[0.08] transition-colors focus:outline-none focus:bg-red-500/[0.08]"
+        >
+          <X size={14} />
+          Hide Widget
+        </button>
+      </div>
+
+      <style>{`
+        @keyframes widget-breathe {
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.8; transform: scale(1.03); }
+        }
+        @keyframes widget-dot-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.75); }
+        }
+      `}</style>
     </div>
   );
 }
