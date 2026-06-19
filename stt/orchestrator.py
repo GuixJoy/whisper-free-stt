@@ -643,7 +643,7 @@ def run(
             if config.debug and chunk_count % 8 == 0:
                 st, et = detector.thresholds()
                 noise = detector.noise_floor
-                snr_db = 10 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
                 state = detector.vad_state.name
                 _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
                 if config.vad.use_spectral_vad:
@@ -804,7 +804,7 @@ def run_ws_audio(
 
                 if config.debug and chunk_count % 8 == 0:
                     noise = detector.noise_floor
-                    snr_db = 10 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                    snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
                     state = detector.vad_state.name
                     _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
 

@@ -367,7 +367,7 @@ class StreamingEndpointDetector:
     def _compute_speech_score(self, chunk: np.ndarray) -> float:
         rms = compute_rms(chunk)
         noise = max(self._noise_floor, 1e-10)
-        snr_db = float(10.0 * np.log10(rms / noise + 1e-10))
+        snr_db = float(20.0 * np.log10(rms / noise + 1e-10))
         energy_score = snr_db / self._speech_threshold_db
 
         if not self._config.use_spectral_vad:
@@ -405,7 +405,7 @@ class StreamingEndpointDetector:
         else:
             # RMS-only fallback: convert to SNR-based score
             noise = max(self._noise_floor, 1e-10)
-            snr_db = float(10.0 * np.log10(rms / noise + 1e-10))
+            snr_db = float(20.0 * np.log10(rms / noise + 1e-10))
             composite = snr_db / self._speech_threshold_db
 
         # --- Hysteresis state machine ---
