@@ -355,8 +355,8 @@ def main(argv: list[str] | None = None) -> None:
         def _run_server():
             uvicorn.run(asgi_app, host="127.0.0.1", port=args.ws_port, log_level="warning")
         threading.Thread(target=_run_server, daemon=True).start()
-        logger.info("listening on http://127.0.0.1:%s", args.ws_port)
-        logger.info("API docs at http://127.0.0.1:%s/docs", args.ws_port)
+        logger.info(f"listening on http://127.0.0.1:{args.ws_port}")
+        logger.info(f"API docs at http://127.0.0.1:{args.ws_port}/docs")
 
     if args.input_file:
         run_file(config, args.input_file)
