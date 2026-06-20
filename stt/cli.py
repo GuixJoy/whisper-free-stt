@@ -90,7 +90,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Build the argument parser.  Pure — no side effects."""
     parser = argparse.ArgumentParser(
         prog="stt",
-        description="Local-first speech-to-text assistant for Linux Wayland",
+        description="Local-first speech-to-text assistant for Linux (Wayland + X11)",
     )
 
     # Audio
@@ -152,9 +152,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--openrouter-api-key", type=str, default=None, help="OpenRouter API key (overrides OPENROUTER_API_KEY env)")
 
     # Clipboard
-    parser.add_argument("--clipboard", action="store_true", help="Copy final text to Wayland clipboard (wl-copy)")
+    parser.add_argument("--clipboard", action="store_true", help="Copy final text to clipboard (wl-copy on Wayland, xclip on X11)")
     parser.add_argument("--no-type", action="store_true", help="Do not type final text into focused input")
-    parser.add_argument("--type-path", type=str, default="wtype", help="Typing binary path (default: wtype)")
+    parser.add_argument("--type-path", type=str, default=None, help="Typing binary path (default: auto-detect wtype/xdotool)")
+    parser.add_argument("--clipboard-path", type=str, default=None, help="Clipboard binary path (default: auto-detect wl-copy/xclip)")
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
@@ -238,10 +239,13 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         ),
         clipboard=ClipboardConfig(
             enabled=args.clipboard,
+            wl_copy_path=args.clipboard_path or "wl-copy",
+            xclip_path=args.clipboard_path or "xclip",
         ),
         typing=TypingConfig(
             enabled=not args.no_type,
-            wtype_path=args.type_path,
+            wtype_path=args.type_path or "wtype",
+            xdotool_path=args.type_path or "xdotool",
         ),
         diarization=DiarizationConfig(
             enabled=args.diarization,

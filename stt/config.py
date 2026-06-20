@@ -162,12 +162,14 @@ class LLMConfig:
 class ClipboardConfig:
     enabled: bool = False
     wl_copy_path: str = "wl-copy"
+    xclip_path: str = "xclip"
 
 
 @dataclass(frozen=True)
 class TypingConfig:
     enabled: bool = True
     wtype_path: str = "wtype"
+    xdotool_path: str = "xdotool"
 
 
 @dataclass(frozen=True)
