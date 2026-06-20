@@ -112,14 +112,9 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       >
         {/* Logo */}
         <div className="flex items-center gap-2 mb-6">
-          <div className="flex items-center gap-1.5">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-text-primary">
-              <rect x="2" y="4" width="4" height="16" rx="1" fill="currentColor" opacity="0.3" />
-              <rect x="8" y="2" width="4" height="20" rx="1" fill="currentColor" opacity="0.5" />
-              <rect x="14" y="6" width="4" height="12" rx="1" fill="currentColor" opacity="0.7" />
-              <rect x="20" y="4" width="4" height="16" rx="1" fill="currentColor" />
-            </svg>
-            <span className="text-[20px] font-bold text-text-primary">Flow</span>
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="Floure" className="w-6 h-6 object-contain" />
+            <span className="text-[20px] font-bold text-text-primary" style={{ fontFamily: "'Instrument Serif', serif" }}>Floure</span>
           </div>
           <Badge variant="plan">Basic</Badge>
         </div>
