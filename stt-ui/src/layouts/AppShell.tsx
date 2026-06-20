@@ -22,9 +22,10 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
       <div
         ref={ref}
         className={cn(
-          "flex h-screen bg-app-bg overflow-hidden relative",
+          "flex h-screen overflow-hidden relative",
           className,
         )}
+        style={{ backgroundColor: "#FAF8F5", color: "#2C2520" }}
         {...props}
       >
         {/* Ambient glow layer */}
@@ -37,11 +38,11 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         <div className="flex-1 flex flex-col overflow-hidden relative z-10">
           {/* Title Bar */}
           <div
-            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-white/[0.05]"
+            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-border"
             data-tauri-drag-region
           >
             <div className="flex items-center gap-2" data-tauri-drag-region="false">
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
                   <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
                   <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
@@ -49,7 +50,7 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
                   <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
                 </svg>
               </button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
                   <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
                   <circle cx="8" cy="6" r="2" fill="currentColor" />
@@ -59,23 +60,23 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
             </div>
 
             <div className="flex items-center gap-1" data-tauri-drag-region="false">
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors">
+              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
                 <Bell size={16} className="text-text-secondary" />
               </button>
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
                 onClick={() => win?.minimize()}
               >
                 <Minus size={16} className="text-text-secondary" />
               </button>
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
                 onClick={() => win?.toggleMaximize()}
               >
                 <Square size={14} className="text-text-secondary" />
               </button>
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/[0.04] transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
                 onClick={() => win?.hide()}
               >
                 <X size={16} className="text-text-secondary" />

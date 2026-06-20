@@ -9,6 +9,7 @@ import {
   Settings,
   HelpCircle,
   CircleDot,
+  Cpu,
 } from "lucide-react";
 import { Badge } from "./Badge";
 import { Divider } from "./Divider";
@@ -33,12 +34,12 @@ export function SidebarItem({ icon, label, active, badge, onClick }: SidebarItem
         "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200 overflow-hidden",
         active
           ? "text-white font-semibold"
-          : "text-text-secondary hover:bg-white/[0.04]",
+          : "text-text-secondary hover:bg-border",
       )}
     >
       {active && (
         <>
-          <div className="absolute inset-0 bg-white/[0.06]" />
+          <div className="absolute inset-0 bg-border-hover" />
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-r" />
         </>
       )}
@@ -103,9 +104,10 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
       <div
         ref={ref}
         className={cn(
-          "flex flex-col h-full bg-app-sidebar border-r border-white/[0.03] p-4 w-sidebar-width",
+          "flex flex-col h-full p-4 w-sidebar-width",
           className,
         )}
+        style={{ backgroundColor: "rgba(255,255,255,0.40)", borderRight: "1px solid rgba(44,37,32,0.06)" }}
         {...props}
       >
         {/* Logo */}
@@ -156,6 +158,12 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             onClick={() => onNavigate?.("Config")}
           />
           <SidebarItem
+            icon={<Cpu size={18} />}
+            label="Models"
+            active={activeItem === "Models"}
+            onClick={() => onNavigate?.("Models")}
+          />
+          <SidebarItem
             icon={<CircleDot size={18} />}
             label="Widget"
             active={widgetVisible}
@@ -164,7 +172,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         </SidebarSection>
 
         {/* Upgrade Card */}
-        <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-white/[0.06] bg-[#0A0E14]">
+        <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-border bg-app-surface-dark">
           <div className="relative z-10">
             <p className="text-[15px] font-semibold text-accent-bright mb-1">2,000 words remaining</p>
             <p className="text-[13px] text-text-secondary mb-3 leading-[20px]">

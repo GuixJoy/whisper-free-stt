@@ -13,6 +13,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import InsightsPage from "./components/InsightsPage";
 import DictionaryPage from "./components/DictionaryPage";
 import SnippetsPage from "./components/SnippetsPage";
+import ModelsPage from "./components/ModelsPage";
 import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
@@ -277,19 +278,19 @@ function FeedView({
             connected={connected}
             onToggle={handleToggle}
           />
-          <p className="text-[13px] text-[#7A7F87]">
+          <p className="text-[13px] text-text-muted">
             {statusLabel} &middot; {lines.length} lines
           </p>
           <div className="flex items-center gap-2">
             <button
-              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
               onClick={() => void copyLatest()}
               disabled={lines.length === 0}
             >
               Copy
             </button>
             <button
-              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
               onClick={clearLines}
               disabled={lines.length === 0}
             >
@@ -297,7 +298,7 @@ function FeedView({
             </button>
             {errors.filter((e) => !e.dismissed).length > 0 && (
               <button
-                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors"
+                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors"
                 onClick={() => setShowErrors((s) => !s)}
               >
                 Errors ({errors.filter((e) => !e.dismissed).length})
@@ -308,20 +309,21 @@ function FeedView({
 
         {/* Feed */}
         <div
-          className="flex-1 bg-[#0B0F14] rounded-[28px] border border-white/[0.04] overflow-hidden flex flex-col"
+          className="flex-1 rounded-[28px] border overflow-hidden flex flex-col"
+          style={{ backgroundColor: "rgba(255,255,255,0.45)", borderColor: "rgba(44,37,32,0.06)" }}
         >
           {/* Feed Header */}
-          <div className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.04]">
+          <div className="flex items-center gap-3 px-4 py-2.5" style={{ borderBottom: "1px solid rgba(44,37,32,0.08)" }}>
             <LiveFeedMicMeter />
             {connected && <Waveform width={120} height={24} barCount={16} />}
             <div className="flex items-center gap-2 text-[12px]">
-              <span className={connected ? "text-green-400" : "text-[#7A7F87]"}>
+              <span className={connected ? "text-green-400" : "text-text-muted"}>
                 {connected ? "● Live" : "○ Idle"}
               </span>
-              <span className="text-[#7A7F87]">{lines.length + historyItems.length} lines</span>
+              <span className="text-text-muted">{lines.length + historyItems.length} lines</span>
             </div>
             {connected && (
-              <div className="ml-auto flex items-center gap-4 text-[12px] text-[#7A7F87]">
+              <div className="ml-auto flex items-center gap-4 text-[12px] text-text-muted">
                 <SessionStats lines={lines} />
               </div>
             )}
@@ -331,10 +333,10 @@ function FeedView({
           <div className="flex-1 overflow-auto" ref={feedRef} onScroll={onFeedScroll}>
             {lines.length === 0 && historyItems.length === 0 && !historyLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <Mic size={72} strokeWidth={1} className="text-[rgba(199,119,44,0.8)] mb-4" />
-                <p className="text-[#F7F4EE] text-[15px] mb-1">Start speaking to begin transcription</p>
-                <p className="text-[#7A7F87] text-[13px]">
-                  Press <kbd className="px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.08] rounded text-[#7A7F87] text-[11px]">Space</kbd> to start or stop
+                <Mic size={72} strokeWidth={1} className="text-[rgba(27,79,130,0.8)] mb-4" />
+                <p className="text-text-primary text-[15px] mb-1">Start speaking to begin transcription</p>
+                <p className="text-text-muted text-[13px]">
+                  Press <kbd className="px-1.5 py-0.5 bg-border border border-border-hover rounded text-text-muted text-[11px]">Space</kbd> to start or stop
                 </p>
               </div>
             ) : (
@@ -342,20 +344,20 @@ function FeedView({
                 {[...lines].reverse().map((line) => (
                   <div
                     key={`live-${line.id}`}
-                    className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors"
+                    className="group flex items-center justify-between px-4 hover:bg-border transition-colors"
                     style={{ paddingTop: "16px", paddingBottom: "16px" }}
                   >
                     <div className="flex items-baseline gap-3 min-w-0">
-                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[80px]">
+                      <span className="text-[13px] text-text-muted shrink-0 w-[80px]">
                         {new Date(line.createdAt).toLocaleTimeString()}
                       </span>
-                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE] truncate">
+                      <span className="text-[16px] leading-[1.7] text-text-primary truncate">
                         {line.processed || line.raw}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
                         onClick={() => void copyLine(line)}
                       >
                         Copy
@@ -368,20 +370,20 @@ function FeedView({
                   .map((item) => (
                   <div
                     key={`hist-${item.id}`}
-                    className="group flex items-center justify-between px-4 hover:bg-white/[0.02] transition-colors border-t border-white/[0.03]"
+                    className="group flex items-center justify-between px-4 hover:bg-border transition-colors border-t border-border"
                     style={{ paddingTop: "16px", paddingBottom: "16px" }}
                   >
                     <div className="flex items-baseline gap-3 min-w-0">
-                      <span className="text-[13px] text-[#7A7F87] shrink-0 w-[140px]">
+                      <span className="text-[13px] text-text-muted shrink-0 w-[140px]">
                         {formatTimestamp(item.createdAt)}
                       </span>
-                      <span className="text-[16px] leading-[1.7] text-[#F7F4EE]/70 whitespace-pre-wrap break-words">
+                      <span className="text-[16px] leading-[1.7] text-text-primary/70 whitespace-pre-wrap break-words">
                         {item.processed || item.raw}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        className="text-[14px] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors"
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
                         onClick={() => void copyLine(item)}
                       >
                         Copy
@@ -390,12 +392,12 @@ function FeedView({
                   </div>
                 ))}
                 {historyLoading && (
-                  <div className="flex items-center justify-center py-6 text-[13px] text-[#7A7F87]">
+                  <div className="flex items-center justify-center py-6 text-[13px] text-text-muted">
                     Loading history...
                   </div>
                 )}
                 {!hasMoreHistory && historyItems.length > 0 && (
-                  <div className="flex items-center justify-center py-6 text-[13px] text-[#7A7F87]">
+                  <div className="flex items-center justify-center py-6 text-[13px] text-text-muted">
                     No more history
                   </div>
                 )}
@@ -494,7 +496,7 @@ function ConfigView({
           </div>
         </div>
 
-        <div className="h-px bg-white/[0.04]" />
+        <div className="h-px bg-border" />
 
         {/* Permissions */}
         <div>
@@ -563,7 +565,7 @@ function ConfigView({
           </div>
         </div>
 
-        <div className="h-px bg-white/[0.04]" />
+        <div className="h-px bg-border" />
 
         {/* Speech */}
         <div>
@@ -610,7 +612,7 @@ function ConfigView({
           </div>
         </div>
 
-        <div className="h-px bg-white/[0.04]" />
+        <div className="h-px bg-border" />
 
         {/* Output */}
         <div>
@@ -664,7 +666,7 @@ function ConfigView({
           </div>
         </div>
 
-        <div className="h-px bg-white/[0.04]" />
+        <div className="h-px bg-border" />
 
         {/* Command preview */}
         <div className="bg-app-surface-secondary rounded-card border border-border p-3">
@@ -1087,6 +1089,8 @@ function App() {
         return <SnippetsPage />;
       case "History":
         return <HistoryPage onBack={() => setActiveItem("Home")} />;
+      case "Models":
+        return <ModelsPage />;
       case "Settings":
         return null;
       default:

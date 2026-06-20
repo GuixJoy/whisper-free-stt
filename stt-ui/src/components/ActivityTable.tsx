@@ -18,7 +18,7 @@ export const ActivityRow = forwardRef<HTMLDivElement, ActivityRowProps>(
       <div
         ref={ref}
         className={cn(
-          "flex items-center h-16 px-4 hover:bg-white/[0.03] transition-colors border-b border-white/[0.04] last:border-b-0",
+          "flex items-center h-16 px-4 hover:bg-border transition-colors border-b border-border last:border-b-0",
           className,
         )}
         {...props}
@@ -50,13 +50,13 @@ export const ActivityTable = forwardRef<HTMLDivElement, ActivityTableProps>(
       <div
         ref={ref}
         className={cn(
-          "flex flex-col bg-app-surface-dark rounded-card border border-white/[0.03] overflow-hidden",
+          "flex flex-col bg-app-surface-dark rounded-card border border-border overflow-hidden",
           className,
         )}
         {...props}
       >
         {/* Date header */}
-        <div className="px-4 py-3 border-b border-white/[0.04]">
+        <div className="px-4 py-3 border-b border-border">
           <h3 className="text-label uppercase text-text-secondary tracking-[0.05em]">
             {date}
           </h3>

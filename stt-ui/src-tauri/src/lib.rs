@@ -95,6 +95,97 @@ async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
     Ok(rows)
 }
 
+#[derive(Debug, Serialize)]
+struct ModelStatus {
+    name: String,
+    downloaded: bool,
+    path: String,
+    size_bytes: u64,
+}
+
+#[tauri::command]
+fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
+    let home = dirs_next::home_dir().ok_or_else(|| {
+        AppError::Io(std::io::Error::other("Could not determine home directory"))
+    })?;
+
+    let mut statuses = Vec::new();
+
+    // whisper.cpp models: ~/.local/share/pywhispercpp/models/ggml-{name}.bin
+    let cpp_dir = home.join(".local/share/pywhispercpp/models");
+    for name in &["tiny.en", "base.en", "small.en"] {
+        let path = cpp_dir.join(format!("ggml-{}.bin", name));
+        let (downloaded, size_bytes) = if path.exists() {
+            let meta = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            (true, meta)
+        } else {
+            (false, 0)
+        };
+        statuses.push(ModelStatus {
+            name: name.to_string(),
+            downloaded,
+            path: path.to_string_lossy().to_string(),
+            size_bytes,
+        });
+    }
+
+    // faster-whisper models: ~/.cache/huggingface/hub/models--{org}--{repo}/
+    let hf_dir = home.join(".cache/huggingface/hub");
+    let fw_models: Vec<(&str, &str, &str)> = vec![
+        ("tiny.en", "Systran", "faster-whisper-tiny"),
+        ("base.en", "Systran", "faster-whisper-base"),
+        ("small.en", "Systran", "faster-whisper-small"),
+        ("distil-large-v3", "Systran", "faster-distil-whisper-large-v3"),
+        ("large-v3-turbo", "mobiuslabsgmbh", "faster-whisper-large-v3-turbo"),
+    ];
+
+    for (name, org, repo) in &fw_models {
+        let model_dir = hf_dir.join(format!("models--{}--{}", org, repo));
+        let (downloaded, size_bytes) = if model_dir.exists() {
+            // Walk the directory to sum file sizes
+            let total = walk_dir_size(&model_dir).unwrap_or(0);
+            (total > 0, total)
+        } else {
+            (false, 0)
+        };
+        statuses.push(ModelStatus {
+            name: name.to_string(),
+            downloaded,
+            path: model_dir.to_string_lossy().to_string(),
+            size_bytes,
+        });
+    }
+
+    Ok(statuses)
+}
+
+#[tauri::command]
+fn delete_model_file(path: String) -> Result<(), AppError> {
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p).map_err(AppError::Io)?;
+    } else if p.is_file() {
+        std::fs::remove_file(p).map_err(AppError::Io)?;
+    }
+    Ok(())
+}
+
+fn walk_dir_size(path: &std::path::Path) -> Result<u64, AppError> {
+    let mut total = 0u64;
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path).map_err(AppError::Io)? {
+            let entry = entry.map_err(AppError::Io)?;
+            let meta = entry.metadata().map_err(AppError::Io)?;
+            if meta.is_file() {
+                total += meta.len();
+            } else if meta.is_dir() {
+                total += walk_dir_size(&entry.path())?;
+            }
+        }
+    }
+    Ok(total)
+}
+
 #[tauri::command]
 fn get_backend_path() -> Result<String, AppError> {
     let candidates = vec![
@@ -275,6 +366,8 @@ pub fn run() {
             get_backend_path,
             get_platform_info,
             check_system_deps,
+            check_model_status,
+            delete_model_file,
             get_history,
             widget::show_widget,
             widget::hide_widget,

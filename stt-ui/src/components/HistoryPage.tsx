@@ -139,19 +139,19 @@ export default function HistoryPage({ onBack }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-white/[0.04] transition-colors">
+          <button onClick={onBack} className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-border transition-colors">
             <ArrowLeft size={18} className="text-text-secondary" />
           </button>
-          <h1 className="text-[32px] font-semibold text-[#F7F4EE]">History</h1>
+          <h1 className="text-[32px] font-semibold text-text-primary">History</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => exportHistory("csv")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors">
+          <button onClick={() => exportHistory("csv")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors">
             <Download size={14} /> CSV
           </button>
-          <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors">
+          <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors">
             <Download size={14} /> Text
           </button>
-          <button onClick={loadHistory} disabled={loading} className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-[#7A7F87] hover:text-[#F7F4EE] hover:bg-white/[0.04] transition-colors disabled:opacity-50">
+          <button onClick={loadHistory} disabled={loading} className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-50">
             {loading ? "⟳" : "↻"}
           </button>
         </div>
@@ -159,17 +159,17 @@ export default function HistoryPage({ onBack }: Props) {
 
       {/* Search */}
       <div className="flex items-center gap-2 mb-4">
-        <Search size={16} className="text-[#7A7F87] shrink-0" />
+        <Search size={16} className="text-text-muted shrink-0" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") searchHistory(); }}
           placeholder="Search transcripts..."
-          className="flex-1 h-10 px-4 bg-[#0F131A] border border-white/[0.06] rounded-[12px] text-[14px] text-[#F7F4EE] placeholder:text-[#7A7F87] focus:outline-none focus:border-[#C7772C]/50"
+          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50"
         />
         {searchQuery && (
-          <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-[#7A7F87] hover:text-[#F7F4EE] text-[13px]">Clear</button>
+          <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-text-muted hover:text-text-primary text-[13px]">Clear</button>
         )}
       </div>
 
@@ -178,36 +178,36 @@ export default function HistoryPage({ onBack }: Props) {
       {/* List */}
       <div className="flex-1 overflow-auto space-y-3">
         {rows.length === 0 && !loading && (
-          <p className="text-center text-[#7A7F87] text-[15px] py-12">No transcripts yet.</p>
+          <p className="text-center text-text-muted text-[15px] py-12">No transcripts yet.</p>
         )}
         {rows.map((row) => (
-          <div key={row.id} className="group bg-[#0F131A] rounded-[16px] border border-white/[0.05] p-4 flex flex-col gap-2">
+          <div key={row.id} className="group bg-app-surface-secondary rounded-[16px] border border-border p-4 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <button onClick={() => toggleFavorite(row.id)} className={`text-lg transition-colors ${row.favorite ? "text-yellow-400" : "text-[#7A7F87] hover:text-yellow-400"}`}>
+                <button onClick={() => toggleFavorite(row.id)} className={`text-lg transition-colors ${row.favorite ? "text-yellow-400" : "text-text-muted hover:text-yellow-400"}`}>
                   {row.favorite ? "★" : "☆"}
                 </button>
-                <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-[#C7772C]/10 border border-[#C7772C]/20 text-[#C7772C]">
+                <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-[#3B6B9E]/10 border border-[#3B6B9E]/20 text-accent">
                   {row.mode}
                 </span>
               </div>
-              <span className="text-[12px] text-[#7A7F87]">{formatTimestamp(row.created_at)}</span>
+              <span className="text-[12px] text-text-muted">{formatTimestamp(row.created_at)}</span>
             </div>
-            <div className="text-[15px] text-[#F7F4EE] whitespace-pre-wrap break-words">
+            <div className="text-[15px] text-text-primary whitespace-pre-wrap break-words">
               {row.processed_text && row.processed_text !== row.raw_text ? (
                 <>
-                  <span className="text-[#7A7F87]">Raw:</span> {row.raw_text}
+                  <span className="text-text-muted">Raw:</span> {row.raw_text}
                   <br />
-                  <span className="text-[#7A7F87]">Cleaned:</span> {row.processed_text}
+                  <span className="text-text-muted">Cleaned:</span> {row.processed_text}
                 </>
               ) : (
                 row.raw_text
               )}
             </div>
-            <div className="flex items-center justify-between pt-1 border-t border-white/[0.04]">
-              <span className="text-[12px] text-[#7A7F87]">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
+            <div className="flex items-center justify-between pt-1 border-t border-border">
+              <span className="text-[12px] text-text-muted">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
               <div className="flex items-center gap-2">
-                <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-[10px] text-[12px] font-medium bg-white/[0.04] border border-white/[0.06] text-[#7A7F87] hover:text-[#F7F4EE] transition-colors">
+                <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-[10px] text-[12px] font-medium bg-border border border-border text-text-muted hover:text-text-primary transition-colors">
                   {copiedId === row.id ? "Copied!" : "Copy"}
                 </button>
                 <button onClick={() => deleteEntry(row.id)} className="inline-flex items-center h-8 px-2 rounded-[10px] text-[12px] font-medium text-red-400 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100">

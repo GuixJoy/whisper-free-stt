@@ -83,15 +83,15 @@ export default function InsightsPage() {
   if (loading) {
     return (
       <div className="flex-1 flex flex-col p-6 overflow-auto">
-        <h1 className="text-[32px] font-semibold text-[#F7F4EE] mb-4">Insights</h1>
-        <div className="flex items-center justify-center h-[400px] text-[#7A7F87]">Loading...</div>
+        <h1 className="text-[32px] font-semibold text-text-primary mb-4">Insights</h1>
+        <div className="flex items-center justify-center h-[400px] text-text-muted">Loading...</div>
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex flex-col p-6 overflow-auto">
-      <h1 className="text-[32px] font-semibold text-[#F7F4EE] mb-4">Insights</h1>
+      <h1 className="text-[32px] font-semibold text-text-primary mb-4">Insights</h1>
 
       <TabSwitcher tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
@@ -111,7 +111,7 @@ export default function InsightsPage() {
       )}
 
       {activeTab === "voice" && (
-        <div className="flex items-center justify-center h-[400px] text-[#7A7F87] text-[15px]">
+        <div className="flex items-center justify-center h-[400px] text-text-muted text-[15px]">
           Voice insights coming soon.
         </div>
       )}

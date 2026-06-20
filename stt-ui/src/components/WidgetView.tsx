@@ -48,9 +48,9 @@ function WaveformBars({ level }: { level: number }) {
     const maxHeight = h - 6;
 
     const gradient = ctx.createLinearGradient(0, 0, 0, h);
-    gradient.addColorStop(0, "rgba(251, 191, 36, 0.9)");
-    gradient.addColorStop(0.5, "rgba(245, 158, 11, 1)");
-    gradient.addColorStop(1, "rgba(217, 119, 6, 0.8)");
+    gradient.addColorStop(0, "rgba(27, 79, 130, 0.9)");
+    gradient.addColorStop(0.5, "rgba(80, 120, 200, 1)");
+    gradient.addColorStop(1, "rgba(20, 60, 105, 0.8)");
 
     let t = 0;
 
@@ -60,7 +60,7 @@ function WaveformBars({ level }: { level: number }) {
 
       const micLevel = Math.min(1, levelRef.current * 2.5);
       ctx.fillStyle = gradient;
-      ctx.shadowColor = "rgba(251, 191, 36, 0.3)";
+      ctx.shadowColor = "rgba(27, 79, 130, 0.3)";
       ctx.shadowBlur = 4;
 
       for (let i = 0; i < bars; i++) {
@@ -217,40 +217,40 @@ export default function WidgetView() {
           style={{
             background: isActive
               ? HAS_BLUR
-                ? "linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(245,158,11,0.04) 50%, rgba(217,119,6,0.10) 100%)"
+                ? "linear-gradient(135deg, rgba(59,107,158,0.12) 0%, rgba(59,107,158,0.04) 50%, rgba(42,79,115,0.10) 100%)"
                 : "rgba(30,20,10,0.92)"
               : isError
                 ? HAS_BLUR
                   ? "linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(220,38,38,0.04) 50%, rgba(239,68,68,0.08) 100%)"
                   : "rgba(30,10,10,0.92)"
                 : HAS_BLUR
-                  ? "linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 50%, rgba(255,255,255,0.05) 100%)"
+                  ? "linear-gradient(135deg, rgba(44,37,32,0.12) 0%, rgba(44,37,32,0.04) 50%, rgba(44,37,32,0.08) 100%)"
                   : "rgba(20,20,20,0.92)",
             backdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
             WebkitBackdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
             border: isActive
-              ? "1px solid rgba(251,191,36,0.25)"
+              ? "1px solid rgba(59,107,158,0.25)"
               : isError
                 ? "1px solid rgba(239,68,68,0.2)"
-                : "1px solid rgba(255,255,255,0.1)",
+                : "1px solid rgba(44,37,32,0.15)",
             boxShadow: isActive
-              ? "0 8px 32px rgba(251,191,36,0.15), inset 0 1px 0 rgba(255,255,255,0.1)"
+              ? "0 8px 32px rgba(59,107,158,0.15), inset 0 1px 0 rgba(44,37,32,0.15)"
               : isError
-                ? "0 8px 32px rgba(239,68,68,0.15), inset 0 1px 0 rgba(255,255,255,0.1)"
-                : "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08)",
+                ? "0 8px 32px rgba(239,68,68,0.15), inset 0 1px 0 rgba(44,37,32,0.15)"
+                : "0 8px 32px rgba(44,37,32,0.4), inset 0 1px 0 rgba(44,37,32,0.12)",
           }}
         />
 
         {/* Top highlight arc for glass refraction */}
         <div
           className="absolute inset-0 rounded-[14px] pointer-events-none"
-          style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 40%)" }}
+          style={{ background: "linear-gradient(180deg, rgba(44,37,32,0.12) 0%, transparent 40%)" }}
         />
 
         {/* Bottom depth shadow */}
         <div
           className="absolute inset-0 rounded-[14px] pointer-events-none"
-          style={{ background: "linear-gradient(0deg, rgba(0,0,0,0.15) 0%, transparent 30%)" }}
+          style={{ background: "linear-gradient(0deg, rgba(44,37,32,0.15) 0%, transparent 30%)" }}
         />
 
         {/* Idle breathing glow */}
@@ -258,7 +258,7 @@ export default function WidgetView() {
           <div
             className="absolute inset-0 rounded-[14px] pointer-events-none"
             style={{
-              background: "radial-gradient(circle at center, rgba(251,191,36,0.08) 0%, transparent 70%)",
+              background: "radial-gradient(circle at center, rgba(59,107,158,0.08) 0%, transparent 70%)",
               animation: "widget-breathe 4s ease-in-out infinite",
             }}
           />
@@ -273,20 +273,20 @@ export default function WidgetView() {
           className="relative z-10 w-[40px] h-[40px] shrink-0 rounded-[10px] ml-[4px] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:ring-offset-2 focus:ring-offset-transparent"
           style={{
             color: isActive
-              ? "rgba(251,191,36,0.95)"
+              ? "rgba(59,107,158,0.95)"
               : isError
                 ? "rgba(239,68,68,0.95)"
-                : "rgba(255,255,255,0.4)",
+                : "rgba(44,37,32,0.45)",
             background: isActive
-              ? "rgba(251,191,36,0.15)"
+              ? "rgba(59,107,158,0.15)"
               : isError
                 ? "rgba(239,68,68,0.12)"
-                : "rgba(255,255,255,0.05)",
+                : "rgba(44,37,32,0.08)",
             border: isActive
-              ? "1px solid rgba(251,191,36,0.2)"
+              ? "1px solid rgba(59,107,158,0.2)"
               : isError
                 ? "1px solid rgba(239,68,68,0.15)"
-                : "1px solid rgba(255,255,255,0.08)",
+                : "1px solid rgba(44,37,32,0.12)",
             backdropFilter: HAS_BLUR ? "blur(8px)" : "none",
             WebkitBackdropFilter: HAS_BLUR ? "blur(8px)" : "none",
           }}
@@ -304,9 +304,9 @@ export default function WidgetView() {
           }}
           className="relative z-10 w-[32px] h-[32px] shrink-0 rounded-[8px] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none"
           style={{
-            color: "rgba(255,255,255,0.25)",
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.05)",
+            color: "rgba(44,37,32,0.30)",
+            background: "rgba(44,37,32,0.06)",
+            border: "1px solid rgba(44,37,32,0.08)",
           }}
           aria-label="Language selection (coming soon)"
         >
@@ -340,9 +340,9 @@ export default function WidgetView() {
               ? "#fbbf24"
               : isError
                 ? "#ef4444"
-                : "rgba(255,255,255,0.2)",
+                : "rgba(44,37,32,0.25)",
             boxShadow: isActive
-              ? "0 0 8px rgba(251,191,36,0.8)"
+              ? "0 0 8px rgba(59,107,158,0.8)"
               : isError
                 ? "0 0 8px rgba(239,68,68,0.8)"
                 : "none",
@@ -359,9 +359,9 @@ export default function WidgetView() {
             top: -32,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "linear-gradient(135deg, rgba(24,24,24,0.96) 0%, rgba(12,12,12,0.98) 100%)",
-            border: "1px solid rgba(251,191,36,0.2)",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            background: "linear-gradient(135deg, rgba(42,38,34,0.96) 0%, rgba(36,33,32,0.98) 100%)",
+            border: "1px solid rgba(59,107,158,0.2)",
+            boxShadow: "0 8px 24px rgba(44,37,32,0.5)",
             animation: "widget-fade-in 200ms ease-out",
           }}
         >
@@ -378,24 +378,24 @@ export default function WidgetView() {
             : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
         }`}
         style={{
-          background: "linear-gradient(135deg, rgba(24,24,24,0.96) 0%, rgba(12,12,12,0.98) 100%)",
+          background: "linear-gradient(135deg, rgba(42,38,34,0.96) 0%, rgba(36,33,32,0.98) 100%)",
           backdropFilter: HAS_BLUR ? "blur(32px) saturate(200%)" : "none",
           WebkitBackdropFilter: HAS_BLUR ? "blur(32px) saturate(200%)" : "none",
-          border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03), inset 0 1px 0 rgba(255,255,255,0.05)",
+          border: "1px solid rgba(44,37,32,0.12)",
+          boxShadow: "0 20px 60px rgba(44,37,32,0.7), 0 0 0 1px rgba(44,37,32,0.06), inset 0 1px 0 rgba(44,37,32,0.08)",
         }}
       >
         <button
           onClick={handleShowMain}
-          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-[#f0ebe3] hover:bg-white/[0.06] transition-colors focus:outline-none focus:bg-white/[0.06]"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-text-secondary hover:text-text-primary hover:bg-border-hover transition-colors focus:outline-none focus:bg-border-hover"
         >
           <Maximize2 size={14} />
           Open Main Window
         </button>
-        <div className="h-px bg-white/[0.06] mx-2" />
+        <div className="h-px bg-border-hover mx-2" />
         <button
           onClick={handleQuit}
-          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-[#a8a096] hover:text-red-400 hover:bg-red-500/[0.08] transition-colors focus:outline-none focus:bg-red-500/[0.08]"
+          className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-text-secondary hover:text-red-400 hover:bg-red-500/[0.08] transition-colors focus:outline-none focus:bg-red-500/[0.08]"
         >
           <X size={14} />
           Hide Widget

@@ -12,7 +12,7 @@ export default function Waveform({
   width = 200,
   height = 40,
   barCount = 32,
-  color = "#C7772C",
+  color = "#3B6B9E",
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const barsRef = useRef<number[]>(new Array(barCount).fill(0));

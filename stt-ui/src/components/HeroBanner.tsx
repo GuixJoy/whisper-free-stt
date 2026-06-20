@@ -10,7 +10,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
       <div
         ref={ref}
         className={cn(
-          "relative h-[190px] rounded-card overflow-hidden bg-[#050505]",
+          "relative h-[190px] rounded-card overflow-hidden bg-app-surface-card",
           className,
         )}
         {...props}
@@ -26,7 +26,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
               top: "-20%",
               left: "30%",
               background:
-                "radial-gradient(ellipse at 50% 50%, rgba(210,120,30,0.55) 0%, rgba(180,80,10,0.25) 35%, transparent 70%)",
+                "radial-gradient(ellipse at 50% 50%, rgba(59,107,158,0.55) 0%, rgba(42,79,115,0.25) 35%, transparent 70%)",
               filter: "blur(35px)",
             }}
           />
@@ -39,7 +39,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
               top: "0%",
               left: "45%",
               background:
-                "radial-gradient(ellipse at 50% 50%, rgba(230,150,50,0.30) 0%, transparent 65%)",
+                "radial-gradient(ellipse at 50% 50%, rgba(59,107,158,0.30) 0%, transparent 65%)",
               filter: "blur(50px)",
             }}
           />
@@ -52,7 +52,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
               bottom: "-10%",
               right: "5%",
               background:
-                "radial-gradient(ellipse at 50% 50%, rgba(50,120,130,0.25) 0%, transparent 70%)",
+                "radial-gradient(ellipse at 50% 50%, rgba(168,140,200,0.25) 0%, transparent 70%)",
               filter: "blur(40px)",
             }}
           />

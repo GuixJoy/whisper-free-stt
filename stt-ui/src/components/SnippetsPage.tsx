@@ -33,9 +33,9 @@ const CATEGORY_OPTIONS: { value: SnippetCategory; label: string }[] = [
 
 function StatCard({ value, label }: { value: string | number; label: string }) {
   return (
-    <div className="flex-1 px-4 py-3 rounded-[14px] bg-[#0F131A] border border-white/[0.05]">
-      <div className="text-[#F7F4EE] text-[20px] font-semibold leading-tight">{value}</div>
-      <div className="text-[#7A7F87] text-[12px] mt-0.5">{label}</div>
+    <div className="flex-1 px-4 py-3 rounded-[14px] bg-app-surface-secondary border border-border">
+      <div className="text-text-primary text-[20px] font-semibold leading-tight">{value}</div>
+      <div className="text-text-muted text-[12px] mt-0.5">{label}</div>
     </div>
   );
 }
@@ -43,11 +43,11 @@ function StatCard({ value, label }: { value: string | number; label: string }) {
 function EmptyState({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <div className="w-14 h-14 rounded-full bg-[#0F131A] flex items-center justify-center">
-        <FileText className="w-6 h-6 text-[#7A7F87]" />
+      <div className="w-14 h-14 rounded-full bg-app-surface-secondary flex items-center justify-center">
+        <FileText className="w-6 h-6 text-text-muted" />
       </div>
-      <p className="text-[#F7F4EE] text-[15px] font-medium">No snippets found</p>
-      <p className="text-[#7A7F87] text-[13px]">
+      <p className="text-text-primary text-[15px] font-medium">No snippets found</p>
+      <p className="text-text-muted text-[13px]">
         {query ? "Try a different search or create a new snippet." : "Create your first snippet to get started."}
       </p>
     </div>
@@ -72,10 +72,10 @@ function SnippetCard({
   const cat = CATEGORY_META[snippet.category];
 
   return (
-    <div className="group px-5 py-4 rounded-[14px] bg-[#0F131A] border border-white/[0.05] transition-all duration-200 hover:translate-y-[-1px] hover:border-white/[0.08]">
+    <div className="group px-5 py-4 rounded-[14px] bg-app-surface-secondary border border-border transition-all duration-200 hover:translate-y-[-1px] hover:border-border-hover">
       {/* Top: trigger + actions */}
       <div className="flex items-start justify-between mb-2">
-        <span className="text-[#F6B15F] text-[15px] font-mono font-medium tracking-tight">
+        <span className="text-sunset text-[15px] font-mono font-medium tracking-tight">
           {snippet.trigger}
         </span>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -85,7 +85,7 @@ function SnippetCard({
               "w-8 h-8 flex items-center justify-center rounded-[8px] transition-colors",
               isCopied
                 ? "bg-[#22C55E]/15 text-[#22C55E]"
-                : "hover:bg-white/[0.05] text-[#555A63] hover:text-[#A0A4AB]",
+                : "hover:bg-border-hover text-text-disabled hover:text-text-secondary",
             )}
             title="Copy to clipboard"
           >
@@ -93,38 +93,38 @@ function SnippetCard({
           </button>
           <button
             onClick={onToggleFavorite}
-            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
             title={snippet.isFavorite ? "Unpin" : "Pin to top"}
           >
             <Star
               className={cn(
                 "w-4 h-4 transition-colors",
-                snippet.isFavorite ? "fill-[#F6B15F] text-[#F6B15F]" : "text-[#555A63]",
+                snippet.isFavorite ? "fill-[#D4883A] text-sunset" : "text-text-disabled",
               )}
             />
           </button>
           <button
             onClick={onEdit}
-            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
             title="Edit"
           >
-            <Pencil className="w-4 h-4 text-[#555A63]" />
+            <Pencil className="w-4 h-4 text-text-disabled" />
           </button>
           <button
             onClick={onDelete}
-            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
             title="Delete"
           >
-            <Trash2 className="w-4 h-4 text-[#555A63] hover:text-[#E55353]" />
+            <Trash2 className="w-4 h-4 text-text-disabled hover:text-[#E55353]" />
           </button>
         </div>
       </div>
 
       {/* Title */}
-      <div className="text-[#F7F4EE] text-[14px] font-medium mb-1">{snippet.title}</div>
+      <div className="text-text-primary text-[14px] font-medium mb-1">{snippet.title}</div>
 
       {/* Content preview */}
-      <div className="text-[#7A7F87] text-[13px] leading-relaxed line-clamp-2 mb-3 whitespace-pre-wrap">
+      <div className="text-text-muted text-[13px] leading-relaxed line-clamp-2 mb-3 whitespace-pre-wrap">
         {snippet.content}
       </div>
 
@@ -139,12 +139,12 @@ function SnippetCard({
             {cat.label}
           </Badge>
           {snippet.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="text-[#555A63] text-[11px]">
+            <span key={tag} className="text-text-disabled text-[11px]">
               #{tag}
             </span>
           ))}
         </div>
-        <span className="text-[#555A63] text-[12px] shrink-0">
+        <span className="text-text-disabled text-[12px] shrink-0">
           Used {snippet.useCount} times
         </span>
       </div>
@@ -177,53 +177,53 @@ function SnippetModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[520px] mx-4 rounded-[20px] bg-[#0A0D12] border border-white/[0.08] shadow-2xl max-h-[85vh] overflow-y-auto">
+      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)] backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-[520px] mx-4 rounded-[20px] bg-app-surface-dark border border-border-hover shadow-2xl max-h-[85vh] overflow-y-auto">
         <div className="px-6 pt-6 pb-4">
-          <h3 className="text-[#F7F4EE] text-[16px] font-semibold">
+          <h3 className="text-text-primary text-[16px] font-semibold">
             {snippet ? "Edit Snippet" : "Add Snippet"}
           </h3>
-          <p className="text-[#7A7F87] text-[13px] mt-1">
+          <p className="text-text-muted text-[13px] mt-1">
             Create a reusable text block with a quick trigger.
           </p>
         </div>
 
         <div className="px-6 space-y-4 pb-4">
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">Title</label>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Meeting Follow-up"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">Trigger</label>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">Trigger</label>
             <input
               type="text"
               value={trigger}
               onChange={(e) => setTrigger(e.target.value)}
               placeholder="e.g. /followup"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F6B15F] text-[14px] font-mono placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-sunset text-[14px] font-mono placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">Content</label>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">Content</label>
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter snippet content. Use {{variable}} for dynamic placeholders."
               rows={8}
-              className="w-full px-3 py-2.5 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[13px] leading-relaxed placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors resize-none font-mono"
+              className="w-full px-3 py-2.5 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[13px] leading-relaxed placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors resize-none font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">Category</label>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">Category</label>
             <div className="flex gap-2 flex-wrap">
               {CATEGORY_OPTIONS.map((opt) => (
                 <button
@@ -232,8 +232,8 @@ function SnippetModal({
                   className={cn(
                     "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all duration-150",
                     category === opt.value
-                      ? "bg-[#C7772C]/15 text-[#F6B15F] border border-[#C7772C]/30"
-                      : "bg-[#0F131A] text-[#7A7F87] border border-white/[0.06] hover:border-white/[0.1]",
+                      ? "bg-[#3B6B9E]/15 text-sunset border border-[#3B6B9E]/30"
+                      : "bg-app-surface-secondary text-text-muted border border-border hover:border-border-hover",
                   )}
                 >
                   {opt.label}
@@ -243,15 +243,15 @@ function SnippetModal({
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">
-              Tags <span className="text-[#555A63]">(comma separated)</span>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">
+              Tags <span className="text-text-disabled">(comma separated)</span>
             </label>
             <input
               type="text"
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="e.g. sales, followup, meeting"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
         </div>
@@ -299,12 +299,12 @@ function DeleteConfirm({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative w-full max-w-[380px] mx-4 rounded-[20px] bg-[#0A0D12] border border-white/[0.08] shadow-2xl p-6">
-        <h3 className="text-[#F7F4EE] text-[16px] font-semibold">Delete Snippet</h3>
-        <p className="text-[#7A7F87] text-[14px] mt-2">
+      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)] backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-[380px] mx-4 rounded-[20px] bg-app-surface-dark border border-border-hover shadow-2xl p-6">
+        <h3 className="text-text-primary text-[16px] font-semibold">Delete Snippet</h3>
+        <p className="text-text-muted text-[14px] mt-2">
           Are you sure you want to delete{" "}
-          <span className="text-[#F7F4EE] font-medium">"{title}"</span>? This cannot be undone.
+          <span className="text-text-primary font-medium">"{title}"</span>? This cannot be undone.
         </p>
         <div className="flex items-center justify-end gap-2 mt-6">
           <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -431,8 +431,8 @@ export default function SnippetsPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-[#F7F4EE] text-[22px] font-semibold tracking-tight">Snippets</h1>
-            <p className="text-[#7A7F87] text-[13px] mt-1">
+            <h1 className="text-text-primary text-[22px] font-semibold tracking-tight">Snippets</h1>
+            <p className="text-text-muted text-[13px] mt-1">
               Save reusable text, prompts, links, and templates.
             </p>
           </div>
@@ -459,20 +459,20 @@ export default function SnippetsPage() {
 
         {/* Search */}
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#555A63]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search snippets..."
-            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/[0.06] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-border-hover transition-colors"
             >
-              <X className="w-3.5 h-3.5 text-[#555A63]" />
+              <X className="w-3.5 h-3.5 text-text-disabled" />
             </button>
           )}
         </div>
@@ -497,7 +497,7 @@ export default function SnippetsPage() {
         {/* Most Used Section */}
         {!search && activeTab === "all" && mostUsed.length > 0 && (
           <div className="mb-6">
-            <h2 className="text-[#7A7F87] text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+            <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
               Most Used
             </h2>
             <div className="space-y-2">
@@ -527,7 +527,7 @@ export default function SnippetsPage() {
             {/* Pinned Section */}
             {pinned.length > 0 && (
               <div>
-                <h2 className="text-[#7A7F87] text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                   Pinned Snippets
                 </h2>
                 <div className="space-y-2">
@@ -553,7 +553,7 @@ export default function SnippetsPage() {
             {unpinned.length > 0 && (
               <div>
                 {pinned.length > 0 && (
-                  <h2 className="text-[#7A7F87] text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                  <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                     All Snippets
                   </h2>
                 )}

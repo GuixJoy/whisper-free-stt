@@ -28,11 +28,11 @@ const CATEGORY_OPTIONS: { value: DictionaryCategory; label: string }[] = [
 function EmptyState({ query }: { query: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 gap-4">
-      <div className="w-14 h-14 rounded-full bg-[#0F131A] flex items-center justify-center">
-        <BookOpen className="w-6 h-6 text-[#7A7F87]" />
+      <div className="w-14 h-14 rounded-full bg-app-surface-secondary flex items-center justify-center">
+        <BookOpen className="w-6 h-6 text-text-muted" />
       </div>
-      <p className="text-[#F7F4EE] text-[15px] font-medium">No matching terms found</p>
-      <p className="text-[#7A7F87] text-[13px]">
+      <p className="text-text-primary text-[15px] font-medium">No matching terms found</p>
+      <p className="text-text-muted text-[13px]">
         {query ? "Try a different search or add a new word." : "Add your first custom word to get started."}
       </p>
     </div>
@@ -54,16 +54,16 @@ function EntryCard({
 
   return (
     <div
-      className="group flex items-center gap-4 px-5 py-4 rounded-[14px] bg-[#0F131A] border border-white/[0.05] transition-all duration-200 hover:translate-y-[-1px] hover:border-white/[0.08]"
+      className="group flex items-center gap-4 px-5 py-4 rounded-[14px] bg-app-surface-secondary border border-border transition-all duration-200 hover:translate-y-[-1px] hover:border-border-hover"
     >
       {/* Left: phrase & replacement */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[#F7F4EE] text-[15px] font-medium truncate">
+          <span className="text-text-primary text-[15px] font-medium truncate">
             {entry.phrase}
           </span>
-          <span className="text-[#7A7F87] text-[15px]">→</span>
-          <span className="text-[#A0A4AB] text-[15px] truncate">
+          <span className="text-text-muted text-[15px]">→</span>
+          <span className="text-text-secondary text-[15px] truncate">
             {entry.replacement}
           </span>
         </div>
@@ -74,11 +74,11 @@ function EntryCard({
           >
             {cat.label}
           </span>
-          <span className="text-[#555A63] text-[12px]">
+          <span className="text-text-disabled text-[12px]">
             Triggered {entry.useCount} times
           </span>
           {entry.notes && (
-            <span className="text-[#555A63] text-[12px] truncate max-w-[200px]">
+            <span className="text-text-disabled text-[12px] truncate max-w-[200px]">
               {entry.notes}
             </span>
           )}
@@ -89,29 +89,29 @@ function EntryCard({
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={onToggleFavorite}
-          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
           title={entry.isFavorite ? "Unpin" : "Pin to top"}
         >
           <Star
             className={cn(
               "w-4 h-4 transition-colors",
-              entry.isFavorite ? "fill-[#F6B15F] text-[#F6B15F]" : "text-[#555A63]"
+              entry.isFavorite ? "fill-[#D4883A] text-sunset" : "text-text-disabled"
             )}
           />
         </button>
         <button
           onClick={onEdit}
-          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
           title="Edit"
         >
-          <Pencil className="w-4 h-4 text-[#555A63]" />
+          <Pencil className="w-4 h-4 text-text-disabled" />
         </button>
         <button
           onClick={onDelete}
-          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-white/[0.05] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
           title="Delete"
         >
-          <Trash2 className="w-4 h-4 text-[#555A63] hover:text-[#E55353]" />
+          <Trash2 className="w-4 h-4 text-text-disabled hover:text-[#E55353]" />
         </button>
       </div>
     </div>
@@ -136,20 +136,20 @@ function EntryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-[440px] mx-4 rounded-[20px] bg-[#0A0D12] border border-white/[0.08] shadow-2xl">
+      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)] backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-[440px] mx-4 rounded-[20px] bg-app-surface-dark border border-border-hover shadow-2xl">
         <div className="px-6 pt-6 pb-4">
-          <h3 className="text-[#F7F4EE] text-[16px] font-semibold">
+          <h3 className="text-text-primary text-[16px] font-semibold">
             {entry ? "Edit Word" : "Add Word"}
           </h3>
-          <p className="text-[#7A7F87] text-[13px] mt-1">
+          <p className="text-text-muted text-[13px] mt-1">
             Add a custom word, name, or abbreviation to your dictionary.
           </p>
         </div>
 
         <div className="px-6 space-y-4 pb-4">
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">
               Phrase
             </label>
             <input
@@ -157,12 +157,12 @@ function EntryModal({
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               placeholder="e.g. CEO, Tauri, Snehaa"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">
               Replacement
             </label>
             <input
@@ -170,12 +170,12 @@ function EntryModal({
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
               placeholder="e.g. Chief Executive Officer"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">
               Category
             </label>
             <div className="flex gap-2">
@@ -186,8 +186,8 @@ function EntryModal({
                   className={cn(
                     "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all duration-150",
                     category === opt.value
-                      ? "bg-[#C7772C]/15 text-[#F6B15F] border border-[#C7772C]/30"
-                      : "bg-[#0F131A] text-[#7A7F87] border border-white/[0.06] hover:border-white/[0.1]"
+                      ? "bg-[#3B6B9E]/15 text-sunset border border-[#3B6B9E]/30"
+                      : "bg-app-surface-secondary text-text-muted border border-border hover:border-border-hover"
                   )}
                 >
                   {opt.label}
@@ -197,15 +197,15 @@ function EntryModal({
           </div>
 
           <div>
-            <label className="block text-[#A0A4AB] text-[12px] font-medium mb-1.5">
-              Notes <span className="text-[#555A63]">(optional)</span>
+            <label className="block text-text-secondary text-[12px] font-medium mb-1.5">
+              Notes <span className="text-text-disabled">(optional)</span>
             </label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Context or usage notes"
-              className="w-full h-10 px-3 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
             />
           </div>
         </div>
@@ -243,11 +243,11 @@ function DeleteConfirm({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative w-full max-w-[380px] mx-4 rounded-[20px] bg-[#0A0D12] border border-white/[0.08] shadow-2xl p-6">
-        <h3 className="text-[#F7F4EE] text-[16px] font-semibold">Delete Word</h3>
-        <p className="text-[#7A7F87] text-[14px] mt-2">
-          Are you sure you want to remove <span className="text-[#F7F4EE] font-medium">"{phrase}"</span> from your dictionary? This cannot be undone.
+      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)] backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full max-w-[380px] mx-4 rounded-[20px] bg-app-surface-dark border border-border-hover shadow-2xl p-6">
+        <h3 className="text-text-primary text-[16px] font-semibold">Delete Word</h3>
+        <p className="text-text-muted text-[14px] mt-2">
+          Are you sure you want to remove <span className="text-text-primary font-medium">"{phrase}"</span> from your dictionary? This cannot be undone.
         </p>
         <div className="flex items-center justify-end gap-2 mt-6">
           <Button variant="ghost" size="sm" onClick={onCancel}>
@@ -352,10 +352,10 @@ export default function DictionaryPage() {
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-[#F7F4EE] text-[22px] font-semibold tracking-tight">
+            <h1 className="text-text-primary text-[22px] font-semibold tracking-tight">
               Dictionary
             </h1>
-            <p className="text-[#7A7F87] text-[13px] mt-1">
+            <p className="text-text-muted text-[13px] mt-1">
               Manage custom words, names, abbreviations, and terminology.
             </p>
           </div>
@@ -375,20 +375,20 @@ export default function DictionaryPage() {
 
         {/* Search */}
         <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#555A63]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search dictionary..."
-            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-[#0F131A] border border-white/[0.06] text-[#F7F4EE] text-[14px] placeholder:text-[#555A63] outline-none focus:border-[#C7772C]/50 focus:ring-1 focus:ring-[#C7772C]/20 transition-colors"
+            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
           />
           {search && (
             <button
               onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-white/[0.06] transition-colors"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-border-hover transition-colors"
             >
-              <X className="w-3.5 h-3.5 text-[#555A63]" />
+              <X className="w-3.5 h-3.5 text-text-disabled" />
             </button>
           )}
         </div>
@@ -417,7 +417,7 @@ export default function DictionaryPage() {
             {/* Pinned Section */}
             {pinned.length > 0 && (
               <div>
-                <h2 className="text-[#7A7F87] text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                   Pinned Terms
                 </h2>
                 <div className="space-y-2">
@@ -441,7 +441,7 @@ export default function DictionaryPage() {
             {unpinned.length > 0 && (
               <div>
                 {pinned.length > 0 && (
-                  <h2 className="text-[#7A7F87] text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                  <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                     All Terms
                   </h2>
                 )}

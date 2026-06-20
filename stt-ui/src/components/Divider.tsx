@@ -8,7 +8,7 @@ export const Divider = forwardRef<HTMLDivElement, DividerProps>(
     return (
       <div
         ref={ref}
-        className={cn("h-px bg-white/[0.04]", className)}
+        className={cn("h-px bg-border", className)}
         {...props}
       />
     );

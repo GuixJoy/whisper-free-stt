@@ -22,27 +22,27 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
         "relative flex items-center justify-center rounded-full transition-all duration-300",
         "w-[80px] h-[80px]",
         isError && [
-          "bg-[#11161D] border-2 border-[#EF4444]",
+          "bg-app-surface-secondary border-2 border-[#EF4444]",
           "shadow-[0_0_40px_rgba(239,68,68,0.25)]",
         ],
         isListening && [
-          "bg-[#C7772C] border-2 border-[#C7772C]",
-          "shadow-[0_0_40px_rgba(199,119,44,0.35)]",
+          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
+          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
           "animate-mic-pulse",
         ],
         isTranscribing && [
-          "bg-[#C7772C] border-2 border-[#C7772C]",
-          "shadow-[0_0_40px_rgba(199,119,44,0.35)]",
+          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
+          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
           "animate-mic-pulse",
         ],
         isRewriting && [
-          "bg-[#C7772C] border-2 border-[#C7772C]",
-          "shadow-[0_0_40px_rgba(199,119,44,0.35)]",
+          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
+          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
           "animate-mic-pulse",
         ],
         isIdle && [
-          "bg-[#11161D] border-2 border-white/[0.08]",
-          "hover:border-white/[0.15] hover:bg-[#151B24]",
+          "bg-app-surface-secondary border-2 border-border-hover",
+          "hover:border-border-hover hover:bg-app-hover",
         ],
       )}
       aria-label={connected ? "Stop transcription" : "Start transcription"}
@@ -50,7 +50,7 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
       <div
         className={cn(
           "transition-all duration-300",
-          isActive || isError ? "text-white" : "text-[#7A7F87]",
+          isActive || isError ? "text-white" : "text-text-muted",
         )}
       >
         {connected ? <Mic size={28} strokeWidth={1.5} /> : <MicOff size={28} strokeWidth={1.5} />}

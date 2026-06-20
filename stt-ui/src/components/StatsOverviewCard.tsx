@@ -14,21 +14,21 @@ export default function StatsOverviewCard({ stat }: StatsOverviewCardProps) {
       : <Minus size={14} />;
 
   const trendColor = stat.trend?.direction === "up"
-    ? "text-[#C7772C]"
+    ? "text-accent"
     : stat.trend?.direction === "down"
       ? "text-[#EF4444]"
-      : "text-[#7A7F87]";
+      : "text-text-muted";
 
   return (
     <div
       className="flex-1 min-w-[200px] rounded-[24px] p-6"
       style={{
-        background: "#0F131A",
-        border: "1px solid rgba(255,255,255,0.05)",
+        background: "#F3F0EB",
+        border: "1px solid rgba(44,37,32,0.08)",
       }}
     >
       <div className="flex items-center justify-between mb-4">
-        <span className="text-[14px] text-[#7A7F87]">{stat.label}</span>
+        <span className="text-[14px] text-text-muted">{stat.label}</span>
         {stat.trend && (
           <span className={cn("flex items-center gap-1 text-[13px] font-medium", trendColor)}>
             {trendIcon}
@@ -38,7 +38,7 @@ export default function StatsOverviewCard({ stat }: StatsOverviewCardProps) {
       </div>
       <div
         className="text-[42px] font-bold leading-none"
-        style={{ color: "#F6B15F" }}
+        style={{ color: "#D4883A" }}
       >
         {stat.value}
       </div>

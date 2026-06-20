@@ -13,7 +13,7 @@ interface TabSwitcherProps {
 
 export default function TabSwitcher({ tabs, activeTab, onChange }: TabSwitcherProps) {
   return (
-    <div className="flex items-center gap-1 border-b border-white/[0.06]">
+    <div className="flex items-center gap-1 border-b border-border">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -22,7 +22,7 @@ export default function TabSwitcher({ tabs, activeTab, onChange }: TabSwitcherPr
             "relative px-4 py-2.5 text-[14px] font-medium transition-colors",
             activeTab === tab.id
               ? "text-white"
-              : "text-[#7A7F87] hover:text-[#A8A096]",
+              : "text-text-muted hover:text-text-secondary",
           )}
         >
           {tab.label}

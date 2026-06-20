@@ -150,7 +150,7 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(44,37,32,0.4)] backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true">
       <div className="bg-app-surface rounded-card border border-border w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">

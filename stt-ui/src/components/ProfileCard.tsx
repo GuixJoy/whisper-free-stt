@@ -12,14 +12,14 @@ export const ProfileCard = forwardRef<HTMLDivElement, ProfileCardProps>(
       <div
         ref={ref}
         className={cn(
-          "relative rounded-card p-6 overflow-hidden border border-white/[0.06]",
+          "relative rounded-card p-6 overflow-hidden border border-border",
           className,
         )}
         {...props}
       >
         {/* Background layers */}
         <div className="absolute inset-0 bg-app-surface-card" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_15%,rgba(200,138,50,0.10),transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_15%,rgba(59,107,158,0.10),transparent_65%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_85%,rgba(50,120,130,0.10),transparent_60%)]" />
 
         {/* Content */}
@@ -33,7 +33,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, ProfileCardProps>(
 
           {/* Progress bar */}
           <div className="relative">
-            <div className="h-1 bg-white/[0.08] rounded-full overflow-hidden">
+            <div className="h-1 bg-border-hover rounded-full overflow-hidden">
               <div
                 className="h-full progress-fill rounded-full transition-all duration-300"
                 style={{ width: `${progress}%` }}
