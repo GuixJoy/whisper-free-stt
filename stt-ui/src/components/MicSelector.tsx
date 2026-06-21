@@ -44,7 +44,7 @@ export default function MicSelector({ onTest, compact }: Props) {
           className={cn(
             "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
             "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             "disabled:pointer-events-none disabled:opacity-50",
           )}
           onClick={handleTest}
@@ -71,7 +71,7 @@ export default function MicSelector({ onTest, compact }: Props) {
           testing
             ? "bg-red-900/40 border border-red-500/30 text-red-400"
             : "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           "disabled:pointer-events-none disabled:opacity-50",
         )}
         onClick={handleTest}

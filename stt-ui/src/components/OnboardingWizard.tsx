@@ -59,7 +59,7 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
             className={cn(
               "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
               "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             )}
             onClick={onNext}
           >
@@ -70,7 +70,7 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
             className={cn(
               "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
               "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
             onClick={onNext}
@@ -123,7 +123,7 @@ function Step2ModelDownload({
             className={cn(
               "flex flex-col gap-2 rounded-card border p-4 cursor-pointer transition-all duration-200 text-left",
               selected.has(model.name)
-                ? "bg-app-surface-card border-accent"
+                ? "bg-accent-surface border-[rgba(255,59,86,0.15)]"
                 : "bg-app-surface-card border-border hover:border-border-hover",
             )}
           >
@@ -170,7 +170,7 @@ function Step2ModelDownload({
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             "disabled:pointer-events-none disabled:opacity-50",
           )}
           onClick={() => onDownload(Array.from(selected))}
@@ -182,7 +182,7 @@ function Step2ModelDownload({
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
         >
@@ -220,7 +220,7 @@ function Step3MicSetup({
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onTest}
         >
@@ -233,7 +233,7 @@ function Step3MicSetup({
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
         >
@@ -302,7 +302,7 @@ function Step4Permissions({
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
         >
@@ -329,7 +329,7 @@ function Step5Ready({ onFinish }: { onFinish: () => void }) {
           className={cn(
             "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
             "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onFinish}
         >

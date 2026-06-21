@@ -14,6 +14,14 @@
   --sunset: #D4883A;
   --lavender: #A88CC8;
   --mist: #EDE9E3;
+  --accent: #FF3B56;
+  --accent-hover: #E6324D;
+  --accent-active: #CC2942;
+  --accent-surface: #FFE3E5;
+  --accent-hover-surface: #FFF0F2;
+  --accent-focus-surface: #FFF7F8;
+  --accent-soft: rgba(255, 59, 86, 0.10);
+  --accent-border: rgba(255, 59, 86, 0.22);
   --glass-bg: rgba(255,255,255,0.55);
   --glass-border: rgba(255,255,255,0.55);
   --shadow-glass: 0 1px 0 0 rgba(255,255,255,0.70) inset, 0 0 0 1px rgba(255,255,255,0.18) inset, 0 20px 60px -20px rgba(44,37,32,0.18);
@@ -65,7 +73,7 @@ body {
 }
 .ambient-glow::before {
   content: ''; position: absolute; top: -200px; right: -200px; width: 700px; height: 700px;
-  background: radial-gradient(circle, rgba(59,107,158,0.04) 0%, transparent 70%); filter: blur(200px);
+  background: radial-gradient(circle, rgba(255,59,86,0.02) 0%, transparent 70%); filter: blur(200px);
 }
 .ambient-glow::after {
   content: ''; position: absolute; bottom: -200px; left: -200px; width: 600px; height: 600px;
@@ -82,22 +90,22 @@ body {
 .nav-active { position: relative; }
 .nav-active::before {
   content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 20px; background: var(--alpine); border-radius: 0 2px 2px 0;
+  width: 3px; height: 20px; background: var(--accent); border-radius: 0 2px 2px 0;
 }
 
 /* Stat gradient */
 .stat-value {
-  background: linear-gradient(135deg, var(--alpine), var(--lavender));
+  background: linear-gradient(135deg, var(--accent), var(--lavender));
   -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
 
 /* Progress bar */
-.progress-fill { background: linear-gradient(90deg, var(--alpine), var(--sunset)); }
+.progress-fill { background: linear-gradient(90deg, var(--accent), var(--sunset)); }
 
 /* Mic pulse */
 @keyframes mic-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(59,107,158,0.25); }
-  50% { transform: scale(1.03); box-shadow: 0 0 55px rgba(59,107,158,0.35); }
+  0%, 100% { transform: scale(1); box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.08); }
+  50% { transform: scale(1.03); box-shadow: 0 1px 2px rgba(0,0,0,0.10), 0 6px 16px rgba(0,0,0,0.10); }
 }
 .animate-mic-pulse { animation: mic-pulse 2.5s ease-in-out infinite; }
 
@@ -127,3 +135,6 @@ body {
 .text-text-disabled { color: #C4BFB8 !important; }
 .border-border { border-color: rgba(44,37,32,0.08) !important; }
 .border-border-hover { border-color: rgba(44,37,32,0.14) !important; }
+.bg-accent-surface { background-color: #FFE3E5 !important; }
+.bg-accent-hover-surface { background-color: #FFF0F2 !important; }
+.bg-accent-focus-surface { background-color: #FFF7F8 !important; }

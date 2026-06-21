@@ -19,10 +19,10 @@ export default function TabSwitcher({ tabs, activeTab, onChange }: TabSwitcherPr
           key={tab.id}
           onClick={() => onChange(tab.id)}
           className={cn(
-            "relative px-4 py-2.5 text-[14px] font-medium transition-colors",
+            "relative px-4 py-2.5 text-[14px] font-medium transition-colors rounded-t-lg",
             activeTab === tab.id
-              ? "text-white"
-              : "text-text-muted hover:text-text-secondary",
+              ? "text-accent bg-accent-surface"
+              : "text-text-muted hover:text-text-secondary hover:bg-accent-hover-surface",
           )}
         >
           {tab.label}

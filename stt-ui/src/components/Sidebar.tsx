@@ -33,13 +33,13 @@ export function SidebarItem({ icon, label, active, badge, onClick }: SidebarItem
       className={cn(
         "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200 overflow-hidden",
         active
-          ? "text-white font-semibold"
-          : "text-text-secondary hover:bg-border",
+          ? "text-accent font-semibold"
+          : "text-text-secondary hover:bg-accent-hover-surface",
       )}
     >
       {active && (
         <>
-          <div className="absolute inset-0 bg-border-hover" />
+          <div className="absolute inset-0 bg-accent-surface" />
           <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-accent rounded-r" />
         </>
       )}
@@ -158,12 +158,39 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             active={activeItem === "Models"}
             onClick={() => onNavigate?.("Models")}
           />
-          <SidebarItem
-            icon={<CircleDot size={18} />}
-            label="Widget"
-            active={widgetVisible}
+
+          {/* Widget Toggle — feature control, not navigation */}
+          <button
             onClick={toggleWidget}
-          />
+            className={cn(
+              "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200",
+              "text-text-secondary hover:bg-accent-hover-surface",
+            )}
+          >
+            <span className="relative z-10 w-[18px] h-[18px] flex-shrink-0">
+              <CircleDot size={18} />
+            </span>
+            <span className="relative z-10 text-[15px] flex-1 flex items-center gap-2">
+              Widget
+              {widgetVisible && (
+                <span className="w-[6px] h-[6px] rounded-full bg-green-500 flex-shrink-0" />
+              )}
+            </span>
+            {/* Toggle switch */}
+            <span
+              className={cn(
+                "relative z-10 w-[36px] h-[20px] rounded-full transition-colors duration-200 flex-shrink-0",
+                widgetVisible ? "bg-accent" : "bg-[#D8D8D8]",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-[2px] w-[16px] h-[16px] rounded-full bg-white transition-transform duration-200",
+                  widgetVisible ? "translate-x-[18px]" : "translate-x-[2px]",
+                )}
+              />
+            </span>
+          </button>
         </SidebarSection>
 
         {/* Upgrade Card */}

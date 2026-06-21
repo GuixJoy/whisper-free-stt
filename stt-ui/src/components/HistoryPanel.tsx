@@ -143,8 +143,9 @@ export default function HistoryPanel({ visible, onClose }: Props) {
   }, [visible, onClose]);
 
   const copyText = async (text: string, id: number) => {
-    if (!navigator.clipboard) return;
-    try { await navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch { }
+    const { copyToClipboard } = await import("@/lib/clipboard");
+    const ok = await copyToClipboard(text);
+    if (ok) { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }
   };
 
   if (!visible) return null;
@@ -179,7 +180,7 @@ export default function HistoryPanel({ visible, onClose }: Props) {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") searchHistory(); }}
               placeholder="Search transcripts..."
-              className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent"
+              className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-accent-focus-surface"
             />
             {searchQuery && (
               <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-text-muted hover:text-text-primary text-sm">Clear</button>

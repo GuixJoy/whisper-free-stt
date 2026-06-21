@@ -157,7 +157,7 @@ function EntryModal({
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               placeholder="e.g. CEO, Tauri, Snehaa"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -170,7 +170,7 @@ function EntryModal({
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
               placeholder="e.g. Chief Executive Officer"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -186,7 +186,7 @@ function EntryModal({
                   className={cn(
                     "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all duration-150",
                     category === opt.value
-                      ? "bg-[#3B6B9E]/15 text-sunset border border-[#3B6B9E]/30"
+                      ? "bg-accent-surface text-accent border border-[rgba(255,59,86,0.15)]"
                       : "bg-app-surface-secondary text-text-muted border border-border hover:border-border-hover"
                   )}
                 >
@@ -205,7 +205,7 @@ function EntryModal({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Context or usage notes"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
         </div>
@@ -381,7 +381,7 @@ export default function DictionaryPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search dictionary..."
-            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
           />
           {search && (
             <button

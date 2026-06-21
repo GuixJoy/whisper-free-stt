@@ -32,7 +32,7 @@ export default function UsageBreakdownCard({ categories }: UsageBreakdownCardPro
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${pct}%`,
-                    background: "linear-gradient(90deg, #3B6B9E, #D4883A)",
+                    background: "linear-gradient(90deg, #FF3B56, #D4883A)",
                   }}
                 />
               </div>

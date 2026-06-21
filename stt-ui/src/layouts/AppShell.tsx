@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/Sidebar";
 import { Bell, Minus, Square, X } from "lucide-react";
@@ -11,12 +11,35 @@ interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI__" in window;
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
   ({ className, children, activeItem, onNavigate, ...props }, ref) => {
     const win = isTauri() ? getCurrentWindow() : null;
+
+    const onTitleBarMouseDown = useCallback(
+      (e: ReactMouseEvent<HTMLDivElement>) => {
+        if (!win) return;
+        if (e.button !== 0) return;
+        // Don't drag if click was on a button or interactive element
+        const target = e.target as HTMLElement;
+        if (target.closest("button") || target.closest("a") || target.closest("input")) return;
+        e.preventDefault();
+        win.startDragging();
+      },
+      [win],
+    );
+
+    const onTitleBarDoubleClick = useCallback(
+      (_e: ReactMouseEvent<HTMLDivElement>) => {
+        if (!win) return;
+        const target = _e.target as HTMLElement;
+        if (target.closest("button") || target.closest("a") || target.closest("input")) return;
+        win.toggleMaximize();
+      },
+      [win],
+    );
 
     return (
       <div
@@ -38,10 +61,11 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         <div className="flex-1 flex flex-col overflow-hidden relative z-10">
           {/* Title Bar */}
           <div
-            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-border"
-            data-tauri-drag-region
+            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-border select-none"
+            onMouseDown={onTitleBarMouseDown}
+            onDoubleClick={onTitleBarDoubleClick}
           >
-            <div className="flex items-center gap-2" data-tauri-drag-region="false">
+            <div className="flex items-center gap-2">
               <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
                   <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
@@ -59,8 +83,10 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
               </button>
             </div>
 
-            <div className="flex items-center gap-1" data-tauri-drag-region="false">
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
+            <div className="flex items-center gap-1">
+              <button
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+              >
                 <Bell size={16} className="text-text-secondary" />
               </button>
               <button

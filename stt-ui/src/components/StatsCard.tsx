@@ -23,7 +23,7 @@ export const StatsCard = forwardRef<HTMLDivElement, StatsCardProps>(
       >
         {/* Background layers */}
         <div className="absolute inset-0 bg-app-surface-card" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(59,107,158,0.12),transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_10%,rgba(255,59,86,0.08),transparent_65%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_90%_90%,rgba(50,120,130,0.08),transparent_60%)]" />
 
         {/* Content */}

@@ -22,7 +22,7 @@ function ModelCard({
       className={cn(
         "flex flex-col gap-3 rounded-card border p-5 transition-all duration-200",
         model.downloaded
-          ? "bg-app-surface-card border-green-500/20"
+          ? "bg-[rgba(255,227,229,0.25)] border-[rgba(255,59,86,0.15)]"
           : model.downloading
             ? "bg-app-surface-card border-accent"
             : "bg-app-surface-card border-border hover:border-border-hover",
@@ -209,8 +209,8 @@ export default function ModelsPage() {
             className={cn(
               "h-8 px-4 rounded-badge text-[13px] font-medium transition-all duration-200",
               filter === key
-                ? "bg-app-surface border border-accent text-text-primary"
-                : "text-text-muted hover:text-text-secondary hover:bg-border",
+                ? "bg-accent-surface border border-[rgba(255,59,86,0.15)] text-accent"
+                : "text-text-muted hover:text-text-secondary hover:bg-accent-hover-surface",
             )}
             onClick={() => setFilter(key)}
           >

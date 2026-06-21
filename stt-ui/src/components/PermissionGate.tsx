@@ -22,7 +22,7 @@ export default function PermissionGate({ featureName, toolName, platformNote, ch
           className={cn(
             "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
             "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={() => setGranted(true)}
         >

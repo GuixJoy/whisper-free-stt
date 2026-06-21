@@ -26,7 +26,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
               top: "-20%",
               left: "30%",
               background:
-                "radial-gradient(ellipse at 50% 50%, rgba(59,107,158,0.55) 0%, rgba(42,79,115,0.25) 35%, transparent 70%)",
+                "radial-gradient(ellipse at 50% 50%, rgba(255,59,86,0.12) 0%, rgba(255,59,86,0.04) 35%, transparent 70%)",
               filter: "blur(35px)",
             }}
           />
@@ -39,7 +39,7 @@ export const HeroBanner = forwardRef<HTMLDivElement, HeroBannerProps>(
               top: "0%",
               left: "45%",
               background:
-                "radial-gradient(ellipse at 50% 50%, rgba(59,107,158,0.30) 0%, transparent 65%)",
+                "radial-gradient(ellipse at 50% 50%, rgba(255,59,86,0.08) 0%, transparent 65%)",
               filter: "blur(50px)",
             }}
           />

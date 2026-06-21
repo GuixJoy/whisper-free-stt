@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
 import { createWebAudioApi } from "./api-web-audio";
-import { Mic } from "lucide-react";
+import { Mic, PlugZap, ShieldCheck, Mic2, Sparkles, Settings2, Activity, Terminal } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
 import ErrorBanner from "./components/ErrorBanner";
@@ -13,6 +13,11 @@ import SettingsPanel from "./components/SettingsPanel";
 import InsightsPage from "./components/InsightsPage";
 import DictionaryPage from "./components/DictionaryPage";
 import SnippetsPage from "./components/SnippetsPage";
+import { ConfigSection } from "./components/ConfigSection";
+import { SettingRow } from "./components/SettingRow";
+import { FloureSelect } from "./components/FloureSelect";
+import { FloureToggle } from "./components/FloureToggle";
+import { FloureInput } from "./components/FloureInput";
 import ModelsPage from "./components/ModelsPage";
 import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
@@ -74,7 +79,7 @@ export interface RuntimeSettings {
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   wsPort: 8765,
-  asrProfile: "auto",
+  asrProfile: "distil",
   backend: "auto",
   model: "",
   llmMode: "cleanup",
@@ -84,14 +89,15 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   deepseekApiKey: "",
   openrouterApiKey: "",
   fastCommit: true,
-  typing: false,
-  clipboard: false,
+  typing: true,
+  clipboard: true,
   debug: false,
   hotwords: "",
   language: "",
 };
 
 const LOCAL_STORAGE_KEY = "stt-settings";
+const SETTINGS_VERSION = 2;
 
 function getInitialSettings(): RuntimeSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
@@ -99,6 +105,10 @@ function getInitialSettings(): RuntimeSettings {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
+      if ((parsed as Record<string, unknown>).__version !== SETTINGS_VERSION) {
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        return DEFAULT_SETTINGS;
+      }
       if (validateSettings(parsed)) {
         return { ...DEFAULT_SETTINGS, ...parsed };
       }
@@ -333,7 +343,7 @@ function FeedView({
           <div className="flex-1 overflow-auto" ref={feedRef} onScroll={onFeedScroll}>
             {lines.length === 0 && historyItems.length === 0 && !historyLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <Mic size={72} strokeWidth={1} className="text-[rgba(27,79,130,0.8)] mb-4" />
+                <Mic size={72} strokeWidth={1} className="text-accent/40 mb-4" />
                 <p className="text-text-primary text-[15px] mb-1">Start speaking to begin transcription</p>
                 <p className="text-text-muted text-[13px]">
                   Press <kbd className="px-1.5 py-0.5 bg-border border border-border-hover rounded text-text-muted text-[11px]">Space</kbd> to start or stop
@@ -444,237 +454,265 @@ function ConfigView({
   isCapturingMic: boolean;
   stopMic: () => void;
 }) {
-  const permissionStatusColor = (status: string) => {
-    switch (status) {
-      case "granted": return "text-green-400";
-      case "denied": return "text-red-400";
-      case "prompt": return "text-yellow-400";
-      default: return "text-text-muted";
-    }
-  };
-
-  const permissionStatusIcon = (status: string) => {
-    switch (status) {
-      case "granted": return "✓";
-      case "denied": return "✗";
-      case "prompt": return "?";
-      default: return "—";
-    }
-  };
-
+  const [clipboardOn, setClipboardOn] = useState(permissions.clipboard === "granted");
+  const [micOn, setMicOn] = useState(permissions.microphone === "granted");
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-auto">
-      <div className="bg-app-surface rounded-card border border-border p-5 space-y-5">
-        {/* Connection */}
-        <div>
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
-            <span>📡</span> Connection
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="text-[13px] text-text-secondary w-20 shrink-0">Mode</label>
-              <select
-                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+    <div className="flex-1 flex flex-col overflow-auto">
+      <div className="flex-1 px-8 py-6 max-w-[680px] mx-auto w-full">
+        <h1 className="text-[22px] font-semibold text-text-primary mb-1">Config</h1>
+        <p className="text-[13px] text-text-muted mb-6">Fine-tune how Floure works for you.</p>
+
+        <div className="flex flex-col gap-4">
+          {/* Connection */}
+          <ConfigSection icon={PlugZap} title="Connection" subtitle="How Floure connects to the engine">
+            <SettingRow label="Mode">
+              <FloureSelect
                 value={mode}
                 onChange={(e) => setMode(e.target.value as RunMode)}
               >
-                <option value="ws">WebSocket (external stt)</option>
-                <option value="tauri">Tauri local process</option>
-              </select>
-            </div>
+                <option value="ws">WebSocket</option>
+                <option value="tauri">Local Process</option>
+              </FloureSelect>
+            </SettingRow>
             {mode === "ws" && (
-              <div className="flex items-center gap-3">
-                <label className="text-[13px] text-text-secondary w-20 shrink-0">WS Port</label>
-                <input
-                  className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+              <SettingRow label="Port">
+                <FloureInput
                   type="number"
                   value={settings.wsPort}
                   onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
+                  maxWidth="max-w-[100px]"
                 />
-              </div>
+              </SettingRow>
             )}
-          </div>
-        </div>
+          </ConfigSection>
 
-        <div className="h-px bg-border" />
-
-        {/* Permissions */}
-        <div>
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
-            <span>🔐</span> Permissions
-          </div>
-          <div className="space-y-3">
-            {/* Clipboard Permission */}
-            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="text-[14px]">📋</span>
-                <div>
-                  <div className="text-[13px] font-medium text-text-primary">Clipboard Access</div>
-                  <div className="text-[11px] text-text-muted">Copy transcribed text to clipboard</div>
-                </div>
+          {/* Permissions */}
+          <ConfigSection icon={ShieldCheck} title="Permissions" subtitle="System access for Floure">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[13px] font-medium text-text-primary leading-tight">Clipboard</span>
+                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Copy transcripts to clipboard</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.clipboard)}`}>
-                  {permissionStatusIcon(permissions.clipboard)} {permissions.clipboard}
-                </span>
-                {permissions.clipboard !== "granted" && (
-                  <button
-                    onClick={() => void requestClipboard()}
-                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
-                  >
-                    Grant
-                  </button>
-                )}
-              </div>
+              <FloureToggle
+                checked={clipboardOn}
+                onChange={(v) => {
+                  setClipboardOn(v);
+                  if (v) void requestClipboard();
+                }}
+              />
             </div>
 
-            {/* Microphone Permission */}
-            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
-              <div className="flex items-center gap-3">
-                <span className="text-[14px]">🎤</span>
-                <div>
-                  <div className="text-[13px] font-medium text-text-primary">Microphone Access</div>
-                  <div className="text-[11px] text-text-muted">Capture audio for speech recognition</div>
-                </div>
+            <div className="h-px bg-border" />
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[13px] font-medium text-text-primary leading-tight">Microphone</span>
+                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Capture audio for recognition</span>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.microphone)}`}>
-                  {permissionStatusIcon(permissions.microphone)} {permissions.microphone}
-                </span>
-                {permissions.microphone !== "granted" ? (
-                  <button
-                    onClick={() => void requestMic()}
-                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
-                  >
-                    Grant
-                  </button>
-                ) : (
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                <FloureToggle
+                  checked={micOn}
+                  onChange={(v) => {
+                    setMicOn(v);
+                    if (v) {
+                      void requestMic();
+                    } else if (isCapturingMic) {
+                      stopMic();
+                    }
+                  }}
+                />
+                {micOn && (
                   <button
                     onClick={isCapturingMic ? stopMic : () => void requestMic()}
-                    className={`h-7 px-3 rounded-button text-[12px] font-medium transition-colors ${
+                    className={`h-[28px] px-3 rounded-[8px] text-[11px] font-medium transition-colors ${
                       isCapturingMic
-                        ? "bg-red-900/40 border border-red-500/30 text-red-400 hover:bg-red-900/60"
-                        : "bg-app-surface border border-border text-text-primary hover:bg-app-hover"
+                        ? "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
+                        : "bg-app-surface-secondary border border-border text-text-secondary hover:bg-app-hover"
                     }`}
                   >
-                    {isCapturingMic ? "Stop Test" : "Test Mic"}
+                    {isCapturingMic ? "Stop" : "Test"}
                   </button>
                 )}
               </div>
             </div>
-          </div>
-        </div>
+          </ConfigSection>
 
-        <div className="h-px bg-border" />
-
-        {/* Speech */}
-        <div>
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
-            <span>🎤</span> Speech
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="text-[13px] text-text-secondary w-20 shrink-0">ASR Profile</label>
-              <select
-                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+          {/* Speech */}
+          <ConfigSection icon={Mic2} title="Speech Recognition" subtitle="ASR engine and model settings">
+            <SettingRow label="Profile">
+              <FloureSelect
                 value={settings.asrProfile}
                 onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}
               >
-                <option value="auto">auto</option>
-                <option value="speed">speed</option>
-                <option value="balanced">balanced</option>
-                <option value="accuracy">accuracy</option>
-                <option value="distil">distil</option>
-                <option value="turbo">turbo</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-[13px] text-text-secondary w-20 shrink-0">Backend</label>
-              <select
-                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                <option value="auto">Auto</option>
+                <option value="speed">Speed</option>
+                <option value="balanced">Balanced</option>
+                <option value="accuracy">Accuracy</option>
+                <option value="distil">Distil</option>
+                <option value="turbo">Turbo</option>
+              </FloureSelect>
+            </SettingRow>
+            <SettingRow label="Backend">
+              <FloureSelect
                 value={settings.backend}
                 onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}
               >
-                <option value="auto">auto</option>
+                <option value="auto">Auto</option>
                 <option value="whisper_cpp">whisper.cpp</option>
                 <option value="faster_whisper">faster-whisper</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-3">
-              <label className="text-[13px] text-text-secondary w-20 shrink-0">Model</label>
-              <input
-                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+              </FloureSelect>
+            </SettingRow>
+            <SettingRow label="Model">
+              <FloureInput
                 value={settings.model}
                 onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
                 placeholder="e.g. large-v3-turbo"
+                maxWidth="max-w-[200px]"
               />
-            </div>
-          </div>
-        </div>
+            </SettingRow>
+            <SettingRow label="Language">
+              <FloureSelect
+                value={settings.language}
+                onChange={(e) => setSettings((s) => ({ ...s, language: e.target.value }))}
+                maxWidth="max-w-[160px]"
+              >
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+              </FloureSelect>
+            </SettingRow>
+            <SettingRow label="Vocabulary">
+              <FloureInput
+                value={settings.hotwords}
+                onChange={(e) => setSettings((s) => ({ ...s, hotwords: e.target.value }))}
+                placeholder="Comma-separated words"
+                maxWidth="max-w-[240px]"
+              />
+            </SettingRow>
+          </ConfigSection>
 
-        <div className="h-px bg-border" />
-
-        {/* Output */}
-        <div>
-          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
-            <span>⚙</span> Output
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center gap-3">
-              <label className="text-[13px] text-text-secondary w-20 shrink-0">LLM Mode</label>
-              <select
-                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+          {/* Output */}
+          <ConfigSection icon={Sparkles} title="Output" subtitle="How transcribed text is delivered">
+            <SettingRow label="LLM Mode">
+              <FloureSelect
                 value={settings.llmMode}
                 onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}
               >
-                <option value="cleanup">cleanup</option>
-                <option value="off">off</option>
-                <option value="bullet_list">bullet list</option>
-                <option value="email">email</option>
-                <option value="commit_message">commit message</option>
-              </select>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              {([
-                { key: "fastCommit" as const, label: "fast commit" },
-                { key: "typing" as const, label: "type to focused input" },
-                { key: "clipboard" as const, label: "clipboard" },
-                { key: "debug" as const, label: "debug" },
-              ]).map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 text-[13px] text-text-secondary cursor-pointer select-none">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={settings[key]}
-                    onClick={() => setSettings((s) => ({ ...s, [key]: !s[key] }))}
-                    className={`relative w-9 h-5 rounded-full border transition-colors ${
-                      settings[key]
-                        ? "bg-accent border-accent"
-                        : "bg-app-surface-secondary border-border"
-                    }`}
-                  >
-                    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-transform ${
-                      settings[key]
-                        ? "left-[18px] bg-white"
-                        : "left-0.5 bg-text-secondary"
-                    }`} />
-                  </button>
-                  {label}
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
+                <option value="off">Off</option>
+                <option value="cleanup">Cleanup</option>
+                <option value="bullet_list">Bullet List</option>
+                <option value="email">Email</option>
+                <option value="commit_message">Commit Message</option>
+              </FloureSelect>
+            </SettingRow>
 
-        <div className="h-px bg-border" />
+            <div className="h-px bg-border" />
 
-        {/* Command preview */}
-        <div className="bg-app-surface-secondary rounded-card border border-border p-3">
-          <div className="flex items-center justify-between text-[11px] text-text-muted mb-1.5">
-            <span>Command preview</span>
-            <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
-          </div>
-          <code className="text-[13px] text-accent-light font-mono">{commandPreview}</code>
+            <FloureToggle
+              checked={settings.fastCommit}
+              onChange={(v) => setSettings((s) => ({ ...s, fastCommit: v }))}
+              label="Fast Commit"
+              description="Skip LLM for short transcriptions"
+            />
+            <FloureToggle
+              checked={settings.typing}
+              onChange={(v) => setSettings((s) => ({ ...s, typing: v }))}
+              label="Type to Input"
+              description="Automatically type into focused field"
+            />
+            <FloureToggle
+              checked={settings.clipboard}
+              onChange={(v) => setSettings((s) => ({ ...s, clipboard: v }))}
+              label="Clipboard"
+              description="Copy transcript to clipboard"
+            />
+            <FloureToggle
+              checked={settings.debug}
+              onChange={(v) => setSettings((s) => ({ ...s, debug: v }))}
+              label="Debug Mode"
+              description="Show raw engine output"
+            />
+          </ConfigSection>
+
+          {/* LLM Provider */}
+          <ConfigSection icon={Settings2} title="LLM Provider" subtitle="API keys and model selection for post-processing">
+            <SettingRow label="Provider">
+              <FloureSelect
+                value={settings.llmProvider}
+                onChange={(e) => setSettings((s) => ({ ...s, llmProvider: e.target.value as "deepseek" | "openrouter" }))}
+                maxWidth="max-w-[140px]"
+              >
+                <option value="openrouter">OpenRouter</option>
+                <option value="deepseek">DeepSeek</option>
+              </FloureSelect>
+            </SettingRow>
+            <SettingRow label="Model">
+              <FloureInput
+                value={settings.llmModel}
+                onChange={(e) => setSettings((s) => ({ ...s, llmModel: e.target.value }))}
+                placeholder={settings.llmProvider === "deepseek" ? "deepseek-chat" : "openai/gpt-4o-mini"}
+                maxWidth="max-w-[240px]"
+              />
+            </SettingRow>
+            <SettingRow label="Fallback">
+              <FloureInput
+                value={settings.llmFallback}
+                onChange={(e) => setSettings((s) => ({ ...s, llmFallback: e.target.value }))}
+                placeholder={settings.llmProvider === "openrouter" ? "anthropic/claude-3-5-haiku-latest" : ""}
+                maxWidth="max-w-[240px]"
+              />
+            </SettingRow>
+
+            <div className="h-px bg-border" />
+
+            <SettingRow label="DeepSeek Key">
+              <FloureInput
+                type="password"
+                value={settings.deepseekApiKey}
+                onChange={(e) => setSettings((s) => ({ ...s, deepseekApiKey: e.target.value }))}
+                placeholder="sk-..."
+                maxWidth="max-w-[240px]"
+                className="font-mono text-[12px]"
+              />
+            </SettingRow>
+            <SettingRow label="OpenRouter Key">
+              <FloureInput
+                type="password"
+                value={settings.openrouterApiKey}
+                onChange={(e) => setSettings((s) => ({ ...s, openrouterApiKey: e.target.value }))}
+                placeholder="sk-or-..."
+                maxWidth="max-w-[240px]"
+                className="font-mono text-[12px]"
+              />
+            </SettingRow>
+          </ConfigSection>
+
+          {/* Diagnostics */}
+          <ConfigSection icon={Activity} title="Diagnostics" subtitle="Engine command and runtime info">
+            <div className="rounded-[10px] bg-app-surface-secondary border border-border px-3.5 py-2.5">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-[11px] text-text-muted font-medium">
+                  <Terminal size={11} />
+                  Generated Command
+                </span>
+                <span className="text-[10px] text-text-disabled">
+                  {mode === "ws" ? "restart backend to apply" : "applies on next start"}
+                </span>
+              </div>
+              <code className="block text-[12px] text-accent-light font-mono leading-relaxed break-all">
+                {commandPreview}
+              </code>
+            </div>
+          </ConfigSection>
         </div>
       </div>
     </div>
@@ -809,7 +847,7 @@ function App() {
   useEffect(() => {
     try {
       if (validateSettings(settings)) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ ...settings, __version: SETTINGS_VERSION }));
       } else {
         console.error("Invalid settings, not saving to localStorage");
       }
@@ -997,13 +1035,14 @@ function App() {
           }
         });
       } catch { /* not in Tauri */ }
-      // Register global shortcut Super+Space
+      // Register global shortcut Ctrl+Super for push-to-talk
       try {
         const { register } = await import("@tauri-apps/plugin-global-shortcut");
-        await register("Super+Space", (event) => {
+        await register("CommandOrControl+Super", (event) => {
           if (event.state === "Pressed") {
+            if (!connectedRef.current) void startRef.current();
+          } else if (event.state === "Released") {
             if (connectedRef.current) stopRef.current();
-            else void startRef.current();
           }
         });
       } catch { /* not in Tauri or shortcut blocked */ }
@@ -1014,16 +1053,12 @@ function App() {
   const clearLines = () => setLines([]);
 
   const copyText = async (text: string, label: string) => {
-    if (!navigator.clipboard) {
-      setToast("Clipboard not available");
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(text);
+    const { copyToClipboard } = await import("@/lib/clipboard");
+    const ok = await copyToClipboard(text);
+    if (ok) {
       setToast(label);
-    } catch (error) {
-      console.error("copy failed", error);
-      setToast(`Copy failed${error instanceof Error ? ": " + error.message : ""}`);
+    } else {
+      setToast("Copy failed");
     }
   };
 

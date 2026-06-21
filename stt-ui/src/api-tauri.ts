@@ -48,17 +48,21 @@ export function createTauriApi(args: string[], sidecarName: string = "binaries/s
     for (const cb of listeners) cb({ type: "error", message: msg });
   };
 
-  const handleLine = (source: string, line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    try {
-      const event: STTEvent = JSON.parse(trimmed);
-      for (const cb of listeners) cb(event);
-    } catch {
-      if (source === "stderr") {
-        console.warn(`[Sidecar stderr] ${trimmed}`);
-      } else {
-        console.log(`[Sidecar stdout] ${trimmed}`);
+  const handleLine = (source: string, data: string) => {
+    // Split on newlines — shell plugin may deliver multiple JSON lines in one chunk
+    const lines = data.split("\n");
+    for (const raw of lines) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      try {
+        const event: STTEvent = JSON.parse(trimmed);
+        for (const cb of listeners) cb(event);
+      } catch {
+        if (source === "stderr") {
+          console.warn(`[Sidecar stderr] ${trimmed}`);
+        } else {
+          console.log(`[Sidecar stdout] ${trimmed}`);
+        }
       }
     }
   };

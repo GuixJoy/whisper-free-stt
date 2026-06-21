@@ -19,7 +19,7 @@ export const ProfileCard = forwardRef<HTMLDivElement, ProfileCardProps>(
       >
         {/* Background layers */}
         <div className="absolute inset-0 bg-app-surface-card" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_15%,rgba(59,107,158,0.10),transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_80%_15%,rgba(255,59,86,0.07),transparent_65%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_85%,rgba(50,120,130,0.10),transparent_60%)]" />
 
         {/* Content */}

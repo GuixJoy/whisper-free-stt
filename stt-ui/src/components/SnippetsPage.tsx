@@ -196,7 +196,7 @@ function SnippetModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Meeting Follow-up"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -207,7 +207,7 @@ function SnippetModal({
               value={trigger}
               onChange={(e) => setTrigger(e.target.value)}
               placeholder="e.g. /followup"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-sunset text-[14px] font-mono placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-sunset text-[14px] font-mono placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -218,7 +218,7 @@ function SnippetModal({
               onChange={(e) => setContent(e.target.value)}
               placeholder="Enter snippet content. Use {{variable}} for dynamic placeholders."
               rows={8}
-              className="w-full px-3 py-2.5 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[13px] leading-relaxed placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors resize-none font-mono"
+              className="w-full px-3 py-2.5 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[13px] leading-relaxed placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors resize-none font-mono"
             />
           </div>
 
@@ -232,7 +232,7 @@ function SnippetModal({
                   className={cn(
                     "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all duration-150",
                     category === opt.value
-                      ? "bg-[#3B6B9E]/15 text-sunset border border-[#3B6B9E]/30"
+                      ? "bg-accent-surface text-accent border border-[rgba(255,59,86,0.15)]"
                       : "bg-app-surface-secondary text-text-muted border border-border hover:border-border-hover",
                   )}
                 >
@@ -251,7 +251,7 @@ function SnippetModal({
               value={tagsInput}
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder="e.g. sales, followup, meeting"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
         </div>
@@ -373,12 +373,11 @@ export default function SnippetsPage() {
   );
 
   const copyToClipboard = useCallback(async (content: string, id: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
+    const { copyToClipboard: clipWrite } = await import("@/lib/clipboard");
+    const ok = await clipWrite(content);
+    if (ok) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-    } catch {
-      // Clipboard API may fail in some environments
     }
   }, []);
 
@@ -465,7 +464,7 @@ export default function SnippetsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search snippets..."
-            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/20 transition-colors"
+            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
           />
           {search && (
             <button

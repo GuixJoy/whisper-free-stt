@@ -36,7 +36,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
 
   const inputClass = cn(
     "w-full rounded-input bg-app-surface-secondary border border-border px-3 py-2 text-body text-text-primary",
-    "placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/50 transition-colors",
+    "placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-colors",
   );
 
   return (
@@ -54,7 +54,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
             className={cn(
               "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
               "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             )}
             onClick={onClose}
             aria-label="Close settings"
@@ -183,7 +183,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
             className={cn(
               "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
               "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
             onClick={() => { onSave(local); onClose(); }}

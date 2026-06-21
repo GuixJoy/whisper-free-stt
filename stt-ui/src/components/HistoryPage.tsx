@@ -130,8 +130,9 @@ export default function HistoryPage({ onBack }: Props) {
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
   const copyText = async (text: string, id: number) => {
-    if (!navigator.clipboard) return;
-    try { await navigator.clipboard.writeText(text); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); } catch { }
+    const { copyToClipboard } = await import("@/lib/clipboard");
+    const ok = await copyToClipboard(text);
+    if (ok) { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }
   };
 
   return (
@@ -166,7 +167,7 @@ export default function HistoryPage({ onBack }: Props) {
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") searchHistory(); }}
           placeholder="Search transcripts..."
-          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50"
+          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-accent-focus-surface"
         />
         {searchQuery && (
           <button onClick={() => { setSearchQuery(""); loadHistory(); }} className="text-text-muted hover:text-text-primary text-[13px]">Clear</button>
@@ -187,7 +188,7 @@ export default function HistoryPage({ onBack }: Props) {
                 <button onClick={() => toggleFavorite(row.id)} className={`text-lg transition-colors ${row.favorite ? "text-yellow-400" : "text-text-muted hover:text-yellow-400"}`}>
                   {row.favorite ? "★" : "☆"}
                 </button>
-                <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-[#3B6B9E]/10 border border-[#3B6B9E]/20 text-accent">
+                <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-accent/10 border border-accent/22 text-accent">
                   {row.mode}
                 </span>
               </div>

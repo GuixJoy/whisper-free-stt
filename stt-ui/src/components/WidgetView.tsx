@@ -217,7 +217,7 @@ export default function WidgetView() {
           style={{
             background: isActive
               ? HAS_BLUR
-                ? "linear-gradient(135deg, rgba(59,107,158,0.12) 0%, rgba(59,107,158,0.04) 50%, rgba(42,79,115,0.10) 100%)"
+                ? "linear-gradient(135deg, rgba(255,59,86,0.10) 0%, rgba(255,59,86,0.03) 50%, rgba(255,59,86,0.08) 100%)"
                 : "rgba(30,20,10,0.92)"
               : isError
                 ? HAS_BLUR
@@ -229,12 +229,12 @@ export default function WidgetView() {
             backdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
             WebkitBackdropFilter: HAS_BLUR ? "blur(24px) saturate(180%)" : "none",
             border: isActive
-              ? "1px solid rgba(59,107,158,0.25)"
+              ? "1px solid rgba(255,59,86,0.22)"
               : isError
                 ? "1px solid rgba(239,68,68,0.2)"
                 : "1px solid rgba(44,37,32,0.15)",
             boxShadow: isActive
-              ? "0 8px 32px rgba(59,107,158,0.15), inset 0 1px 0 rgba(44,37,32,0.15)"
+              ? "0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(44,37,32,0.15)"
               : isError
                 ? "0 8px 32px rgba(239,68,68,0.15), inset 0 1px 0 rgba(44,37,32,0.15)"
                 : "0 8px 32px rgba(44,37,32,0.4), inset 0 1px 0 rgba(44,37,32,0.12)",
@@ -258,7 +258,7 @@ export default function WidgetView() {
           <div
             className="absolute inset-0 rounded-[14px] pointer-events-none"
             style={{
-              background: "radial-gradient(circle at center, rgba(59,107,158,0.08) 0%, transparent 70%)",
+              background: "radial-gradient(circle at center, rgba(255,59,86,0.06) 0%, transparent 70%)",
               animation: "widget-breathe 4s ease-in-out infinite",
             }}
           />
@@ -273,17 +273,17 @@ export default function WidgetView() {
           className="relative z-10 w-[40px] h-[40px] shrink-0 rounded-[10px] ml-[4px] flex items-center justify-center transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-amber-400/50 focus:ring-offset-2 focus:ring-offset-transparent"
           style={{
             color: isActive
-              ? "rgba(59,107,158,0.95)"
+              ? "rgba(255,59,86,0.95)"
               : isError
                 ? "rgba(239,68,68,0.95)"
                 : "rgba(44,37,32,0.45)",
             background: isActive
-              ? "rgba(59,107,158,0.15)"
+              ? "rgba(255,59,86,0.12)"
               : isError
                 ? "rgba(239,68,68,0.12)"
                 : "rgba(44,37,32,0.08)",
             border: isActive
-              ? "1px solid rgba(59,107,158,0.2)"
+              ? "1px solid rgba(255,59,86,0.20)"
               : isError
                 ? "1px solid rgba(239,68,68,0.15)"
                 : "1px solid rgba(44,37,32,0.12)",
@@ -342,7 +342,7 @@ export default function WidgetView() {
                 ? "#ef4444"
                 : "rgba(44,37,32,0.25)",
             boxShadow: isActive
-              ? "0 0 8px rgba(59,107,158,0.8)"
+              ? "0 0 8px rgba(0,0,0,0.15)"
               : isError
                 ? "0 0 8px rgba(239,68,68,0.8)"
                 : "none",
@@ -360,7 +360,7 @@ export default function WidgetView() {
             left: "50%",
             transform: "translateX(-50%)",
             background: "linear-gradient(135deg, rgba(42,38,34,0.96) 0%, rgba(36,33,32,0.98) 100%)",
-            border: "1px solid rgba(59,107,158,0.2)",
+            border: "1px solid rgba(255,59,86,0.18)",
             boxShadow: "0 8px 24px rgba(44,37,32,0.5)",
             animation: "widget-fade-in 200ms ease-out",
           }}

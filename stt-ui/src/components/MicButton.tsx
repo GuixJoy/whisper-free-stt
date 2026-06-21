@@ -26,18 +26,18 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
           "shadow-[0_0_40px_rgba(239,68,68,0.25)]",
         ],
         isListening && [
-          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
-          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
+          "bg-accent border-2 border-accent",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.08)]",
           "animate-mic-pulse",
         ],
         isTranscribing && [
-          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
-          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
+          "bg-accent border-2 border-accent",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.08)]",
           "animate-mic-pulse",
         ],
         isRewriting && [
-          "bg-[#3B6B9E] border-2 border-[#3B6B9E]",
-          "shadow-[0_0_40px_rgba(59,107,158,0.35)]",
+          "bg-accent border-2 border-accent",
+          "shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.08)]",
           "animate-mic-pulse",
         ],
         isIdle && [

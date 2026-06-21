@@ -8,7 +8,7 @@ const LEVEL_COLORS: Record<number, string> = {
   0: "#EDE9E3",
   1: "#C4C0BA",
   2: "#9C9590",
-  3: "#3B6B9E",
+  3: "#FF3B56",
   4: "#D4883A",
 };
 
