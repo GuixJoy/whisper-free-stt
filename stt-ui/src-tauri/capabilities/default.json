@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "widget"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -11,29 +11,45 @@
     "core:window:allow-hide",
     "core:window:allow-minimize",
     "core:window:allow-unminimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
     "core:window:allow-set-focus",
+    "core:window:allow-set-position",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-outer-position",
+    "core:window:allow-set-resizable",
+    "core:window:allow-set-skip-taskbar",
+    "core:window:allow-set-ignore-cursor-events",
+    "core:window:allow-outer-size",
     "core:event:default",
     "opener:default",
     "notification:default",
     "store:default",
     {
       "identifier": "shell:allow-execute",
-      "allow": [
-        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
-        {"name": "sh", "cmd": "/bin/sh", "args": true}
-      ]
+      "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
     {
       "identifier": "shell:allow-spawn",
-      "allow": [
-        {"name": "binaries/stt-engine", "sidecar": true, "args": true},
-        {"name": "sh", "cmd": "/bin/sh", "args": true}
-      ]
+      "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
     {
       "identifier": "shell:allow-stdin-write",
       "allow": [{"name": "binaries/stt-engine", "sidecar": true, "args": true}]
     },
-    "shell:allow-kill"
+    "shell:allow-kill",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    "clipboard-manager:allow-read-image",
+    "clipboard-manager:allow-write-image",
+    "clipboard-manager:allow-write-html",
+    "clipboard-manager:allow-clear",
+    "global-shortcut:default",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all"
   ]
 }

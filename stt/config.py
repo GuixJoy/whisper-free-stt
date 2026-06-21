@@ -66,6 +66,11 @@ class VADConfig:
     fast_commit: bool = False
     fast_silence_duration_sec: float = 0.5
     fast_detrigger_ratio: float = 0.75
+    # Spectral VAD: multi-feature detection to distinguish speech from noise
+    use_spectral_vad: bool = True
+    spectral_weight: float = 0.4          # 0 = RMS only, 1 = spectral only
+    speech_band_low_hz: int = 300         # Hz
+    speech_band_high_hz: int = 3400       # Hz
 
 
 @dataclass(frozen=True)
@@ -157,12 +162,22 @@ class LLMConfig:
 class ClipboardConfig:
     enabled: bool = False
     wl_copy_path: str = "wl-copy"
+    xclip_path: str = "xclip"
 
 
 @dataclass(frozen=True)
 class TypingConfig:
     enabled: bool = True
     wtype_path: str = "wtype"
+    xdotool_path: str = "xdotool"
+
+
+@dataclass(frozen=True)
+class DiarizationConfig:
+    enabled: bool = False
+    method: str = "resemblyzer"  # "resemblyzer" | "spectral"
+    similarity_threshold: float = 0.65
+    enrollment_chunks: int = 5
 
 
 @dataclass(frozen=True)
@@ -173,6 +188,7 @@ class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
     clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
     typing: TypingConfig = field(default_factory=TypingConfig)
+    diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
     debug: bool = False
     json_mode: bool = False
 

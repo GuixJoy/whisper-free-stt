@@ -1,0 +1,88 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        snow: "#FAF8F5",
+        ink: "#2C2520",
+        alpine: "#3B6B9E",
+        "alpine-deep": "#2A4F73",
+        sunset: "#D4883A",
+        lavender: "#A88CC8",
+        mist: "#EDE9E3",
+        "mist-dark": "#D8D3CC",
+
+        app: {
+          bg: "#FAF8F5",
+          surface: "rgba(255,255,255,0.55)",
+          "surface-solid": "#FFFFFF",
+          "surface-secondary": "#F3F0EB",
+          sidebar: "rgba(255,255,255,0.40)",
+          hover: "rgba(44,37,32,0.04)",
+          "surface-card": "rgba(255,255,255,0.55)",
+          "surface-dark": "#EDE8E1",
+        },
+        text: {
+          primary: "#2C2520",
+          secondary: "#6B6560",
+          muted: "#9C9690",
+          disabled: "#C4BFB8",
+        },
+        border: {
+          DEFAULT: "rgba(44,37,32,0.08)",
+          hover: "rgba(44,37,32,0.14)",
+          accent: "rgba(59,107,158,0.18)",
+        },
+        accent: {
+          DEFAULT: "#3B6B9E",
+          hover: "#2A4F73",
+          glow: "rgba(59,107,158,0.15)",
+          muted: "rgba(59,107,158,0.08)",
+          "muted-border": "rgba(59,107,158,0.20)",
+          light: "#7BA3CC",
+          bright: "#4A80B5",
+          warm: "#3B6B9E",
+        },
+        success: "#3A8A5C",
+        time: "#9C9690",
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        serif: ["Instrument Serif", "Cormorant Garamond", "ui-serif", "serif"],
+      },
+      fontSize: {
+        "page-title": ["32px", { lineHeight: "40px", fontWeight: "600" }],
+        "section-heading": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+        "card-heading": ["18px", { lineHeight: "26px", fontWeight: "600" }],
+        body: ["15px", { lineHeight: "24px", fontWeight: "400" }],
+        small: ["13px", { lineHeight: "20px", fontWeight: "400" }],
+        label: ["12px", { lineHeight: "16px", fontWeight: "600", letterSpacing: "0.04em" }],
+        stat: ["52px", { lineHeight: "1", fontWeight: "700" }],
+        "hero-heading": ["48px", { lineHeight: "56px", fontWeight: "600" }],
+      },
+      borderRadius: {
+        app: "28px",
+        card: "24px",
+        button: "14px",
+        input: "14px",
+        badge: "10px",
+      },
+      spacing: {
+        "sidebar-width": "220px",
+        "insight-width": "270px",
+      },
+      boxShadow: {
+        DEFAULT: "0 1px 2px rgba(44,37,32,0.04)",
+        glass: "0 1px 0 0 rgba(255,255,255,0.70) inset, 0 0 0 1px rgba(255,255,255,0.18) inset, 0 20px 60px -20px rgba(44,37,32,0.18)",
+        float: "0 20px 60px -20px rgba(44,37,32,0.22), 0 8px 24px -8px rgba(44,37,32,0.08)",
+        ambient: "0 0 80px rgba(59,107,158,0.06)",
+        "accent-glow": "0 0 40px rgba(59,107,158,0.08)",
+        "accent-button": "0 1px 3px rgba(59,107,158,0.20), 0 0 20px rgba(59,107,158,0.08)",
+        card: "0 1px 3px rgba(44,37,32,0.04), 0 0 0 1px rgba(44,37,32,0.04)",
+        "card-hover": "0 8px 24px rgba(44,37,32,0.08), 0 0 0 1px rgba(44,37,32,0.06)",
+      },
+    },
+  },
+  plugins: [],
+};

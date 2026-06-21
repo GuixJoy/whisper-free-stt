@@ -21,3 +21,10 @@ Thumbs.db
 venv/
 # Virtual environment
 .vscode/
+# Ignore all node_modules folders everywhere in the project
+node_modules/
+**/node_modules/
+
+# Optional: Ignore npm lock file if you are using pnpm
+package-lock.json
+gui/node_modules 

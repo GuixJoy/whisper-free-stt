@@ -1,16 +1,47 @@
 import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "react";
+import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
-import { createWsApi } from "./api-ws";
 import { createTauriApi } from "./api-tauri";
+import { createWebAudioApi } from "./api-web-audio";
+import { Mic } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
-import MicSelector from "./components/MicSelector";
+import MicButton from "./components/MicButton";
 import ErrorBanner from "./components/ErrorBanner";
-import { type AppError } from "./components/ErrorBanner";
-import HistoryPanel from "./components/HistoryPanel";
+import type { AppError } from "./components/ErrorBanner";
+import HistoryPage from "./components/HistoryPage";
 import SettingsPanel from "./components/SettingsPanel";
+import InsightsPage from "./components/InsightsPage";
+import DictionaryPage from "./components/DictionaryPage";
+import SnippetsPage from "./components/SnippetsPage";
+import ModelsPage from "./components/ModelsPage";
+import { AppShell } from "./layouts/AppShell";
 import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
-import "./App.css";
+import { usePermissions } from "./hooks/usePermissions";
+import Waveform from "./components/Waveform";
+
+const SettingsSchema = z.object({
+  wsPort: z.number().int().min(1).max(65535),
+  asrProfile: z.enum(["auto", "speed", "balanced", "accuracy", "distil", "turbo"]),
+  backend: z.enum(["auto", "whisper_cpp", "faster_whisper"]),
+  model: z.string().max(100),
+  llmMode: z.enum(["cleanup", "off", "bullet_list", "email", "commit_message"]),
+  llmProvider: z.enum(["deepseek", "openrouter"]),
+  llmModel: z.string().max(100),
+  llmFallback: z.string().max(100),
+  deepseekApiKey: z.string().max(200),
+  openrouterApiKey: z.string().max(200),
+  fastCommit: z.boolean(),
+  typing: z.boolean(),
+  clipboard: z.boolean(),
+  debug: z.boolean(),
+  hotwords: z.string().max(200),
+  language: z.string().max(10),
+});
+
+function validateSettings(settings: unknown): settings is RuntimeSettings {
+  return SettingsSchema.safeParse(settings).success;
+}
 
 type RunMode = "ws" | "tauri";
 
@@ -37,6 +68,8 @@ export interface RuntimeSettings {
   typing: boolean;
   clipboard: boolean;
   debug: boolean;
+  hotwords: string;
+  language: string;
 }
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
@@ -54,6 +87,8 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   typing: false,
   clipboard: false,
   debug: false,
+  hotwords: "",
+  language: "",
 };
 
 const LOCAL_STORAGE_KEY = "stt-settings";
@@ -63,7 +98,11 @@ function getInitialSettings(): RuntimeSettings {
   try {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      const parsed = JSON.parse(saved);
+      if (validateSettings(parsed)) {
+        return { ...DEFAULT_SETTINGS, ...parsed };
+      }
+      console.warn("Invalid settings in localStorage, using defaults");
     }
   } catch (e) {
     console.error("Failed to load settings", e);
@@ -84,6 +123,8 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   if (!settings.typing) args.push("--no-type");
   if (settings.clipboard) args.push("--clipboard");
   if (settings.debug) args.push("--debug");
+  if (settings.hotwords.trim()) args.push("--hotwords", settings.hotwords.trim());
+  if (settings.language.trim()) args.push("--language", settings.language.trim());
   return args;
 }
 
@@ -102,19 +143,29 @@ function buildWsCommand(settings: RuntimeSettings): string {
   return `stt ${args.join(" ")}`;
 }
 
-const STATUS_ICON: Record<string, string> = {
-  listening: "🎙",
-  transcribing: "✍",
-  rewriting: "🔄",
-  error: "⚠",
-  idle: "◎",
-};
-
 function detectRunMode(): RunMode {
   if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
     return "tauri";
   }
   return "ws";
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+
+    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (isToday) return time;
+    if (isYesterday) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
+  } catch {
+    return iso;
+  }
 }
 
 function LiveFeedMicMeter() {
@@ -129,8 +180,503 @@ function LiveFeedMicMeter() {
   }, []);
 
   return (
-    <div className="mic-meter">
-      <div ref={fillRef} className="mic-meter-fill" style={{ width: "0%" }} />
+    <div className="flex-1 h-1.5 rounded-full bg-app-surface-secondary overflow-hidden">
+      <div ref={fillRef} className="h-full bg-accent rounded-full transition-[width] duration-75" style={{ width: "0%" }} />
+    </div>
+  );
+}
+
+function SessionStats({ lines }: { lines: TranscriptLine[] }) {
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    const interval = setInterval(() => { setElapsed(Date.now() - startRef.current); }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const totalWords = lines.reduce((sum, l) => {
+    const text = l.processed || l.raw;
+    return sum + (text ? text.split(/\s+/).filter(Boolean).length : 0);
+  }, 0);
+
+  const minutes = Math.max(elapsed / 60000, 0.01);
+  const wpm = Math.round(totalWords / minutes);
+
+  return (
+    <>
+      <span>{wpm} WPM</span>
+      <span>{totalWords} words</span>
+      <span>{Math.round(elapsed / 60000)}m</span>
+    </>
+  );
+}
+
+function FeedView({
+  connected,
+  status,
+  lines,
+  historyItems,
+  historyLoading,
+  hasMoreHistory,
+  onFeedScroll,
+  start,
+  stop,
+  copyLatest,
+  copyLine,
+  clearLines,
+  feedRef,
+  errors,
+  showErrors,
+  setShowErrors,
+  dismissError,
+}: {
+  connected: boolean;
+  status: string;
+  lines: TranscriptLine[];
+  historyItems: TranscriptLine[];
+  historyLoading: boolean;
+  hasMoreHistory: boolean;
+  onFeedScroll: () => void;
+  start: (overrideSettings?: RuntimeSettings) => Promise<void>;
+  stop: () => void;
+  copyLatest: () => void;
+  copyLine: (line: TranscriptLine) => void;
+  clearLines: () => void;
+  feedRef: React.RefObject<HTMLDivElement | null>;
+  errors: AppError[];
+  showErrors: boolean;
+  setShowErrors: (v: boolean | ((s: boolean) => boolean)) => void;
+  dismissError: (id: string) => void;
+}) {
+  const handleToggle = () => {
+    if (connected) {
+      stop();
+    } else {
+      void start();
+    }
+  };
+
+  const statusLabel = (() => {
+    switch (status) {
+      case "listening": return "Listening";
+      case "transcribing": return "Transcribing";
+      case "rewriting": return "Rewriting";
+      case "error": return "Error";
+      default: return "Idle";
+    }
+  })();
+
+  return (
+    <div className="flex h-full">
+      <div className="flex-1 flex flex-col p-6 overflow-hidden">
+        {/* Centered mic area */}
+        <div className="flex flex-col items-center gap-3 mb-4">
+          <MicButton
+            status={status}
+            connected={connected}
+            onToggle={handleToggle}
+          />
+          <p className="text-[13px] text-text-muted">
+            {statusLabel} &middot; {lines.length} lines
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
+              onClick={() => void copyLatest()}
+              disabled={lines.length === 0}
+            >
+              Copy
+            </button>
+            <button
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
+              onClick={clearLines}
+              disabled={lines.length === 0}
+            >
+              Clear
+            </button>
+            {errors.filter((e) => !e.dismissed).length > 0 && (
+              <button
+                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors"
+                onClick={() => setShowErrors((s) => !s)}
+              >
+                Errors ({errors.filter((e) => !e.dismissed).length})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Feed */}
+        <div
+          className="flex-1 rounded-[28px] border overflow-hidden flex flex-col"
+          style={{ backgroundColor: "rgba(255,255,255,0.45)", borderColor: "rgba(44,37,32,0.06)" }}
+        >
+          {/* Feed Header */}
+          <div className="flex items-center gap-3 px-4 py-2.5" style={{ borderBottom: "1px solid rgba(44,37,32,0.08)" }}>
+            <LiveFeedMicMeter />
+            {connected && <Waveform width={120} height={24} barCount={16} />}
+            <div className="flex items-center gap-2 text-[12px]">
+              <span className={connected ? "text-green-400" : "text-text-muted"}>
+                {connected ? "● Live" : "○ Idle"}
+              </span>
+              <span className="text-text-muted">{lines.length + historyItems.length} lines</span>
+            </div>
+            {connected && (
+              <div className="ml-auto flex items-center gap-4 text-[12px] text-text-muted">
+                <SessionStats lines={lines} />
+              </div>
+            )}
+          </div>
+
+          {/* Transcript Lines */}
+          <div className="flex-1 overflow-auto" ref={feedRef} onScroll={onFeedScroll}>
+            {lines.length === 0 && historyItems.length === 0 && !historyLoading ? (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <Mic size={72} strokeWidth={1} className="text-[rgba(27,79,130,0.8)] mb-4" />
+                <p className="text-text-primary text-[15px] mb-1">Start speaking to begin transcription</p>
+                <p className="text-text-muted text-[13px]">
+                  Press <kbd className="px-1.5 py-0.5 bg-border border border-border-hover rounded text-text-muted text-[11px]">Space</kbd> to start or stop
+                </p>
+              </div>
+            ) : (
+              <>
+                {[...lines].reverse().map((line) => (
+                  <div
+                    key={`live-${line.id}`}
+                    className="group flex items-center justify-between px-4 hover:bg-border transition-colors"
+                    style={{ paddingTop: "16px", paddingBottom: "16px" }}
+                  >
+                    <div className="flex items-baseline gap-3 min-w-0">
+                      <span className="text-[13px] text-text-muted shrink-0 w-[80px]">
+                        {new Date(line.createdAt).toLocaleTimeString()}
+                      </span>
+                      <span className="text-[16px] leading-[1.7] text-text-primary truncate">
+                        {line.processed || line.raw}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
+                        onClick={() => void copyLine(line)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {historyItems
+                  .filter((item) => !lines.some((l) => (l.processed || l.raw) === (item.processed || item.raw) && Math.abs(new Date(l.createdAt).getTime() - new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).getTime()) < 5000))
+                  .map((item) => (
+                  <div
+                    key={`hist-${item.id}`}
+                    className="group flex items-center justify-between px-4 hover:bg-border transition-colors border-t border-border"
+                    style={{ paddingTop: "16px", paddingBottom: "16px" }}
+                  >
+                    <div className="flex items-baseline gap-3 min-w-0">
+                      <span className="text-[13px] text-text-muted shrink-0 w-[140px]">
+                        {formatTimestamp(item.createdAt)}
+                      </span>
+                      <span className="text-[16px] leading-[1.7] text-text-primary/70 whitespace-pre-wrap break-words">
+                        {item.processed || item.raw}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
+                        onClick={() => void copyLine(item)}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {historyLoading && (
+                  <div className="flex items-center justify-center py-6 text-[13px] text-text-muted">
+                    Loading history...
+                  </div>
+                )}
+                {!hasMoreHistory && historyItems.length > 0 && (
+                  <div className="flex items-center justify-center py-6 text-[13px] text-text-muted">
+                    No more history
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <ErrorBanner
+        visible={showErrors}
+        onClose={() => setShowErrors(false)}
+        errors={errors}
+        onDismiss={dismissError}
+        onRetry={(id) => {
+          dismissError(id);
+          void start();
+        }}
+      />
+    </div>
+  );
+}
+
+function ConfigView({
+  mode,
+  setMode,
+  settings,
+  setSettings,
+  commandPreview,
+  permissions,
+  requestClipboard,
+  requestMic,
+  isCapturingMic,
+  stopMic,
+}: {
+  mode: RunMode;
+  setMode: (m: RunMode) => void;
+  settings: RuntimeSettings;
+  setSettings: React.Dispatch<React.SetStateAction<RuntimeSettings>>;
+  commandPreview: string;
+  permissions: { clipboard: string; microphone: string };
+  requestClipboard: () => Promise<boolean>;
+  requestMic: () => Promise<boolean>;
+  isCapturingMic: boolean;
+  stopMic: () => void;
+}) {
+  const permissionStatusColor = (status: string) => {
+    switch (status) {
+      case "granted": return "text-green-400";
+      case "denied": return "text-red-400";
+      case "prompt": return "text-yellow-400";
+      default: return "text-text-muted";
+    }
+  };
+
+  const permissionStatusIcon = (status: string) => {
+    switch (status) {
+      case "granted": return "✓";
+      case "denied": return "✗";
+      case "prompt": return "?";
+      default: return "—";
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col p-6 overflow-auto">
+      <div className="bg-app-surface rounded-card border border-border p-5 space-y-5">
+        {/* Connection */}
+        <div>
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
+            <span>📡</span> Connection
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-[13px] text-text-secondary w-20 shrink-0">Mode</label>
+              <select
+                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                value={mode}
+                onChange={(e) => setMode(e.target.value as RunMode)}
+              >
+                <option value="ws">WebSocket (external stt)</option>
+                <option value="tauri">Tauri local process</option>
+              </select>
+            </div>
+            {mode === "ws" && (
+              <div className="flex items-center gap-3">
+                <label className="text-[13px] text-text-secondary w-20 shrink-0">WS Port</label>
+                <input
+                  className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                  type="number"
+                  value={settings.wsPort}
+                  onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Permissions */}
+        <div>
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
+            <span>🔐</span> Permissions
+          </div>
+          <div className="space-y-3">
+            {/* Clipboard Permission */}
+            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px]">📋</span>
+                <div>
+                  <div className="text-[13px] font-medium text-text-primary">Clipboard Access</div>
+                  <div className="text-[11px] text-text-muted">Copy transcribed text to clipboard</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.clipboard)}`}>
+                  {permissionStatusIcon(permissions.clipboard)} {permissions.clipboard}
+                </span>
+                {permissions.clipboard !== "granted" && (
+                  <button
+                    onClick={() => void requestClipboard()}
+                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
+                  >
+                    Grant
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Microphone Permission */}
+            <div className="flex items-center justify-between rounded-card bg-app-surface-secondary border border-border px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="text-[14px]">🎤</span>
+                <div>
+                  <div className="text-[13px] font-medium text-text-primary">Microphone Access</div>
+                  <div className="text-[11px] text-text-muted">Capture audio for speech recognition</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[12px] font-medium ${permissionStatusColor(permissions.microphone)}`}>
+                  {permissionStatusIcon(permissions.microphone)} {permissions.microphone}
+                </span>
+                {permissions.microphone !== "granted" ? (
+                  <button
+                    onClick={() => void requestMic()}
+                    className="h-7 px-3 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors"
+                  >
+                    Grant
+                  </button>
+                ) : (
+                  <button
+                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
+                    className={`h-7 px-3 rounded-button text-[12px] font-medium transition-colors ${
+                      isCapturingMic
+                        ? "bg-red-900/40 border border-red-500/30 text-red-400 hover:bg-red-900/60"
+                        : "bg-app-surface border border-border text-text-primary hover:bg-app-hover"
+                    }`}
+                  >
+                    {isCapturingMic ? "Stop Test" : "Test Mic"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Speech */}
+        <div>
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
+            <span>🎤</span> Speech
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-[13px] text-text-secondary w-20 shrink-0">ASR Profile</label>
+              <select
+                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                value={settings.asrProfile}
+                onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}
+              >
+                <option value="auto">auto</option>
+                <option value="speed">speed</option>
+                <option value="balanced">balanced</option>
+                <option value="accuracy">accuracy</option>
+                <option value="distil">distil</option>
+                <option value="turbo">turbo</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-[13px] text-text-secondary w-20 shrink-0">Backend</label>
+              <select
+                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                value={settings.backend}
+                onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}
+              >
+                <option value="auto">auto</option>
+                <option value="whisper_cpp">whisper.cpp</option>
+                <option value="faster_whisper">faster-whisper</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-[13px] text-text-secondary w-20 shrink-0">Model</label>
+              <input
+                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent"
+                value={settings.model}
+                onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                placeholder="e.g. large-v3-turbo"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Output */}
+        <div>
+          <div className="flex items-center gap-2 text-[14px] font-semibold text-text-primary mb-3">
+            <span>⚙</span> Output
+          </div>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <label className="text-[13px] text-text-secondary w-20 shrink-0">LLM Mode</label>
+              <select
+                className="flex-1 h-9 px-3 bg-app-surface-secondary border border-border rounded-input text-[14px] text-text-primary focus:outline-none focus:border-accent"
+                value={settings.llmMode}
+                onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}
+              >
+                <option value="cleanup">cleanup</option>
+                <option value="off">off</option>
+                <option value="bullet_list">bullet list</option>
+                <option value="email">email</option>
+                <option value="commit_message">commit message</option>
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              {([
+                { key: "fastCommit" as const, label: "fast commit" },
+                { key: "typing" as const, label: "type to focused input" },
+                { key: "clipboard" as const, label: "clipboard" },
+                { key: "debug" as const, label: "debug" },
+              ]).map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-[13px] text-text-secondary cursor-pointer select-none">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={settings[key]}
+                    onClick={() => setSettings((s) => ({ ...s, [key]: !s[key] }))}
+                    className={`relative w-9 h-5 rounded-full border transition-colors ${
+                      settings[key]
+                        ? "bg-accent border-accent"
+                        : "bg-app-surface-secondary border-border"
+                    }`}
+                  >
+                    <span className={`absolute top-0.5 w-4 h-4 rounded-full transition-transform ${
+                      settings[key]
+                        ? "left-[18px] bg-white"
+                        : "left-0.5 bg-text-secondary"
+                    }`} />
+                  </button>
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-border" />
+
+        {/* Command preview */}
+        <div className="bg-app-surface-secondary rounded-card border border-border p-3">
+          <div className="flex items-center justify-between text-[11px] text-text-muted mb-1.5">
+            <span>Command preview</span>
+            <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
+          </div>
+          <code className="text-[13px] text-accent-light font-mono">{commandPreview}</code>
+        </div>
+      </div>
     </div>
   );
 }
@@ -142,13 +688,18 @@ function App() {
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
-  const [showControls, setShowControls] = useState(true);
-  const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
-  const [view, setView] = useState<AppView>("onboarding");
+  const [view, setView] = useState<AppView>(
+    localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
+  );
   const [errors, setErrors] = useState<AppError[]>([]);
   const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
+  const [activeItem, setActiveItem] = useState("Home");
+  const [historyItems, setHistoryItems] = useState<TranscriptLine[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
@@ -158,6 +709,7 @@ function App() {
   const startRef = useRef<(overrideSettings?: RuntimeSettings) => Promise<void>>(async () => {});
   const stopRef = useRef<() => void>(() => {});
   connectedRef.current = connected;
+  const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
   useEffect(() => {
     if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
@@ -165,7 +717,63 @@ function App() {
     }
   }, []);
 
-  // --- Fix viewport height for Tauri webview (handles maximize/fullscreen) ---
+  // Load history from backend
+  const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
+    setHistoryLoading(true);
+    try {
+      if (mode === "tauri") {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const rows = await invoke<Array<{ id: number; raw_text: string; processed_text: string; created_at: string; mode: string; language: string; duration_sec: number }>>("get_history", { limit: page * pageSize });
+        const items: TranscriptLine[] = rows.map((r) => ({
+          id: r.id,
+          raw: r.raw_text,
+          processed: r.processed_text,
+          status: "done",
+          createdAt: r.created_at,
+        }));
+        setHistoryItems(items);
+        setHasMoreHistory(rows.length >= page * pageSize);
+      } else {
+        // Use REST API
+        const resp = await fetch(`http://127.0.0.1:${settings.wsPort}/api/history?limit=${page * pageSize}`);
+        if (resp.ok) {
+          const rows = await resp.json();
+          const items: TranscriptLine[] = rows.map((r: any) => ({
+            id: r.id,
+            raw: r.raw_text,
+            processed: r.processed_text,
+            status: "done",
+            createdAt: r.created_at,
+          }));
+          setHistoryItems(items);
+          setHasMoreHistory(rows.length >= page * pageSize);
+        }
+      }
+    } catch {
+      setHasMoreHistory(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [mode, settings.wsPort]);
+
+  // Load history on mount
+  useEffect(() => {
+    if (view === "main") {
+      fetchHistory(1);
+    }
+  }, [view, fetchHistory]);
+
+  // Infinite scroll: load more when scrolling to bottom
+  const handleFeedScroll = useCallback(() => {
+    const el = feedRef.current;
+    if (!el || historyLoading || !hasMoreHistory) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
+      const nextPage = historyPage + 1;
+      setHistoryPage(nextPage);
+      fetchHistory(nextPage);
+    }
+  }, [historyLoading, hasMoreHistory, historyPage, fetchHistory]);
+
   useEffect(() => {
     const setVH = () => {
       const vh = window.innerHeight * 0.01;
@@ -184,10 +792,9 @@ function App() {
 
   useEffect(() => {
     if (!feedRef.current) return;
-    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    feedRef.current.scrollTop = 0;
   }, [lines]);
 
-  // --- Update window title with status ---
   useEffect(() => {
     (async () => {
       try {
@@ -201,7 +808,11 @@ function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+      if (validateSettings(settings)) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(settings));
+      } else {
+        console.error("Invalid settings, not saving to localStorage");
+      }
     } catch (e) {
       console.error("Failed to save settings", e);
     }
@@ -250,6 +861,13 @@ function App() {
     }
     if (event.type === "mic") {
       micLevelEmitter.emit(event.level);
+      // Forward mic level to widget
+      (async () => {
+        try {
+          const { emit } = await import("@tauri-apps/api/event");
+          await emit("widget-mic-level", event.level);
+        } catch { /* not in Tauri */ }
+      })();
       return;
     }
     if (event.type === "error") {
@@ -282,13 +900,24 @@ function App() {
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
     }
+    if (event.type === "llm_partial") {
+      const id = event.utterance_id;
+      if (!id) return;
+      setLines((prev) => prev.map((line) =>
+        line.id === id ? { ...line, processed: event.text, status: "rewriting" } : line
+      ));
+    }
+  };
+
+  const dismissErrorsOfCategory = (category: AppError["category"]) => {
+    setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
   };
 
   const start = async (overrideSettings?: RuntimeSettings) => {
     if (connected || isStartingRef.current) return;
     const activeSettings = overrideSettings ?? settings;
     isStartingRef.current = true;
-    const api: STTApi = mode === "ws" ? createWsApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
+    const api: STTApi = mode === "ws" ? createWebAudioApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
     api.onEvent(applyEvent);
     try {
       await api.start();
@@ -297,17 +926,13 @@ function App() {
       setStatus("listening");
       dismissErrorsOfCategory("connection");
     } catch (error) {
-      try { api.stop(); } catch (_) { /* best effort */ }
+      try { api.stop(); } catch { /* best effort */ }
       const msg = error instanceof Error ? error.message : "Failed to start runtime";
       setToast(msg);
       addError("connection", msg, true, "Check if stt-engine is installed");
     } finally {
       isStartingRef.current = false;
     }
-  };
-
-  const dismissErrorsOfCategory = (category: AppError["category"]) => {
-    setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
   };
 
   const stop = () => {
@@ -323,9 +948,44 @@ function App() {
 
   useEffect(() => () => runtimeRef.current?.stop(), []);
 
-  // --- Listen for tray menu actions (start/stop) ---
+  // --- Widget: emit status to widget window ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const { emit } = await import("@tauri-apps/api/event");
+        await emit("widget-status", status);
+      } catch { /* not in Tauri */ }
+    })();
+  }, [status]);
+
+  // --- Widget: listen for toggle and show-main events ---
+  useEffect(() => {
+    let unlistenToggle: (() => void) | undefined;
+    let unlistenShowMain: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlistenToggle = await listen("widget-toggle", () => {
+          if (connectedRef.current) stopRef.current();
+          else void startRef.current();
+        });
+        unlistenShowMain = await listen("widget-show-main", async () => {
+          try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            await win.unminimize();
+            await win.show();
+            await win.setFocus();
+          } catch { /* not in Tauri */ }
+        });
+      } catch { /* not in Tauri */ }
+    })();
+    return () => { unlistenToggle?.(); unlistenShowMain?.(); };
+  }, []);
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenShortcut: (() => void) | undefined;
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -337,8 +997,18 @@ function App() {
           }
         });
       } catch { /* not in Tauri */ }
+      // Register global shortcut Super+Space
+      try {
+        const { register } = await import("@tauri-apps/plugin-global-shortcut");
+        await register("Super+Space", (event) => {
+          if (event.state === "Pressed") {
+            if (connectedRef.current) stopRef.current();
+            else void startRef.current();
+          }
+        });
+      } catch { /* not in Tauri or shortcut blocked */ }
     })();
-    return () => { unlisten?.(); };
+    return () => { unlisten?.(); unlistenShortcut?.(); };
   }, []);
 
   const clearLines = () => setLines([]);
@@ -367,16 +1037,8 @@ function App() {
     await copyText(line.processed || line.raw, "Copied!");
   };
 
-  const STATUS_CLASS: Record<string, string> = {
-    error: "status-error",
-    rewriting: "status-rewriting",
-    transcribing: "status-transcribing",
-    listening: "status-listening",
-  };
-  const statusClass = STATUS_CLASS[status] ?? "status-idle";
-  const statusIcon = STATUS_ICON[status] ?? "◎";
-
   const handleOnboardingComplete = () => {
+    localStorage.setItem("onboarding_completed", "true");
     setView("main");
   };
 
@@ -395,245 +1057,95 @@ function App() {
     );
   }
 
+  const handleNavigate = (item: string) => {
+    setActiveItem(item);
+    if (item === "Settings") {
+      setShowSettings(true);
+    }
+  };
+
+  const content = (() => {
+    switch (activeItem) {
+      case "Config":
+        return (
+          <ConfigView
+            mode={mode}
+            setMode={setMode}
+            settings={settings}
+            setSettings={setSettings}
+            commandPreview={commandPreview}
+            permissions={permissions}
+            requestClipboard={requestClipboard}
+            requestMic={requestMic}
+            isCapturingMic={isCapturingMic}
+            stopMic={stopMic}
+          />
+        );
+      case "Insights":
+        return <InsightsPage />;
+      case "Dictionary":
+        return <DictionaryPage />;
+      case "Snippets":
+        return <SnippetsPage />;
+      case "History":
+        return <HistoryPage onBack={() => setActiveItem("Home")} />;
+      case "Models":
+        return <ModelsPage />;
+      case "Settings":
+        return null;
+      default:
+        return (
+          <FeedView
+            connected={connected}
+            status={status}
+            lines={lines}
+            historyItems={historyItems}
+            historyLoading={historyLoading}
+            hasMoreHistory={hasMoreHistory}
+            onFeedScroll={handleFeedScroll}
+            start={start}
+            stop={stop}
+            copyLatest={copyLatest}
+            copyLine={copyLine}
+            clearLines={clearLines}
+            feedRef={feedRef}
+            errors={errors}
+            showErrors={showErrors}
+            setShowErrors={setShowErrors}
+            dismissError={dismissError}
+          />
+        );
+    }
+  })();
+
   return (
     <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
-      <div className="paper-shell">
-        <div className="doodle-blob blob-1" aria-hidden="true" />
-        <div className="doodle-blob blob-2" aria-hidden="true" />
-        <div className="doodle-blob blob-3" aria-hidden="true" />
+      <AppShell activeItem={activeItem} onNavigate={handleNavigate}>
+        {content}
+      </AppShell>
 
-        <header className="app-header">
-          <div className="header-brand">
-            <span className="brand-icon">🎙</span>
-            <h1>STT Feed</h1>
-          </div>
-          <div className="header-right">
-            <MicSelector
-              selectedIndex={null}
-              onSelect={() => {}}
-              onTest={() => {}}
-              compact
-            />
-            <span className={`status-badge ${statusClass}`}>
-              <span className="status-icon">{statusIcon}</span>
-              {status}
-            </span>
-            <button className="sketch-btn btn-sm" onClick={() => setShowControls((s) => !s)}>
-              {showControls ? "⟵ Hide" : "☰ Controls"}
-            </button>
-            <button className="sketch-btn btn-sm" onClick={() => setShowHistory(true)}>
-              📜 History
-            </button>
-            <button className="sketch-btn btn-sm" onClick={() => setShowSettings(true)}>
-              ⚙ Settings
-            </button>
-            {errors.filter((e) => !e.dismissed).length > 0 && (
-              <button
-                className="sketch-btn btn-sm"
-                onClick={() => setShowErrors((s) => !s)}
-                style={{
-                  background: "var(--w-rose)",
-                  borderColor: "var(--v-rose)",
-                  color: "var(--v-rose)",
-                }}
-              >
-                ⚠️ Errors ({errors.filter((e) => !e.dismissed).length})
-              </button>
-            )}
-          </div>
-        </header>
-
-        <main className="canvas-layout">
-          {showControls && (
-            <aside className="controls-panel">
-              <div className="ctrl-section">
-                <div className="ctrl-section-header"><span>📡</span> Connection</div>
-                <div className="controls-row">
-                  <label>Mode</label>
-                  <select className="sketch-input" value={mode} onChange={(e) => setMode(e.target.value as RunMode)}>
-                    <option value="ws">WebSocket (external stt)</option>
-                    <option value="tauri">Tauri local process</option>
-                  </select>
-                </div>
-                {mode === "ws" && (
-                  <div className="controls-row">
-                    <label>WS Port</label>
-                    <input
-                      className="sketch-input"
-                      type="number"
-                      value={settings.wsPort}
-                      onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="ctrl-section">
-                <div className="ctrl-section-header"><span>🎤</span> Speech</div>
-                <div className="controls-row">
-                  <label>ASR Profile</label>
-                  <select className="sketch-input" value={settings.asrProfile} onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}>
-                    <option value="auto">auto</option>
-                    <option value="speed">speed</option>
-                    <option value="balanced">balanced</option>
-                    <option value="accuracy">accuracy</option>
-                    <option value="distil">distil</option>
-                    <option value="turbo">turbo</option>
-                  </select>
-                </div>
-                <div className="controls-row">
-                  <label>Backend</label>
-                  <select className="sketch-input" value={settings.backend} onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}>
-                    <option value="auto">auto</option>
-                    <option value="whisper_cpp">whisper.cpp</option>
-                    <option value="faster_whisper">faster-whisper</option>
-                  </select>
-                </div>
-                <div className="controls-row">
-                  <label>Model override</label>
-                  <input
-                    className="sketch-input"
-                    value={settings.model}
-                    onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-                    placeholder="e.g. large-v3-turbo"
-                  />
-                </div>
-              </div>
-
-              <div className="ctrl-section">
-                <div className="ctrl-section-header"><span>⚙</span> Output</div>
-                <div className="controls-row">
-                  <label>LLM Mode</label>
-                  <select className="sketch-input" value={settings.llmMode} onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}>
-                    <option value="cleanup">cleanup</option>
-                    <option value="off">off</option>
-                    <option value="bullet_list">bullet list</option>
-                    <option value="email">email</option>
-                    <option value="commit_message">commit message</option>
-                  </select>
-                </div>
-                <div className="controls-checks">
-                  <label className="toggle-label">
-                    <span className="toggle-wrap">
-                      <input type="checkbox" checked={settings.fastCommit} onChange={(e) => setSettings((s) => ({ ...s, fastCommit: e.target.checked }))} />
-                      <span className="toggle-track" />
-                    </span>
-                    fast commit
-                  </label>
-                  <label className="toggle-label">
-                    <span className="toggle-wrap">
-                      <input type="checkbox" checked={settings.typing} onChange={(e) => setSettings((s) => ({ ...s, typing: e.target.checked }))} />
-                      <span className="toggle-track" />
-                    </span>
-                    type to focused input
-                  </label>
-                  <label className="toggle-label">
-                    <span className="toggle-wrap">
-                      <input type="checkbox" checked={settings.clipboard} onChange={(e) => setSettings((s) => ({ ...s, clipboard: e.target.checked }))} />
-                      <span className="toggle-track" />
-                    </span>
-                    clipboard
-                  </label>
-                  <label className="toggle-label">
-                    <span className="toggle-wrap">
-                      <input type="checkbox" checked={settings.debug} onChange={(e) => setSettings((s) => ({ ...s, debug: e.target.checked }))} />
-                      <span className="toggle-track" />
-                    </span>
-                    debug
-                  </label>
-                </div>
-              </div>
-
-              <div className="controls-actions">
-                {!connected ? (
-                  <button className="sketch-btn btn-start" onClick={() => void start()}>▶ Start</button>
-                ) : (
-                  <button className="sketch-btn btn-stop" onClick={stop}>■ Stop</button>
-                )}
-                <button className="sketch-btn btn-copy" onClick={() => void copyLatest()} disabled={lines.length === 0}>
-                  📋 Copy last
-                </button>
-                <button className="sketch-btn btn-clear" onClick={clearLines} disabled={lines.length === 0}>
-                  🗑 Clear
-                </button>
-              </div>
-
-              <p className="shortcut-hint">tip: press <kbd>Space</kbd> to start / stop</p>
-
-              <div className="command-preview">
-                <div className="transcript-meta">
-                  <span>Command preview</span>
-                  <span>{mode === "ws" ? "restart backend to apply" : "applies on next start"}</span>
-                </div>
-                <code>{commandPreview}</code>
-              </div>
-            </aside>
-          )}
-
-          <section className="feed-board">
-            <div className="feed-top-bar">
-              <LiveFeedMicMeter />
-              <div className="hud">
-                <div className={`note-chip ${connected ? "chip-connected" : "chip-disconnected"}`}>
-                  {connected ? "● live" : "○ off"}
-                </div>
-                <div className="note-chip">{lines.length} lines</div>
-              </div>
-            </div>
-
-            <div className="line-feed" ref={feedRef}>
-              {lines.length === 0 ? (
-                <div className="empty-feed">
-                  <div className="empty-icon">🎙</div>
-                  <p>Listening output will appear here…</p>
-                  <p className="empty-hint">Press <kbd>Space</kbd> or click <strong>Start</strong> to begin</p>
-                </div>
-              ) : (
-                lines.map((line) => (
-                  <div key={line.id} className={`feed-line feed-line-${line.status}`}>
-                    <div className="feed-line-inner">
-                      <span className="feed-time">{new Date(line.createdAt).toLocaleTimeString()}</span>
-                      <span className="feed-text">{line.processed || line.raw}</span>
-                    </div>
-                    <div className="feed-line-meta">
-                      <span className={`feed-status-dot dot-${line.status}`} title={line.status} />
-                      <button className="line-copy-btn" onClick={() => void copyLine(line)} title="Copy line">📋</button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <ErrorBanner
-            visible={showErrors}
-            onClose={() => setShowErrors(false)}
-            errors={errors}
-            onDismiss={dismissError}
-            onRetry={(id) => {
-              dismissError(id);
-              void start();
-            }}
-          />
-        </main>
-
-        {toast && <div className="toast-msg">{toast}</div>}
-        <HistoryPanel visible={showHistory} onClose={() => setShowHistory(false)} />
-        <SettingsPanel
-          visible={showSettings}
-          settings={settings}
-          onSave={async (s) => {
-            setSettings(s);
-            if (connectedRef.current) {
-              stopRef.current();
-              setTimeout(() => {
-                void startRef.current(s);
-              }, 200);
-            }
-          }}
-          onClose={() => setShowSettings(false)}
-        />
-      </div>
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-app-surface border border-border rounded-card text-[14px] text-text-primary shadow-lg animate-in fade-in slide-in-from-bottom-2">
+          {toast}
+        </div>
+      )}
+      <SettingsPanel
+        visible={showSettings}
+        settings={settings}
+        onSave={async (s) => {
+          setSettings(s);
+          if (connectedRef.current) {
+            stopRef.current();
+            setTimeout(() => {
+              void startRef.current(s);
+            }, 200);
+          }
+        }}
+        onClose={() => {
+          setShowSettings(false);
+          setActiveItem("Home");
+        }}
+      />
     </AppStateContext.Provider>
   );
 }

@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import asyncio as _asyncio
 import json as _json
+import os
+import re
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -16,10 +19,18 @@ from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
+from stt.log import get_logger
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
+
+logger = get_logger(__name__)
 from stt.audio_capture import mic_stream, find_default_microphone, find_best_microphone
-from stt.vad import compute_rms, StreamingEndpointDetector
+from stt.speaker import SpeakerVerifier
+from stt.vad import (
+    compute_rms, StreamingEndpointDetector,
+    compute_spectral_centroid, compute_spectral_flux,
+    compute_zero_crossing_rate, compute_band_energy_ratio,
+)
 from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite, rewrite_stream, _clean_response
 from stt.clipboard import copy_to_clipboard
@@ -48,12 +59,14 @@ class RunHooks:
 # ---------------------------------------------------------------------------
 
 def _echo(*args, **kwargs) -> None:
-    print(*args, **kwargs, flush=True)
+    msg = " ".join(str(a) for a in args)
+    logger.info(msg)
 
 
 def _debug(config: AppConfig, *args, **kwargs) -> None:
     if config.debug:
-        print("[debug]", *args, **kwargs, flush=True)
+        msg = " ".join(str(a) for a in args)
+        logger.debug(msg)
 
 
 # WebSocket broadcast (populated when --ws-port is set)
@@ -78,12 +91,39 @@ def _get_ws_loop():
 
 
 def _json_emit(config: AppConfig, event: dict) -> None:
-    """Emit a JSON event to stdout and/or WebSocket clients."""
+    """Emit a JSON event to stdout, WebSocket clients, Socket.IO, and kakashi logger."""
     payload = _json.dumps(event)
+    # Log every event via kakashi
+    event_type = event.get("type", "event")
+    if event_type == "mic":
+        logger.debug("mic_level", level=event.get("level", 0))
+    elif event_type == "state":
+        logger.info("state_change", state=event.get("state"), utterance_id=event.get("utterance_id"))
+    elif event_type == "raw":
+        logger.info("transcription_raw", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "processed":
+        logger.info("transcription_processed", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "llm_partial":
+        logger.debug("llm_partial", text=event.get("text", "")[:100], utterance_id=event.get("utterance_id"))
+    elif event_type == "error":
+        logger.error("error", message=event.get("message"), utterance_id=event.get("utterance_id"))
+    elif event_type == "dropped":
+        logger.warning("dropped", reason=event.get("reason"), utterance_id=event.get("utterance_id"))
+    else:
+        logger.debug("event", type=event_type, payload=payload[:200])
+    # Print to stdout for frontend consumption
     if config.json_mode:
         print(payload, flush=True)
+    # Try legacy WebSocket broadcast
     if _ws_clients and _ws_loop and _ws_loop.is_running():
         _asyncio.run_coroutine_threadsafe(_ws_broadcast(payload), _ws_loop)
+    # Try Socket.IO emit via server module
+    try:
+        from stt.server import emit_event
+        event_type = event.get("type", "event")
+        emit_event(event_type, event)
+    except ImportError:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -108,9 +148,18 @@ def _normalize_text(text: str) -> str:
 # WebSocket server (for browser UI integration)
 # ---------------------------------------------------------------------------
 
+# Audio queue: browser streams mic audio here for processing
+_ws_audio_queue: deque[np.ndarray] = deque()
+_ws_audio_ready = threading.Event()
+
+
 def start_ws_server(port: int = 8765) -> None:
-    """Start a WebSocket server in a daemon thread.  Connected clients receive
-    all JSON events emitted by the orchestrator."""
+    """Start a WebSocket server in a daemon thread.
+
+    - Clients receive all JSON events emitted by the orchestrator.
+    - Clients can send binary audio data (float32 PCM, mono, 16kHz) via WebSocket.
+      The server feeds it into the audio queue for processing.
+    """
     global _ws_loop
     import asyncio as _asyncio
     import websockets as _ws
@@ -118,7 +167,56 @@ def start_ws_server(port: int = 8765) -> None:
     async def _handler(websocket):
         _ws_clients.append(websocket)
         try:
-            await websocket.wait_closed()
+            async for message in websocket:
+                if isinstance(message, bytes):
+                    # Binary audio from browser: float32 PCM, mono, 16kHz
+                    audio = np.frombuffer(message, dtype=np.float32)
+                    if len(audio) > 0:
+                        _ws_audio_queue.append(audio)
+                        _ws_audio_ready.set()
+                elif isinstance(message, str):
+                    # JSON control messages from browser
+                    try:
+                        import json as _json
+                        req = _json.loads(message)
+                        if req.get("type") == "get_history":
+                            limit = req.get("limit", 100)
+                            rows = get_store().get_recent(limit)
+                            resp = _json.dumps({"type": "history", "rows": rows})
+                            await websocket.send(resp)
+                        elif req.get("type") == "get_insights":
+                            data = get_store().get_insights()
+                            resp = _json.dumps({"type": "insights", "data": data})
+                            await websocket.send(resp)
+                        elif req.get("type") == "search_history":
+                            query = req.get("query", "")
+                            rows = get_store().search_history(query)
+                            resp = _json.dumps({"type": "history", "rows": rows})
+                            await websocket.send(resp)
+                        elif req.get("type") == "export_history":
+                            csv = get_store().export_csv()
+                            resp = _json.dumps({"type": "export", "csv": csv})
+                            await websocket.send(resp)
+                        elif req.get("type") == "export_text":
+                            text = get_store().export_text()
+                            resp = _json.dumps({"type": "export", "text": text})
+                            await websocket.send(resp)
+                        elif req.get("type") == "toggle_favorite":
+                            entry_id = req.get("id")
+                            if entry_id:
+                                new_state = get_store().toggle_favorite(entry_id)
+                                resp = _json.dumps({"type": "favorited", "id": entry_id, "favorite": new_state})
+                                await websocket.send(resp)
+                        elif req.get("type") == "delete_entry":
+                            entry_id = req.get("id")
+                            if entry_id:
+                                get_store().delete_entry(entry_id)
+                                resp = _json.dumps({"type": "deleted", "id": entry_id})
+                                await websocket.send(resp)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         finally:
             if websocket in _ws_clients:
                 _ws_clients.remove(websocket)
@@ -134,7 +232,7 @@ def start_ws_server(port: int = 8765) -> None:
         _ws_loop.run_until_complete(_serve())
 
     threading.Thread(target=_run, daemon=True).start()
-    print(f"[ws] listening on ws://127.0.0.1:{port}", flush=True)
+    logger.info("listening on ws://127.0.0.1:%s", port)
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +366,84 @@ class _RingBuffer:
 
 
 # ---------------------------------------------------------------------------
+# System resource collection
+# ---------------------------------------------------------------------------
+
+_CLK_TCK: int | None = None
+
+def _collect_system_stats() -> dict[str, str]:
+    """Collect CPU, memory, and GPU usage at end of run.
+
+    Uses /proc for CPU/memory (zero deps) and nvidia-smi for GPU.
+    Returns dict of label → formatted string, or empty dict on failure.
+    """
+    stats: dict[str, str] = {}
+
+    try:
+        # --- CPU usage (process-level, average over lifetime) ---
+        with open("/proc/self/stat") as f:
+            parts = f.read().split()
+        utime = int(parts[13])
+        stime = int(parts[14])
+        cutime = int(parts[15])
+        cstime = int(parts[16])
+        total_ticks = utime + stime + cutime + cstime
+
+        global _CLK_TCK
+        if _CLK_TCK is None:
+            _CLK_TCK = int(os.sysconf(os.sysconf_names["SC_CLK_TCK"]))
+        cpu_seconds = total_ticks / _CLK_TCK
+
+        with open("/proc/uptime") as f:
+            uptime_seconds = float(f.read().split()[0])
+
+        with open("/proc/self/status") as f:
+            status = f.read()
+
+        # Process start time from /proc/self/stat (field 22, 0-indexed 21)
+        start_ticks = int(parts[21])
+        elapsed_seconds = uptime_seconds - (start_ticks / _CLK_TCK)
+
+        if elapsed_seconds > 0:
+            cpu_pct = 100.0 * cpu_seconds / elapsed_seconds
+            stats["cpu"] = f"{cpu_pct:.1f}% avg ({cpu_seconds:.1f}s of {elapsed_seconds:.0f}s wall)"
+
+        # --- Memory (VmRSS) ---
+        m = re.search(r"VmRSS:\s+(\d+)\s+kB", status)
+        if m:
+            rss_mb = int(m.group(1)) / 1024
+            stats["memory"] = f"{rss_mb:.0f} MB RSS"
+
+        # --- GPU via nvidia-smi ---
+        try:
+            gpu_out = subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True, text=True, timeout=3,
+            )
+            if gpu_out.returncode == 0:
+                line = gpu_out.stdout.strip()
+                if line:
+                    parts_gpu = line.split(", ")
+                    if len(parts_gpu) >= 4:
+                        gpu_util = parts_gpu[0]
+                        mem_used = parts_gpu[1]
+                        mem_total = parts_gpu[2]
+                        gpu_temp = parts_gpu[3]
+                        stats["gpu"] = f"{gpu_util}% util, {mem_used}/{mem_total} MB, {gpu_temp}°C"
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    return stats
+
+
+# ---------------------------------------------------------------------------
 # Top-level streaming loop
 # ---------------------------------------------------------------------------
 
@@ -349,6 +525,10 @@ def run(
     # --- Noise floor calibration ---
     _debug(config, "calibrating noise floor (1.5s)...")
     calib_rms: list[float] = []
+    calib_centroid: list[float] = []
+    calib_flux: list[float] = []
+    calib_zcr: list[float] = []
+    calib_ber: list[float] = []
     try:
         # Store generator for both calibration and main loop; cleaned up in finally.
         stream_iter = mic_stream(config.audio, debug=False)
@@ -357,6 +537,15 @@ def run(
             chunk = next(stream_iter)
             ring.extend(chunk)
             calib_rms.append(compute_rms(chunk))
+            if config.vad.use_spectral_vad:
+                calib_centroid.append(compute_spectral_centroid(chunk, sr))
+                calib_flux.append(compute_spectral_flux(chunk, sr))
+                calib_zcr.append(compute_zero_crossing_rate(chunk))
+                calib_ber.append(compute_band_energy_ratio(
+                    chunk, sr,
+                    config.vad.speech_band_low_hz,
+                    config.vad.speech_band_high_hz,
+                ))
     except StopIteration:
         pass
     except Exception as exc:
@@ -372,6 +561,50 @@ def run(
         detector.set_noise_floor(p10)
         st, et = detector.thresholds()
         _debug(config, f"calibration: p10={p10:.4f}, start_th={st:.4f}, end_th={et:.4f}")
+
+    if calib_centroid and config.vad.use_spectral_vad:
+        # Use robust percentile (p10) like RMS — not mean, which is sensitive
+        # to transient noise (mouse clicks, keyboard taps during calibration).
+        sorted_c = sorted(calib_centroid)
+        sorted_f = sorted(calib_flux)
+        sorted_z = sorted(calib_zcr)
+        sorted_b = sorted(calib_ber)
+        p10_idx = max(0, len(sorted_c) // 10)
+        avg_centroid = float(sorted_c[p10_idx])
+        avg_flux = float(sorted_f[p10_idx])
+        avg_zcr = float(sorted_z[p10_idx])
+        avg_ber = float(sorted_b[p10_idx])
+        detector.set_spectral_baselines(avg_centroid, avg_flux, avg_zcr, avg_ber)
+        _debug(config, f"calibration: centroid={avg_centroid:.0f}Hz, flux={avg_flux:.4f}, "
+               f"zcr={avg_zcr:.4f}, ber={avg_ber:.4f}")
+
+    # --- Speaker enrollment ---
+    speaker_verifier: SpeakerVerifier | None = None
+    speaker_profile: NDArray[np.float32] | None = None
+    if config.diarization.enabled:
+        from numpy import NDArray
+        speaker_verifier = SpeakerVerifier(method=config.diarization.method)
+        enrollment_embs: list[NDArray[np.float32]] = []
+        n_chunks = config.diarization.enrollment_chunks
+        _debug(config, f"speaker enrollment: collecting {n_chunks} chunks...")
+        try:
+            for _ in range(n_chunks):
+                chunk = next(stream_iter)
+                ring.extend(chunk)
+                emb = speaker_verifier.embed(chunk, sr)
+                enrollment_embs.append(emb)
+            if len(enrollment_embs) >= 2:
+                speaker_profile = speaker_verifier.enroll(enrollment_embs)
+                _debug(config, f"speaker profile created ({len(enrollment_embs)} chunks)")
+            else:
+                _debug(config, "speaker enrollment: insufficient audio, skipping")
+                speaker_profile = None
+        except StopIteration:
+            _debug(config, "speaker enrollment: stream ended early")
+            speaker_profile = None
+        except Exception as exc:
+            _debug(config, f"speaker enrollment failed: {exc}")
+            speaker_profile = None
 
     running = True
     def _stop(_sig, _frame):
@@ -409,9 +642,20 @@ def run(
 
             if config.debug and chunk_count % 8 == 0:
                 st, et = detector.thresholds()
-                _debug(config, f"live rms={rms:.6f} (start_th={st:.4f}, noise={detector.noise_floor:.4f})")
+                noise = detector.noise_floor
+                snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                state = detector.vad_state.name
+                _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
+                if config.vad.use_spectral_vad:
+                    score = detector._compute_speech_score(chunk)
+                    _debug(config, f"  spectral: score={score:.4f}")
 
-            event = detector.update(rms=rms, chunk_start_sample=chunk_start, chunk_end_sample=chunk_end)
+            event = detector.update(
+                rms=rms,
+                chunk_start_sample=chunk_start,
+                chunk_end_sample=chunk_end,
+                chunk=chunk if config.vad.use_spectral_vad else None,
+            )
             if event is None or event.kind == "start":
                 if event:
                     _debug(config, f"speech start at {event.start_sample/sr:.2f}s")
@@ -430,6 +674,14 @@ def run(
 
             if dur < config.vad.min_recording_sec:
                 continue
+
+            # Speaker gate: reject segments that don't match enrolled speaker
+            if config.diarization.enabled and speaker_verifier is not None and speaker_profile is not None:
+                accepted, score = speaker_verifier.verify(segment, sr, speaker_profile, threshold=config.diarization.similarity_threshold)
+                _json_emit(config, {"type": "speaker", "accepted": accepted, "similarity": round(score, 4)})
+                if not accepted:
+                    _debug(config, f"speaker rejected: sim={score:.3f}")
+                    continue
 
             utterance_id += 1
             thread = threading.Thread(
@@ -456,11 +708,153 @@ def run(
             _echo(f"  {stage}: n={stats['count']:.0f} "
                   f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
                   f"min={stats['min']:.3f} max={stats['max']:.3f}")
+    sys_stats = _collect_system_stats()
+    if sys_stats:
+        _echo("\n--- System ---")
+        for k, v in sys_stats.items():
+            _echo(f"  {k}: {v}")
     _echo("\nDone.")
     if hooks and hooks.on_state:
         hooks.on_state("idle")
     if hooks and hooks.on_activity:
         hooks.on_activity("Stopped")
+
+
+# ---------------------------------------------------------------------------
+# WebSocket audio mode: browser captures mic, streams audio to Python
+# ---------------------------------------------------------------------------
+
+def run_ws_audio(
+    config: AppConfig,
+    *,
+    stop_event: threading.Event | None = None,
+    hooks: RunHooks | None = None,
+) -> None:
+    """Process audio received from browser via WebSocket.
+
+    The browser captures mic audio and sends float32 PCM chunks over WebSocket.
+    This function feeds them into the same VAD + ASR pipeline as run(), but
+    without opening the microphone directly.
+    """
+    telemetry = _LatencyTracker()
+
+    _echo("╔══════════════════════════════════╗")
+    _echo("║   STT — Browser Audio Mode      ║")
+    _echo("╚══════════════════════════════════╝")
+    _echo()
+    _echo("Waiting for browser audio stream...")
+    _echo("-" * 40)
+
+    sr = config.audio.sample_rate
+    block_size = config.audio.blocksize
+    ring = _RingBuffer(int(30 * sr))
+    detector = StreamingEndpointDetector(config.vad, sr, block_size)
+
+    if config.vad.fast_commit:
+        detector.set_fast_commit(
+            silence_duration_sec=config.vad.fast_silence_duration_sec,
+            detrigger_ratio=config.vad.fast_detrigger_ratio,
+        )
+
+    # Warm ASR backend in background
+    warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
+    warmup_thread.start()
+
+    # No calibration — browser handles mic init. Use sensible defaults.
+    detector.set_noise_floor(config.vad.silence_threshold_rms)
+
+    running = True
+    def _stop(_sig, _frame):
+        nonlocal running
+        running = False
+        if stop_event is not None:
+            stop_event.set()
+    if enable_signal_handlers:
+        if threading.current_thread() == threading.main_thread():
+            signal.signal(signal.SIGINT, _stop)
+
+    chunk_count = 0
+    utterance_id = 0
+    _json_emit(config, {"type": "state", "state": "listening"})
+    if hooks and hooks.on_state:
+        hooks.on_state("listening")
+
+    try:
+        while running:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            # Wait for audio from browser (with timeout so we can check running)
+            _ws_audio_ready.wait(timeout=0.2)
+
+            # Process all queued chunks (don't clear — new chunks may arrive during processing)
+            while _ws_audio_queue:
+                chunk = _ws_audio_queue.popleft()
+                chunk_start = ring.total_samples()
+                ring.extend(chunk)
+                chunk_end = ring.total_samples()
+                rms = compute_rms(chunk)
+
+                if hooks and hooks.on_mic_level:
+                    hooks.on_mic_level(rms)
+                if config.json_mode and chunk_count % 8 == 0:
+                    _json_emit(config, {"type": "mic", "level": round(rms, 6)})
+
+                chunk_count += 1
+
+                if config.debug and chunk_count % 8 == 0:
+                    noise = detector.noise_floor
+                    snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                    state = detector.vad_state.name
+                    _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
+
+                event = detector.update(
+                    rms=rms,
+                    chunk_start_sample=chunk_start,
+                    chunk_end_sample=chunk_end,
+                    chunk=chunk,
+                )
+                if event is None or event.kind == "start":
+                    if event:
+                        _debug(config, f"speech start at {event.start_sample/sr:.2f}s")
+                    continue
+                if event.end_sample is None:
+                    continue
+
+                segment = ring.slice_range(event.start_sample, event.end_sample)
+                if len(segment) == 0:
+                    continue
+
+                dur = len(segment) / sr
+                if dur < config.vad.min_recording_sec:
+                    continue
+
+                utterance_id += 1
+                thread = threading.Thread(
+                    target=_transcribe_and_print,
+                    args=(config, segment.copy(), sr, ring.total_samples() / sr, utterance_id, telemetry, hooks),
+                    daemon=True,
+                )
+                thread.start()
+
+    except KeyboardInterrupt:
+        pass
+
+    snap = telemetry.snapshot()
+    if snap:
+        _echo("\n--- Latency (seconds) ---")
+        for stage, stats in snap.items():
+            _echo(f"  {stage}: n={stats['count']:.0f} "
+                  f"p50={stats['p50']:.3f} p95={stats['p95']:.3f} "
+                  f"min={stats['min']:.3f} max={stats['max']:.3f}")
+    sys_stats = _collect_system_stats()
+    if sys_stats:
+        _echo("\n--- System ---")
+        for k, v in sys_stats.items():
+            _echo(f"  {k}: {v}")
+    _echo("\nDone.")
+    if hooks and hooks.on_state:
+        hooks.on_state("idle")
 
 
 # ---------------------------------------------------------------------------
@@ -563,7 +957,9 @@ def _transcribe_and_print(
         hooks.on_raw(raw)
 
     # --- LLM (no semaphore held — next utterance can start ASR in parallel) ---
-    if config.llm.mode is LLMMode.OFF:
+    word_count = len(raw.split())
+    if config.llm.mode is LLMMode.OFF or word_count <= 5:
+        # Skip LLM for very short utterances (saves 2-3s per "Hi", "Ok", etc.)
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
         _copy_and_sep(config, raw)
         if hooks and hooks.on_processed:
@@ -572,7 +968,7 @@ def _transcribe_and_print(
             hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
-        get_store().write_async(raw, raw, mode="off", duration_sec=total_elapsed)
+        get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
@@ -605,6 +1001,8 @@ def _transcribe_and_print(
                     collected.append(token)
                     sys.stdout.write(token)
                     sys.stdout.flush()
+                    # Stream partial LLM result to browser in real-time
+                    _json_emit(config, {"type": "llm_partial", "text": "".join(collected), "utterance_id": utterance_id})
         processed = _clean_response("".join(collected))
         llm_elapsed = time.monotonic() - ts_llm
         telemetry.record("llm", llm_elapsed)
@@ -613,7 +1011,7 @@ def _transcribe_and_print(
         _echo(f"\n[{config.llm.mode.value}] {processed}")
         _json_emit(config, {"type": "processed", "text": processed, "utterance_id": utterance_id})
     except Exception as exc:
-        _echo(f"LLM error: {exc}", file=sys.stderr)
+        logger.error("LLM error: %s", exc)
         _json_emit(config, {"type": "error", "message": str(exc), "utterance_id": utterance_id})
         processed = raw
         if hooks and hooks.on_error:
@@ -786,6 +1184,6 @@ def run_file(config: AppConfig, wav_path: str) -> None:
                 processed = rewrite(result.text, config.llm)
             _echo(f"[{config.llm.mode.value}] {processed}")
         except Exception as exc:
-            _echo(f"LLM error: {exc}", file=sys.stderr)
+            logger.error("LLM error: %s", exc)
 
     _echo("Done.")

@@ -1,10 +1,16 @@
-# Algorithm — Streaming VAD & Endpoint Detection
+# Algorithm — Universal Adaptive Streaming VAD & Endpoint Detection
 
 ## Overview
 
-The voice-activity detector is an adaptive, dual-threshold streaming state machine
-with hysteresis, windowed voting, and EMA-based noise-floor tracking. It processes
-64ms audio chunks (1024 samples @ 16kHz) in real time.
+The voice-activity detector is a production-grade adaptive system designed for 24/7
+continuous operation. It combines three pillars of adaptation:
+
+1. **IMCRA noise estimation** (Cohen 2003) — continuous noise tracking
+2. **Dual-timescale EMA** — 30-minute baseline + 2-second rapid change detection
+3. **Hysteresis VAD** — asymmetric onset/offset thresholds with hangover
+
+This replaces static thresholds that fail as environment changes (AC on/off, people
+moving, time of day).
 
 ## Data Structures
 
@@ -16,17 +22,46 @@ end_sample: int | None     # absolute sample index where speech ended
 forced_split: bool         # True if max_recording_sec triggered
 ```
 
+### `VADState` (Enum)
+```
+SILENCE = 0
+SPEECH = 1
+```
+
 ### `StreamingEndpointDetector` State
 ```
-_in_speech: bool                        # current VAD state
-_speech_start_sample: int               # absolute sample of speech onset
-_consecutive_unvoiced: int              # consecutive blocks below threshold
-_noise_floor: float                     # EMA-tracked ambient RMS
-_history: deque[bool]                   # sliding window of voiced/unvoiced decisions
-_window_blocks: int                     # window size in blocks (decision_window_sec * sr / blocksize)
-_min_silence_blocks: int                # silence_duration_sec * sr / blocksize
-_min_speech_samples: int                # min_recording_sec * sr
-_max_speech_samples: int                # max_recording_sec * sr
+# Noise floor tracking (dual-timescale)
+_noise_floor: float                    # current noise floor estimate
+_noise_slow_alpha: float = 0.9999      # 30-minute time constant
+_noise_fast_alpha: float = 0.995       # 2-second time constant
+_noise_alpha: float                    # current alpha (blends slow/fast)
+_energy_history: deque[float]          # 3-second window for percentile
+
+# IMCRA state
+_imcra_window: int = 150               # ~1.5s at 10ms frames
+_imcra_power_history: deque[float]     # power spectrum history
+_imcra_noise_est: float                # IMCRA noise estimate
+
+# VAD state machine
+_vad_state: VADState                   # SILENCE or SPEECH
+_speech_duration_ms: int               # current speech duration
+_silence_duration_ms: int              # current silence duration
+
+# Thresholds (SNR-based, adaptive)
+_speech_threshold_db: float = 6.0      # SNR threshold for speech
+_hysteresis_up_db: float = 4.0         # onset margin (harder to start)
+_hysteresis_down_db: float = 3.0       # offset margin (easier to stay)
+_endpoint_timeout_ms: int = 500        # silence before speech end
+
+# Hangover (prevents truncation)
+_hang_counter: int                     # frames remaining in hangover
+_hang_time: int                        # 150ms in blocks
+
+# Streaming state
+_in_speech: bool                       # current VAD state
+_speech_start_sample: int              # absolute sample of speech onset
+_min_speech_samples: int               # min_recording_sec * sr
+_max_speech_samples: int               # max_recording_sec * sr
 ```
 
 ## RMS Computation
@@ -34,90 +69,136 @@ _max_speech_samples: int                # max_recording_sec * sr
 For a mono float32 signal `s` of length `n`:
 
 ```
-RMS(s) = sqrt( mean( s.astype(float64) ** 2 ) )
+RMS(s) = sqrt( mean( s² ) )
 ```
 
-Float64 accumulator prevents precision loss on long utterances. Returns 0.0 for empty input.
+Returns 0.0 for empty input.
 
-## Threshold Computation (Hysteresis)
+## Noise Floor Tracking (Dual-Timescale EMA)
 
-Two thresholds are computed dynamically from the noise floor each update:
+The noise floor is tracked continuously using two exponential moving averages:
 
+### Slow EMA (30-minute baseline)
 ```
-end_threshold   = clamp(noise_floor * noise_floor_margin,   silence_threshold_rms, 0.1)
-start_threshold = clamp(end_threshold * start_threshold_multiplier, end_threshold, 0.2)
-```
-
-With default values:
-- `noise_floor_margin = 3.0` → end threshold is 3× ambient noise
-- `start_threshold_multiplier = 1.3` → start threshold is 30% higher than end
-- Upper caps: end ≤ 0.1, start ≤ 0.2
-
-This creates a **hysteresis gap**: speech must be 30% louder to start than to continue. Once speaking, the detector stays in SPEECH state through brief pauses that would not have triggered entry.
-
-## State Machine
-
-### SILENCE → SPEECH (trigger)
-
-```
-IF NOT _in_speech:
-    # Track noise floor when silent
-    IF rms <= start_threshold:
-        noise_floor = α * noise_floor + (1-α) * rms    # EMA, α=0.95
-
-    voiced = (rms >= start_threshold)
-    history.append(voiced)
-    voiced_ratio = sum(history) / len(history)
-
-    IF history is full AND voiced_ratio >= trigger_ratio:
-        pre_roll = window_blocks * blocksize + pre_speech_padding_sec * sample_rate
-        speech_start = max(0, current_sample - pre_roll)
-        _in_speech = True
-        emit VADEvent("start", start_sample=speech_start)
+noise_slow = α_slow * noise_slow + (1 - α_slow) * min_energy
+α_slow = 0.9999  # ~30-minute half-life
 ```
 
-Key design decisions:
-- **Window voting** (`trigger_ratio = 0.8`): prevents false triggers from transient noises (keyboard clicks, door slams). At least 80% of the decision window must vote "voiced."
-- **Pre-roll**: speech start is backdated by one full window plus `pre_speech_padding_sec` (0.2s) to capture the consonant onset that preceded the trigger.
-- **EMA noise tracking** (`α = 0.95`): smooths ambient noise estimates. The α value means the noise floor has a ~20-block (~1.3s) half-life.
-
-### SPEECH → SILENCE (detrigger)
-
+### Fast EMA (2-second rapid changes)
 ```
-IF _in_speech:
-    voiced = (rms >= end_threshold)    # note: end threshold, lower than start
-    history.append(voiced)
-    voiced_ratio = sum(history) / len(history)
+noise_fast = α_fast * noise_fast + (1 - α_fast) * min_energy
+α_fast = 0.995   # ~2-second half-life
+```
 
-    IF voiced:
-        consecutive_unvoiced = 0
+### Adaptive Blending
+```
+energy_history.append(rms)
+min_energy = percentile(energy_history, 10)  # robust to speech contamination
+
+IF len(energy_history) >= 50:
+    fast_min = percentile(last_50, 10)
+    IF abs(fast_min - noise_floor) > 0.02:
+        # Rapid change detected — blend 50/50
+        noise_floor = 0.5 * noise_floor + 0.5 * fast_min
+        α = 0.99  # temporarily faster
     ELSE:
-        consecutive_unvoiced += 1
+        # Decay back to slow adaptation
+        α = min(α_slow, α + 0.001)
 
-    # Forced split: don't let utterances exceed max_recording_sec
-    IF speech_duration_samples >= max_speech_samples:
-        emit VADEvent("end", end_sample=current_sample, forced_split=True)
-
-    # Natural endpoint
-    unvoiced_ratio = 1 - voiced_ratio
-    IF history is full
-       AND unvoiced_ratio >= detrigger_ratio
-       AND consecutive_unvoiced >= min_silence_blocks
-       AND speech_duration >= min_speech_samples:
-        # Trim trailing silence and add post-padding
-        trim_samples = consecutive_unvoiced * blocksize
-        end_sample = max(speech_start, current_sample - trim_samples)
-        end_sample = min(end_sample + pre_speech_padding, current_sample)
-        emit VADEvent("end", end_sample=end_sample, forced_split=False)
+noise_floor = α * noise_floor + (1 - α) * min_energy
+noise_floor = clip(noise_floor, 0.001, 0.5)
 ```
 
-Key design decisions:
-- **End threshold is lower**: hysteresis prevents chatter at the boundary.
-- **Higher detrigger bar** (`detrigger_ratio = 0.9`): 90% of the window must be silent before ending. This avoids cutting off speech during natural pauses (e.g., between sentences).
-- **Consecutive silence guard** (`min_silence_blocks`): even if the window ratio is met, the last N blocks must be continuously silent. With defaults: 0.9s × 16000 / 1024 ≈ 14 consecutive silent blocks.
-- **Trailing silence trim**: the final `consecutive_unvoiced` blocks are trimmed so the utterance ends at the last speech sample, not the last silent block.
-- **Minimum utterance guard** (`min_recording_sec = 0.5s`): prevents processing noise bursts as speech.
-- **Maximum utterance guard** (`max_recording_sec = 15s`): prevents memory issues from a mic left open. Forces a split even mid-speech.
+## IMCRA Noise Estimation (Simplified)
+
+Tracks local minimum of power spectrum over a sliding window:
+
+```
+power = mean(frame²)
+imcra_power_history.append(power)
+
+IF len(history) >= 150:
+    local_min = percentile(powers, 5)  # proxy for minimum
+    local_mean = mean(powers)
+    local_var = var(powers)
+    bias = 1 + sqrt(2/(window-1)) * (local_var / local_mean)
+    imcra_noise_est = local_min * bias
+```
+
+## SNR-Based Speech Scoring
+
+Instead of arbitrary RMS thresholds, speech is detected using SNR in dB:
+
+```
+snr_linear = rms / max(noise_floor, 1e-10)
+snr_db = 10 * log10(snr_linear)
+energy_score = snr_db / speech_threshold_db  # 6dB = 2x louder = speech
+```
+
+### Multi-Feature Fusion (Optional)
+
+When `use_spectral_vad=True`, combines energy with spectral features:
+
+```
+spectral_score = (
+    0.15 * flux_norm +        # onset detection
+    0.15 * centroid_norm +    # speech frequency band
+    0.15 * zcr_norm +         # voicing pattern
+    0.15 * ber_norm           # speech energy concentration
+)
+
+composite = (1 - w) * energy_score + w * (energy_score * 0.6 + spectral_score * 0.4)
+```
+
+Where `w = spectral_weight` (default 0.4).
+
+## Hysteresis VAD State Machine
+
+### SILENCE → SPEECH (onset)
+
+```
+onset_threshold = 1.0 + hysteresis_up_db / 6.0   # = 1.67
+
+IF vad_state == SILENCE:
+    IF composite > onset_threshold:
+        vad_state = SPEECH
+        speech_duration_ms = 0
+        silence_duration_ms = 0
+        emit VADEvent("start", start_sample=current_sample - pre_roll)
+    ELSE:
+        silence_duration_ms += block_duration_ms
+```
+
+### SPEECH → SILENCE (offset)
+
+```
+offset_threshold = 1.0 - hysteresis_down_db / 6.0   # = 0.50
+
+IF vad_state == SPEECH:
+    IF composite < offset_threshold:
+        silence_duration_ms += block_duration_ms
+        IF silence_duration_ms > endpoint_timeout_ms:
+            vad_state = SILENCE
+        ELSE:
+            is_speech = True  # still in hangover period
+    ELSE:
+        silence_duration_ms = 0
+        is_speech = True
+    speech_duration_ms += block_duration_ms
+```
+
+### Hangover Scheme
+
+Prevents speech truncation by extending output for 150ms after speech ends:
+
+```
+IF is_speech:
+    hang_counter = hang_time  # 150ms in blocks
+ELSE:
+    hang_counter = max(0, hang_counter - 1)
+
+is_speech_final = hang_counter > 0 OR is_speech
+```
 
 ## Default Constants
 
@@ -125,33 +206,33 @@ Key design decisions:
 |---|---|---|
 | `blocksize` | 1024 samples (64ms) | Fine enough for responsive VAD, coarse enough for low CPU |
 | `sample_rate` | 16000 Hz | Whisper native rate, avoids resampling |
-| `silence_threshold_rms` | 0.005 | Absolute floor, prevents divide-by-zero in noise margin |
-| `silence_duration_sec` | 0.9 | ~1s of silence = end of utterance |
+| `speech_threshold_db` | 6.0 dB | SNR threshold — 2x louder than noise = speech |
+| `hysteresis_up_db` | 4.0 dB | Onset margin — harder to start (prevents false triggers) |
+| `hysteresis_down_db` | 3.0 dB | Offset margin — easier to stay (prevents cutting speech) |
+| `endpoint_timeout_ms` | 500 ms | Silence before speech end |
+| `hang_time` | 150 ms | Prevents truncation of trailing sounds |
+| `noise_slow_alpha` | 0.9999 | 30-minute baseline tracking |
+| `noise_fast_alpha` | 0.995 | 2-second rapid change detection |
+| `imcra_window` | 150 frames | ~1.5s minimum for noise estimation |
 | `min_recording_sec` | 0.5 | Ignore clicks, coughs, chair creaks |
 | `max_recording_sec` | 15.0 | Safety valve for runaway recordings |
-| `noise_floor_alpha` | 0.95 | Slow EMA — resists brief spikes, adapts to room changes |
-| `noise_floor_margin` | 3.0 | 3× ambient = end threshold |
-| `start_threshold_multiplier` | 1.3 | 30% above end threshold |
-| `trigger_ratio` | 0.8 | 80% of window must be voiced to start |
-| `detrigger_ratio` | 0.9 | 90% of window must be silent to end |
-| `decision_window_sec` | 0.2 | 3 blocks @ 64ms each |
+| `spectral_weight` | 0.4 | Balance between energy and spectral features |
 
 ## Transcription Pipeline
 
 ### 1. Pre-processing
 - Normalize to float32 in [-1, 1]: `audio / max(|audio|)` if peak > 1.0
 - Trim trailing silence: find last sample above 0.005, keep 200ms pad after it
+- Noise reduction: spectral gating via `noisereduce` library
 
 ### 2. Backend Dispatch
 ```
 IF config.backend == WHISPER_CPP:
     model = cached pywhispercpp.Model(ggml_model_name)
     segments = model.transcribe(audio, single_segment=True)
-    # Each segment: .t0, .t1 (10ms ticks), .text
 ELSE:
     model = cached faster_whisper.WhisperModel(name, device, compute_type)
-    segments, info = model.transcribe(audio, beam_size, language,
-                                      condition_on_previous_text)
+    segments, info = model.transcribe(audio, beam_size, language, ...)
     # CUDA failure → retry with device="cpu", compute_type="int8"
 ```
 
@@ -164,14 +245,7 @@ ELSE:
 ```
 IF llm_mode != OFF:
     prompt = build_user_prompt(raw_text, mode)
-    # Single user message — no system prompt. Saves ~50 tokens, faster inference.
-    payload = {
-        "model": config.model,
-        "messages": [{"role": "user", "content": user_prompt}],
-        "max_tokens": config.max_tokens,   # 256 default; >=512 for EMAIL/BULLET_LIST
-        "temperature": config.temperature, # 0.2 default
-        "stream": false,
-    }
+    payload = {model, messages, max_tokens, temperature, stream: false}
     POST to provider URL with Bearer auth
     IF OpenRouter and primary fails → retry with fallback_model
     Return cleaned text (or raw on failure)
@@ -183,3 +257,16 @@ wtype → types into focused input (if typing enabled)
 wl-copy → copies to Wayland clipboard (if clipboard enabled)
 stdout → prints [raw] and [cleanup] markers
 ```
+
+## Debug Output Format
+
+```
+[debug] rms=0.034 noise=0.007 snr=16.9dB state=SPEECH
+[debug]   spectral: flux=43.85 centroid=1047Hz zcr=0.0811 ber=0.7267 score=1.94
+```
+
+- `rms`: current chunk RMS energy
+- `noise`: tracked noise floor (adapts continuously)
+- `snr`: signal-to-noise ratio in dB
+- `state`: VAD state (SILENCE or SPEECH)
+- `score`: composite speech probability (>1.67 = onset, <0.50 = offset)

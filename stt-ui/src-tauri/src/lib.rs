@@ -1,3 +1,5 @@
+mod widget;
+
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -15,6 +17,9 @@ enum AppError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("Tauri error: {0}")]
+    Tauri(#[from] tauri::Error),
 }
 
 impl serde::Serialize for AppError {
@@ -47,32 +52,138 @@ struct TranscriptRow {
 // Commands
 // ---------------------------------------------------------------------------
 
+fn history_db_path() -> Result<std::path::PathBuf, AppError> {
+    // Support STT_DATA_DIR env var for consistent path with Python backend
+    let base = if let Ok(data_dir) = std::env::var("STT_DATA_DIR") {
+        std::path::PathBuf::from(data_dir)
+    } else {
+        let home = dirs_next::home_dir().ok_or_else(|| {
+            AppError::Io(std::io::Error::other("Could not determine home directory"))
+        })?;
+        home.join(".local/share/stt")
+    };
+    Ok(base.join("history.db"))
+}
+
 #[tauri::command]
-fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
-    let db_path = dirs_next::home_dir()
-        .unwrap_or_default()
-        .join(".local/share/stt/history.db");
-    let conn = Connection::open(db_path)?;
-    let mut stmt = conn.prepare(
-        "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
-         FROM transcripts ORDER BY created_at DESC LIMIT ?1",
-    )?;
-    let rows = stmt
-        .query_map([limit as i64], |row| {
-            Ok(TranscriptRow {
-                id: row.get(0)?,
-                raw_text: row.get(1)?,
-                processed_text: row.get(2)?,
-                language: row.get(3)?,
-                mode: row.get(4)?,
-                model: row.get(5)?,
-                duration_sec: row.get(6)?,
-                favorite: row.get(7)?,
-                created_at: row.get(8)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
+    let db_path = history_db_path()?;
+    let rows = tauri::async_runtime::spawn_blocking(move || {
+        let conn = Connection::open(db_path)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
+             FROM transcripts ORDER BY created_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map([limit as i64], |row| {
+                Ok(TranscriptRow {
+                    id: row.get(0)?,
+                    raw_text: row.get(1)?,
+                    processed_text: row.get(2)?,
+                    language: row.get(3)?,
+                    mode: row.get(4)?,
+                    model: row.get(5)?,
+                    duration_sec: row.get(6)?,
+                    favorite: row.get(7)?,
+                    created_at: row.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok::<Vec<TranscriptRow>, AppError>(rows)
+    })
+    .await??;
     Ok(rows)
+}
+
+#[derive(Debug, Serialize)]
+struct ModelStatus {
+    name: String,
+    downloaded: bool,
+    path: String,
+    size_bytes: u64,
+}
+
+#[tauri::command]
+fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
+    let home = dirs_next::home_dir().ok_or_else(|| {
+        AppError::Io(std::io::Error::other("Could not determine home directory"))
+    })?;
+
+    let mut statuses = Vec::new();
+
+    // whisper.cpp models: ~/.local/share/pywhispercpp/models/ggml-{name}.bin
+    let cpp_dir = home.join(".local/share/pywhispercpp/models");
+    for name in &["tiny.en", "base.en", "small.en"] {
+        let path = cpp_dir.join(format!("ggml-{}.bin", name));
+        let (downloaded, size_bytes) = if path.exists() {
+            let meta = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            (true, meta)
+        } else {
+            (false, 0)
+        };
+        statuses.push(ModelStatus {
+            name: name.to_string(),
+            downloaded,
+            path: path.to_string_lossy().to_string(),
+            size_bytes,
+        });
+    }
+
+    // faster-whisper models: ~/.cache/huggingface/hub/models--{org}--{repo}/
+    let hf_dir = home.join(".cache/huggingface/hub");
+    let fw_models: Vec<(&str, &str, &str)> = vec![
+        ("tiny.en", "Systran", "faster-whisper-tiny"),
+        ("base.en", "Systran", "faster-whisper-base"),
+        ("small.en", "Systran", "faster-whisper-small"),
+        ("distil-large-v3", "Systran", "faster-distil-whisper-large-v3"),
+        ("large-v3-turbo", "mobiuslabsgmbh", "faster-whisper-large-v3-turbo"),
+    ];
+
+    for (name, org, repo) in &fw_models {
+        let model_dir = hf_dir.join(format!("models--{}--{}", org, repo));
+        let (downloaded, size_bytes) = if model_dir.exists() {
+            // Walk the directory to sum file sizes
+            let total = walk_dir_size(&model_dir).unwrap_or(0);
+            (total > 0, total)
+        } else {
+            (false, 0)
+        };
+        statuses.push(ModelStatus {
+            name: name.to_string(),
+            downloaded,
+            path: model_dir.to_string_lossy().to_string(),
+            size_bytes,
+        });
+    }
+
+    Ok(statuses)
+}
+
+#[tauri::command]
+fn delete_model_file(path: String) -> Result<(), AppError> {
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p).map_err(AppError::Io)?;
+    } else if p.is_file() {
+        std::fs::remove_file(p).map_err(AppError::Io)?;
+    }
+    Ok(())
+}
+
+fn walk_dir_size(path: &std::path::Path) -> Result<u64, AppError> {
+    let mut total = 0u64;
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path).map_err(AppError::Io)? {
+            let entry = entry.map_err(AppError::Io)?;
+            let meta = entry.metadata().map_err(AppError::Io)?;
+            if meta.is_file() {
+                total += meta.len();
+            } else if meta.is_dir() {
+                total += walk_dir_size(&entry.path())?;
+            }
+        }
+    }
+    Ok(total)
 }
 
 #[tauri::command]
@@ -249,11 +360,22 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_backend_path,
             get_platform_info,
             check_system_deps,
-            get_history
+            check_model_status,
+            delete_model_file,
+            get_history,
+            widget::show_widget,
+            widget::hide_widget,
+            widget::get_widget_visible,
+            widget::get_widget_position,
+            widget::set_widget_position,
+            widget::toggle_widget,
+            widget::detect_window_manager
         ])
         .setup(|app| {
             // --- System tray with start/stop menu ---
@@ -263,8 +385,9 @@ pub fn run() {
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let start_item = MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
             let stop_item = MenuItem::with_id(app, "stop", "Stop Listening", true, None::<&str>)?;
+            let toggle_widget_item = MenuItem::with_id(app, "toggle_widget", "Toggle Widget", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &quit_item])?;
+            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &toggle_widget_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
@@ -288,6 +411,9 @@ pub fn run() {
                         if let Some(window) = app.get_webview_window("main") {
                             let _ = window.emit("tray-action", "stop");
                         }
+                    }
+                    "toggle_widget" => {
+                        let _ = widget::toggle_widget(app.clone());
                     }
                     "quit" => app.exit(0),
                     _ => {}

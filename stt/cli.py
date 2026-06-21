@@ -5,13 +5,17 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 from dataclasses import dataclass
+
+from stt.log import get_logger
 
 from stt.config import (
     AppConfig,
     AudioConfig,
     ClipboardConfig,
     ComputeType,
+    DiarizationConfig,
     LLMConfig,
     LLMMode,
     LLMProvider,
@@ -21,7 +25,9 @@ from stt.config import (
     VADConfig,
     load_dotenv,
 )
-from stt.orchestrator import run, run_file, start_ws_server
+from stt.orchestrator import run, run_file, run_ws_audio, start_ws_server
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -84,7 +90,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Build the argument parser.  Pure — no side effects."""
     parser = argparse.ArgumentParser(
         prog="stt",
-        description="Local-first speech-to-text assistant for Linux Wayland",
+        description="Local-first speech-to-text assistant for Linux (Wayland + X11)",
     )
 
     # Audio
@@ -118,6 +124,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cpu-threads", type=int, default=4, help="CPU threads")
     parser.add_argument("--language", type=str, default=None, help="Force transcription language (e.g., 'en')")
     parser.add_argument("--beam-size", type=int, default=None, help="Beam size (default: profile-dependent)")
+    parser.add_argument("--hotwords", type=str, default="", help="Comma-separated terms to boost recognition")
+
+    # Diarization
+    parser.add_argument("--diarization", action="store_true", help="Enable speaker verification (reject non-enrolled speakers)")
+    parser.add_argument("--diarization-threshold", type=float, default=0.65, help="Cosine similarity threshold (default: 0.65)")
 
     # LLM — defaults=None so we can fall back to env/.env
     parser.add_argument(
@@ -141,17 +152,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--openrouter-api-key", type=str, default=None, help="OpenRouter API key (overrides OPENROUTER_API_KEY env)")
 
     # Clipboard
-    parser.add_argument("--clipboard", action="store_true", help="Copy final text to Wayland clipboard (wl-copy)")
+    parser.add_argument("--clipboard", action="store_true", help="Copy final text to clipboard (wl-copy on Wayland, xclip on X11)")
     parser.add_argument("--no-type", action="store_true", help="Do not type final text into focused input")
-    parser.add_argument("--type-path", type=str, default="wtype", help="Typing binary path (default: wtype)")
+    parser.add_argument("--type-path", type=str, default=None, help="Typing binary path (default: auto-detect wtype/xdotool)")
+    parser.add_argument("--clipboard-path", type=str, default=None, help="Clipboard binary path (default: auto-detect wl-copy/xclip)")
 
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
     parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
     parser.add_argument("--ws-port", type=int, default=None, help="Start WebSocket server on this port for browser UI")
+    parser.add_argument("--ws-audio", action="store_true", help="Accept audio from browser via WebSocket (no mic capture)")
     parser.add_argument("--input-file", type=str, default=None, help="Process a WAV file instead of live mic (dry-run)")
     parser.add_argument("--list-microphones", action="store_true", help="List available microphones and exit")
     parser.add_argument("--download-model", type=str, default=None, help="Download a specific model and exit")
+    parser.add_argument("--log-file", type=str, default=None, help="Write logs to file (e.g., stt.log)")
 
     return parser
 
@@ -214,6 +228,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             language=args.language,
             beam_size=beam_size,
             condition_on_previous_text=profile.condition_on_previous_text,
+            hotwords=args.hotwords,
         ),
         llm=LLMConfig(
             mode=llm_mode,
@@ -224,10 +239,17 @@ def build_config(args: argparse.Namespace) -> AppConfig:
         ),
         clipboard=ClipboardConfig(
             enabled=args.clipboard,
+            wl_copy_path=args.clipboard_path or "wl-copy",
+            xclip_path=args.clipboard_path or "xclip",
         ),
         typing=TypingConfig(
             enabled=not args.no_type,
-            wtype_path=args.type_path,
+            wtype_path=args.type_path or "wtype",
+            xdotool_path=args.type_path or "xdotool",
+        ),
+        diarization=DiarizationConfig(
+            enabled=args.diarization,
+            similarity_threshold=args.diarization_threshold,
         ),
         debug=args.debug,
         json_mode=args.json_mode,
@@ -306,6 +328,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     config = build_config(args)
 
+    # Configure log file if specified
+    if args.log_file:
+        import logging
+        file_handler = logging.FileHandler(args.log_file)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
+        file_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(file_handler)
+        logging.getLogger().setLevel(logging.DEBUG)
+
     if args.list_microphones:
         _list_microphones(config)
         return
@@ -315,11 +347,37 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if args.ws_port:
-        start_ws_server(args.ws_port)
+        # Start FastAPI + Socket.IO server
+        import uvicorn
+        from stt.server import asgi_app, sio
+        # Store config in server module for the orchestrator to use
+        import stt.server as _server_mod
+        _server_mod._config = config
         object.__setattr__(config, "json_mode", True)  # ws implies json
+
+        # Run server in background thread
+        def _run_server():
+            uvicorn.run(asgi_app, host="127.0.0.1", port=args.ws_port, log_level="warning")
+        threading.Thread(target=_run_server, daemon=True).start()
+        logger.info(f"listening on http://127.0.0.1:{args.ws_port}")
+        logger.info(f"API docs at http://127.0.0.1:{args.ws_port}/docs")
 
     if args.input_file:
         run_file(config, args.input_file)
+    elif args.ws_audio:
+        # Browser mic mode: wait for audio via Socket.IO
+        if not args.ws_port:
+            import uvicorn
+            from stt.server import asgi_app
+            import stt.server as _server_mod
+            _server_mod._config = config
+            object.__setattr__(config, "json_mode", True)
+
+            def _run_server():
+                uvicorn.run(asgi_app, host="127.0.0.1", port=8765, log_level="warning")
+            threading.Thread(target=_run_server, daemon=True).start()
+            logger.info("listening on http://127.0.0.1:8765")
+        run_ws_audio(config)
     else:
         run(config)
 

@@ -1,0 +1,6 @@
+# STT Widget — Sway Configuration
+# Add these lines to your ~/.config/sway/config
+
+# Float the widget window and make it sticky (visible on all workspaces)
+# On Wayland, app_id is set to the Tauri window label ("widget")
+for_window [app_id="widget"] floating enable, sticky enable, border pixel 0
