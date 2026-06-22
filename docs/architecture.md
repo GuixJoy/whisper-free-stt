@@ -95,6 +95,19 @@ StreamingEndpointDetector.update(rms, sample_pos)
 | `stt/typing.py` | Focused-input typing | `subprocess.run(["wtype"])` | `type_to_focused_input(text, config) → bool` |
 | `stt/orchestrator.py` | Main loop wiring | All of the above | `run(config)`, `_transcribe_and_print` |
 | `stt/cli.py` | Argument parsing, config construction | `argparse`, `os.environ` | `build_config(args) → AppConfig` |
+| `stt/speaker.py` | Speaker verification & diarization | `resemblyzer` (neural) or numpy (spectral fallback) | `SpeakerVerifier`, `embed`, `verify`, `enroll` |
+| `stt/diarization.py` | Multi-speaker diarization pipeline | ECAPA-TDNN, incremental AHC | (planned — see `docs/voice-algorithms/diarization/`) |
+
+## Diarization
+
+See `docs/voice-algorithms/diarization/diarization-algorithms.md` for comprehensive
+documentation on speaker embedding architectures, segmentation, clustering, overlap
+detection, and universal pipeline design.
+
+Current implementation (`stt/speaker.py`) supports single-speaker verification using
+Resemblyzer neural embeddings or MFCC spectral fallback. The path to universal
+diarization (multi-speaker, open-set, real-time) is documented with 6 implementation
+phases.
 
 ## ASR Backends
 
