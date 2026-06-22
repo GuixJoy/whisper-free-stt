@@ -228,7 +228,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             language=args.language,
             beam_size=beam_size,
             condition_on_previous_text=profile.condition_on_previous_text,
-            hotwords=args.hotwords,
+            hotwords=getattr(args, "hotwords", "") or "",
         ),
         llm=LLMConfig(
             mode=llm_mode,

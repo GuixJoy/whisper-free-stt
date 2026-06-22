@@ -18,7 +18,13 @@ from stt.prompts import build_user_prompt
 logger = get_logger(__name__)
 
 
-def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -> str:
+def rewrite(
+    transcript: str,
+    config: LLMConfig,
+    *,
+    few_shot_context: str = "",
+    dictionary_context: str = "",
+) -> str:
     """Rewrite a transcript using the configured LLM backend (synchronous)."""
     if config.mode is LLMMode.OFF:
         raise ValueError("LLM rewriting is disabled (mode=OFF).")
@@ -28,7 +34,7 @@ def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -
         logger.warning("%s not set. Returning raw transcript.", config.api_key_env)
         return transcript
 
-    user_prompt = build_user_prompt(transcript, config.mode, few_shot_context)
+    user_prompt = build_user_prompt(transcript, config.mode, few_shot_context, dictionary_context)
     payload = _build_payload(config, user_prompt)
     headers = _build_headers(api_key, config.provider)
 
@@ -48,7 +54,11 @@ def rewrite(transcript: str, config: LLMConfig, *, few_shot_context: str = "") -
 
 
 def rewrite_stream(
-    transcript: str, config: LLMConfig, *, few_shot_context: str = ""
+    transcript: str,
+    config: LLMConfig,
+    *,
+    few_shot_context: str = "",
+    dictionary_context: str = "",
 ) -> "Generator[str, None, None]":
     """Yield tokens from the LLM as they arrive via SSE streaming.
 
@@ -63,7 +73,7 @@ def rewrite_stream(
         yield transcript
         return
 
-    user_prompt = build_user_prompt(transcript, config.mode, few_shot_context)
+    user_prompt = build_user_prompt(transcript, config.mode, few_shot_context, dictionary_context)
     payload = _build_payload(config, user_prompt)
     payload["stream"] = True
     headers = _build_headers(api_key, config.provider)

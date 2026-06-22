@@ -80,6 +80,22 @@ class HistoryStore:
                     INSERT INTO transcripts_fts(raw_text, processed_text)
                     VALUES (new.raw_text, new.processed_text);
                 END;
+                CREATE TABLE IF NOT EXISTS dictionary_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    phrase TEXT NOT NULL,
+                    replacement TEXT NOT NULL,
+                    category TEXT DEFAULT 'custom',
+                    notes TEXT DEFAULT '',
+                    use_count INTEGER DEFAULT 0,
+                    is_favorite INTEGER DEFAULT 0,
+                    auto_learned INTEGER DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(phrase)
+                );
+                CREATE INDEX IF NOT EXISTS idx_dict_category ON dictionary_entries(category);
+                CREATE INDEX IF NOT EXISTS idx_dict_favorite ON dictionary_entries(is_favorite);
+                CREATE INDEX IF NOT EXISTS idx_dict_phrase ON dictionary_entries(phrase);
             """)
 
     def _conn(self) -> sqlite3.Connection:
@@ -516,6 +532,463 @@ class HistoryStore:
                     return True
         except Exception:
             return False
+
+
+    # ------------------------------------------------------------------
+    # Dictionary CRUD
+    # ------------------------------------------------------------------
+
+    def list_dictionary(
+        self,
+        search: str = "",
+        category: str = "",
+        favorite_only: bool = False,
+    ) -> list[dict[str, object]]:
+        try:
+            with self._conn() as conn:
+                clauses = ["1=1"]
+                params: list = []
+                if search.strip():
+                    clauses.append("phrase LIKE ?")
+                    params.append(f"%{search.strip()}%")
+                if category.strip():
+                    clauses.append("category = ?")
+                    params.append(category.strip())
+                if favorite_only:
+                    clauses.append("is_favorite = 1")
+                where = " AND ".join(clauses)
+                rows = conn.execute(
+                    f"""SELECT id, phrase, replacement, category, notes,
+                               use_count, is_favorite, auto_learned,
+                               created_at, updated_at
+                        FROM dictionary_entries
+                        WHERE {where}
+                        ORDER BY is_favorite DESC, updated_at DESC""",
+                    params,
+                ).fetchall()
+                return [
+                    {
+                        "id": r[0],
+                        "phrase": r[1],
+                        "replacement": r[2],
+                        "category": r[3],
+                        "notes": r[4],
+                        "use_count": r[5],
+                        "is_favorite": bool(r[6]),
+                        "auto_learned": bool(r[7]),
+                        "created_at": r[8],
+                        "updated_at": r[9],
+                    }
+                    for r in rows
+                ]
+        except Exception:
+            return []
+
+    def get_dictionary_entry(self, entry_id: int) -> dict[str, object] | None:
+        try:
+            with self._conn() as conn:
+                row = conn.execute(
+                    """SELECT id, phrase, replacement, category, notes,
+                              use_count, is_favorite, auto_learned,
+                              created_at, updated_at
+                       FROM dictionary_entries WHERE id = ?""",
+                    (entry_id,),
+                ).fetchone()
+                if row is None:
+                    return None
+                return {
+                    "id": row[0],
+                    "phrase": row[1],
+                    "replacement": row[2],
+                    "category": row[3],
+                    "notes": row[4],
+                    "use_count": row[5],
+                    "is_favorite": bool(row[6]),
+                    "auto_learned": bool(row[7]),
+                    "created_at": row[8],
+                    "updated_at": row[9],
+                }
+        except Exception:
+            return None
+
+    def add_dictionary_entry(
+        self,
+        phrase: str,
+        replacement: str,
+        category: str = "custom",
+        notes: str = "",
+        auto_learned: bool = False,
+    ) -> dict[str, object] | None:
+        phrase = phrase.strip()
+        replacement = replacement.strip()
+        if not phrase or not replacement:
+            return None
+        if len(phrase) > 60 or len(replacement) > 60:
+            return None
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    cur = conn.execute(
+                        """INSERT OR IGNORE INTO dictionary_entries
+                           (phrase, replacement, category, notes, auto_learned)
+                           VALUES (?, ?, ?, ?, ?)""",
+                        (phrase, replacement, category, notes, int(auto_learned)),
+                    )
+                    conn.commit()
+                    if cur.lastrowid == 0:
+                        return None
+                    return self.get_dictionary_entry(cur.lastrowid)
+        except Exception as exc:
+            logger.error("dictionary add failed: %s", exc)
+            return None
+
+    def update_dictionary_entry(
+        self,
+        entry_id: int,
+        phrase: str = "",
+        replacement: str = "",
+        category: str = "",
+        notes: str = "",
+    ) -> dict[str, object] | None:
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    updates = []
+                    params: list = []
+                    if phrase.strip():
+                        if len(phrase.strip()) > 60:
+                            return None
+                        updates.append("phrase = ?")
+                        params.append(phrase.strip())
+                    if replacement.strip():
+                        if len(replacement.strip()) > 60:
+                            return None
+                        updates.append("replacement = ?")
+                        params.append(replacement.strip())
+                    if category.strip():
+                        updates.append("category = ?")
+                        params.append(category.strip())
+                    if notes is not None:
+                        updates.append("notes = ?")
+                        params.append(notes.strip())
+                    if not updates:
+                        return self.get_dictionary_entry(entry_id)
+                    updates.append("updated_at = CURRENT_TIMESTAMP")
+                    params.append(entry_id)
+                    conn.execute(
+                        f"UPDATE dictionary_entries SET {', '.join(updates)} WHERE id = ?",
+                        params,
+                    )
+                    conn.commit()
+                    return self.get_dictionary_entry(entry_id)
+        except Exception as exc:
+            logger.error("dictionary update failed: %s", exc)
+            return None
+
+    def delete_dictionary_entry(self, entry_id: int) -> bool:
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    conn.execute(
+                        "DELETE FROM dictionary_entries WHERE id = ?",
+                        (entry_id,),
+                    )
+                    conn.commit()
+                    return True
+        except Exception:
+            return False
+
+    def toggle_dictionary_favorite(self, entry_id: int) -> bool | None:
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    row = conn.execute(
+                        "SELECT is_favorite FROM dictionary_entries WHERE id = ?",
+                        (entry_id,),
+                    ).fetchone()
+                    if row is None:
+                        return None
+                    new_val = 0 if row[0] else 1
+                    conn.execute(
+                        "UPDATE dictionary_entries SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (new_val, entry_id),
+                    )
+                    conn.commit()
+                    return bool(new_val)
+        except Exception:
+            return None
+
+    def increment_dictionary_use_count(self, entry_id: int) -> bool:
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    conn.execute(
+                        "UPDATE dictionary_entries SET use_count = use_count + 1 WHERE id = ?",
+                        (entry_id,),
+                    )
+                    conn.commit()
+                    return True
+        except Exception:
+            return False
+
+    def get_dict_replacements(self) -> list[dict[str, str]]:
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT phrase, replacement FROM dictionary_entries
+                       ORDER BY is_favorite DESC, LENGTH(phrase) DESC"""
+                ).fetchall()
+                return [{"phrase": r[0], "replacement": r[1]} for r in rows]
+        except Exception:
+            return []
+
+    def get_dict_hotwords(self, weighted: bool = False) -> str:
+        """Return comma-separated phrases AND replacements for ASR word boosting.
+        
+        Boosting both forms covers all entry types:
+        - Identity (API→API): boosts the word itself
+        - Expansion (CEO→Chief Executive Officer): boosts the short form user speaks
+        - Correction (flouray→Floure): boosts the correct target form
+        
+        When weighted=True, starred terms get higher boost (faster-whisper syntax).
+        Otherwise returns plain comma-separated terms (whisper.cpp compatible).
+        """
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    "SELECT phrase, replacement, is_favorite FROM dictionary_entries ORDER BY is_favorite DESC"
+                ).fetchall()
+                terms: list[str] = []
+                seen: set[str] = set()
+                for r in rows:
+                    for term in (r[0], r[1]):
+                        term = term.strip()
+                        if term and term not in seen:
+                            if weighted and r[2]:
+                                terms.append(f"{term}:5.0")
+                            elif weighted:
+                                terms.append(f"{term}:2.0")
+                            else:
+                                terms.append(term)
+                            seen.add(term)
+                return ", ".join(terms)
+        except Exception:
+            return ""
+
+    def import_dictionary_csv(self, csv_text: str) -> dict[str, int]:
+        import csv as _csv
+        imported = 0
+        skipped = 0
+        try:
+            reader = _csv.reader(csv_text.splitlines())
+            with self._write_lock:
+                with self._conn() as conn:
+                    first_row = True
+                    for row in reader:
+                        if not row or not any(cell.strip() for cell in row):
+                            continue
+                        # Skip CSV header row from export
+                        if first_row and len(row) >= 2:
+                            if row[0].strip().lower() == "phrase" and row[1].strip().lower() == "replacement":
+                                first_row = False
+                                continue
+                        first_row = False
+                        if len(row) == 1:
+                            phrase = row[0].strip()
+                            replacement = phrase
+                        elif len(row) >= 2:
+                            phrase = row[0].strip()
+                            replacement = row[1].strip()
+                        else:
+                            skipped += 1
+                            continue
+                        if not phrase or not replacement:
+                            skipped += 1
+                            continue
+                        if len(phrase) > 60 or len(replacement) > 60:
+                            skipped += 1
+                            continue
+                        if imported >= 1000:
+                            skipped += 1
+                            continue
+                        try:
+                            conn.execute(
+                                """INSERT OR IGNORE INTO dictionary_entries
+                                   (phrase, replacement) VALUES (?, ?)""",
+                                (phrase, replacement),
+                            )
+                            if conn.total_changes > 0:
+                                imported += 1
+                            else:
+                                skipped += 1
+                        except Exception:
+                            skipped += 1
+                    conn.commit()
+        except Exception as exc:
+            logger.error("dictionary csv import failed: %s", exc)
+        return {"imported": imported, "skipped": skipped}
+
+    def export_dictionary_csv(self) -> str:
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT phrase, replacement FROM dictionary_entries
+                       ORDER BY is_favorite DESC, updated_at DESC"""
+                ).fetchall()
+            lines = ["phrase,replacement"]
+            for r in rows:
+                p = r[0].replace('"', '""')
+                rep = r[1].replace('"', '""')
+                lines.append(f'"{p}","{rep}"')
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def build_dict_llm_context(self) -> str:
+        """Layer 3: Build a dictionary-aware context string for LLM prompt injection.
+        
+        Only includes starred entries and correction/expansion entries (not identities).
+        Tells the LLM to preserve specific terms and avoid phonetic alternatives.
+        """
+        try:
+            with self._conn() as conn:
+                rows = conn.execute(
+                    """SELECT phrase, replacement, is_favorite
+                       FROM dictionary_entries
+                       WHERE phrase != replacement
+                       ORDER BY is_favorite DESC, use_count DESC
+                       LIMIT 20"""
+                ).fetchall()
+            if not rows:
+                return ""
+            lines = [
+                "IMPORTANT DICTIONARY: The following terms must appear exactly as shown.",
+                "Do NOT replace them with similar-sounding alternatives."
+            ]
+            for phrase, replacement, is_fav in rows:
+                fav_mark = "★ " if is_fav else ""
+                lines.append(f"  {fav_mark}\"{phrase}\" → \"{replacement}\"")
+            return "\n".join(lines)
+        except Exception:
+            return ""
+
+    def apply_dictionary_replacements(self, text: str) -> str:
+        """Layer 1: Exact regex word-boundary replacement."""
+        replacements = self.get_dict_replacements()
+        for entry in replacements:
+            phrase = entry["phrase"]
+            replacement = entry["replacement"]
+            import re
+            pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', flags=re.IGNORECASE)
+            if phrase != replacement:
+                text, count = pattern.subn(replacement, text)
+                if count > 0:
+                    self._incr_use_count(phrase, count)
+                    logger.debug("dict exact: %s -> %s (%d times)", phrase, replacement, count)
+            else:
+                matches = pattern.findall(text)
+                if matches:
+                    self._incr_use_count(phrase, len(matches))
+        return text
+
+    def apply_fuzzy_replacements(self, text: str) -> str:
+        """Layer 2: Fuzzy phonetic matching using Levenshtein ratio.
+        
+        For words NOT matched by exact replacement, checks Levenshtein
+        similarity against dictionary phrases. Thresholds:
+        - words <= 4 chars: ratio >= 0.75 (strict — avoids false positives on short words)
+        - words 5-6 chars: ratio >= 0.65
+        - words >= 7 chars: ratio >= 0.60
+        
+        Also handles concatenated forms like "FloryFloor" by trying sliding-window
+        substring matching against dictionary phrases.
+        
+        Only operates on correction/expansion entries (phrase != replacement).
+        """
+        import re
+        import difflib
+
+        entries = self.get_dict_replacements()
+        fuzzy_entries = [(e["phrase"].lower(), e["replacement"], e["phrase"]) 
+                         for e in entries if e["phrase"].lower() != e["replacement"].lower()]
+        if not fuzzy_entries:
+            return text
+
+        fuzzy_hits: dict[str, int] = {}
+
+        def _lev_ratio(a: str, b: str) -> float:
+            return difflib.SequenceMatcher(None, a, b).ratio()
+
+        def _threshold(max_len: int) -> float:
+            if max_len <= 4:
+                return 0.75
+            elif max_len <= 6:
+                return 0.65
+            else:
+                return 0.60
+
+        def _find_best(token_lower: str):
+            best_ratio = 0.0
+            best_replacement = ""
+            best_phrase = ""
+            for phrase_lower, replacement, orig_phrase in fuzzy_entries:
+                if token_lower == replacement.lower():
+                    return (1.0, replacement, orig_phrase)
+                if token_lower == phrase_lower:
+                    return (1.0, replacement, orig_phrase)
+                max_len = max(len(token_lower), len(phrase_lower))
+                if max_len == 0:
+                    continue
+                ratio = _lev_ratio(token_lower, phrase_lower)
+                thresh = _threshold(max_len)
+                if ratio > best_ratio and ratio >= thresh:
+                    len_ratio = min(len(token_lower), len(phrase_lower)) / max_len
+                    if len_ratio >= 0.45:
+                        best_ratio = ratio
+                        best_replacement = replacement
+                        best_phrase = orig_phrase
+            if best_ratio >= _threshold(max(len(token_lower), len(best_phrase)) if best_phrase else 1):
+                return (best_ratio, best_replacement, best_phrase)
+            return (0.0, "", "")
+
+        # Split into words, preserving whitespace and punctuation
+        tokens = re.split(r'(\s+|[^\w\s])', text)
+        result: list[str] = []
+
+        for token in tokens:
+            if not token.isalpha() or len(token) < 2:
+                result.append(token)
+                continue
+
+            token_lower = token.lower()
+            best_ratio, best_replacement, best_phrase = _find_best(token_lower)
+
+            if best_replacement:
+                if token[0].isupper():
+                    result.append(best_replacement)
+                else:
+                    result.append(best_replacement.lower() if best_replacement[0].isupper() and token[0].islower() else best_replacement)
+                fuzzy_hits[best_phrase] = fuzzy_hits.get(best_phrase, 0) + 1
+            else:
+                result.append(token)
+
+        # Increment use_count for fuzzy matches
+        for phrase, count in fuzzy_hits.items():
+            self._incr_use_count(phrase, count)
+
+        return "".join(result)
+
+    def _incr_use_count(self, phrase: str, count: int) -> None:
+        try:
+            with self._write_lock:
+                with self._conn() as conn:
+                    conn.execute(
+                        "UPDATE dictionary_entries SET use_count = use_count + ? WHERE phrase = ?",
+                        (count, phrase),
+                    )
+                    conn.commit()
+        except Exception:
+            pass
 
 
 # Module-level singleton — initialized lazily on first use

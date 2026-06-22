@@ -40,13 +40,26 @@ _MODE_INSTRUCTIONS: dict[LLMMode, str] = {
 }
 
 
-def build_user_prompt(transcript: str, mode: LLMMode, few_shot_context: str = "") -> str:
+def build_user_prompt(
+    transcript: str,
+    mode: LLMMode,
+    few_shot_context: str = "",
+    dictionary_context: str = "",
+) -> str:
     """Build the user-level prompt for a given LLM mode and transcript.
 
     If few_shot_context is provided (from history-based similarity search),
     it is prepended before the instruction so the LLM sees past corrections.
+
+    If dictionary_context is provided, it is prepended before the instruction
+    to tell the LLM about custom terms that must be preserved.
     """
     instruction = _MODE_INSTRUCTIONS.get(mode, _CLEANUP)
+    parts = []
     if few_shot_context:
-        return f"{few_shot_context}{instruction}\n\nTranscript:\n{transcript}"
-    return f"{instruction}\n\nTranscript:\n{transcript}"
+        parts.append(few_shot_context)
+    if dictionary_context:
+        parts.append(dictionary_context)
+    parts.append(instruction)
+    parts.append(f"Transcript:\n{transcript}")
+    return "\n\n".join(parts)

@@ -1,14 +1,30 @@
-import { useState, useMemo, useCallback } from "react";
-import { BookOpen, Plus, Star, Pencil, Trash2, Search, X } from "lucide-react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { BookOpen, Plus, Star, Pencil, Trash2, Search, X, Upload, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/Button";
 import TabSwitcher from "@/components/TabSwitcher";
 import {
-  mockDictionaryEntries,
   CATEGORY_META,
-  type DictionaryEntry,
   type DictionaryCategory,
 } from "@/data/mockDictionaryData";
+
+const API_BASE = "http://127.0.0.1:8765/api";
+
+const isTauri = (): boolean =>
+  typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+
+export interface DictionaryEntry {
+  id: number;
+  phrase: string;
+  replacement: string;
+  category: string;
+  notes: string;
+  use_count: number;
+  is_favorite: boolean;
+  auto_learned: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 const TABS = [
   { id: "all", label: "All" },
@@ -50,7 +66,7 @@ function EntryCard({
   onDelete: () => void;
   onToggleFavorite: () => void;
 }) {
-  const cat = CATEGORY_META[entry.category];
+  const cat = CATEGORY_META[entry.category as DictionaryCategory] ?? CATEGORY_META.custom;
 
   return (
     <div
@@ -62,6 +78,9 @@ function EntryCard({
           <span className="text-text-primary text-[15px] font-medium truncate">
             {entry.phrase}
           </span>
+          {entry.auto_learned && (
+            <span className="text-[13px]" title="Auto-learned">✨</span>
+          )}
           <span className="text-text-muted text-[15px]">→</span>
           <span className="text-text-secondary text-[15px] truncate">
             {entry.replacement}
@@ -75,7 +94,7 @@ function EntryCard({
             {cat.label}
           </span>
           <span className="text-text-disabled text-[12px]">
-            Triggered {entry.useCount} times
+            Triggered {entry.use_count} times
           </span>
           {entry.notes && (
             <span className="text-text-disabled text-[12px] truncate max-w-[200px]">
@@ -90,12 +109,12 @@ function EntryCard({
         <button
           onClick={onToggleFavorite}
           className="w-8 h-8 flex items-center justify-center rounded-[8px] hover:bg-border-hover transition-colors"
-          title={entry.isFavorite ? "Unpin" : "Pin to top"}
+          title={entry.is_favorite ? "Unpin" : "Pin to top"}
         >
           <Star
             className={cn(
               "w-4 h-4 transition-colors",
-              entry.isFavorite ? "fill-[#D4883A] text-sunset" : "text-text-disabled"
+              entry.is_favorite ? "fill-[#D4883A] text-sunset" : "text-text-disabled"
             )}
           />
         </button>
@@ -124,12 +143,12 @@ function EntryModal({
   onClose,
 }: {
   entry: DictionaryEntry | null;
-  onSave: (data: { phrase: string; replacement: string; category: DictionaryCategory; notes: string }) => void;
+  onSave: (data: { phrase: string; replacement: string; category: string; notes: string }) => void;
   onClose: () => void;
 }) {
   const [phrase, setPhrase] = useState(entry?.phrase ?? "");
   const [replacement, setReplacement] = useState(entry?.replacement ?? "");
-  const [category, setCategory] = useState<DictionaryCategory>(entry?.category ?? "custom");
+  const [category, setCategory] = useState(entry?.category ?? "custom");
   const [notes, setNotes] = useState(entry?.notes ?? "");
 
   const isValid = phrase.trim().length > 0 && replacement.trim().length > 0;
@@ -268,55 +287,182 @@ function DeleteConfirm({
 }
 
 export default function DictionaryPage() {
-  const [entries, setEntries] = useState<DictionaryEntry[]>(mockDictionaryEntries);
+  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [modalOpen, setModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<DictionaryEntry | null>(null);
   const [deletingEntry, setDeletingEntry] = useState<DictionaryEntry | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
 
-  const toggleFavorite = useCallback((id: string) => {
-    setEntries((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, isFavorite: !e.isFavorite } : e))
-    );
+  const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
+    const resp = await fetch(`${API_BASE}${path}`, {
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      ...options,
+    });
+    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+    return resp.json();
   }, []);
 
-  const deleteEntry = useCallback((id: string) => {
-    setEntries((prev) => prev.filter((e) => e.id !== id));
-    setDeletingEntry(null);
-  }, []);
+  const loadEntries = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const data = await invoke<DictionaryEntry[]>("get_dictionary");
+        setEntries(data);
+      } else {
+        const data = await apiFetch("/dictionary");
+        setEntries(data);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  const toggleFavorite = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("toggle_dictionary_favorite", { id });
+      } else {
+        await apiFetch(`/dictionary/${id}/favorite`, { method: "POST" });
+      }
+      setEntries((prev) =>
+        prev.map((e) => (e.id === id ? { ...e, is_favorite: !e.is_favorite } : e))
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [apiFetch]);
+
+  const deleteEntry = useCallback(async (id: number) => {
+    try {
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("delete_dictionary_entry", { id });
+      } else {
+        await apiFetch(`/dictionary/${id}`, { method: "DELETE" });
+      }
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+      setDeletingEntry(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [apiFetch]);
 
   const saveEntry = useCallback(
-    (data: { phrase: string; replacement: string; category: DictionaryCategory; notes: string }) => {
-      if (editingEntry) {
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.id === editingEntry.id
-              ? { ...e, ...data, updatedAt: new Date().toISOString() }
-              : e
-          )
-        );
-      } else {
-        const newEntry: DictionaryEntry = {
-          id: Date.now().toString(),
-          ...data,
-          useCount: 0,
-          isFavorite: false,
-          createdAt: new Date().toISOString(),
-        };
-        setEntries((prev) => [newEntry, ...prev]);
+    async (data: { phrase: string; replacement: string; category: string; notes: string }) => {
+      try {
+        if (editingEntry) {
+          if (isTauri()) {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("update_dictionary_entry", { id: editingEntry.id, ...data });
+          } else {
+            await apiFetch(`/dictionary/${editingEntry.id}`, {
+              method: "PUT",
+              body: JSON.stringify(data),
+            });
+          }
+          setEntries((prev) =>
+            prev.map((e) =>
+              e.id === editingEntry.id
+                ? { ...e, ...data, updated_at: new Date().toISOString() }
+                : e
+            )
+          );
+        } else {
+          if (isTauri()) {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("add_dictionary_entry", data);
+          } else {
+            await apiFetch("/dictionary", {
+              method: "POST",
+              body: JSON.stringify(data),
+            });
+          }
+          await loadEntries();
+        }
+        setModalOpen(false);
+        setEditingEntry(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
       }
-      setModalOpen(false);
-      setEditingEntry(null);
     },
-    [editingEntry],
+    [editingEntry, apiFetch, loadEntries],
   );
+
+  const handleImportCSV = useCallback(async () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv";
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      if (file.size > 3 * 1024 * 1024) {
+        setError("File too large (max 3MB)");
+        return;
+      }
+      setImporting(true);
+      try {
+        const text = await file.text();
+        if (isTauri()) {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("import_dictionary_csv", { csvText: text });
+        } else {
+          await apiFetch("/dictionary/import", {
+            method: "POST",
+            body: JSON.stringify({ csv_text: text }),
+          });
+        }
+        await loadEntries();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setImporting(false);
+      }
+    };
+    input.click();
+  }, [apiFetch, loadEntries]);
+
+  const handleExportCSV = useCallback(async () => {
+    try {
+      let csvText: string;
+      if (isTauri()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<{ csv: string }>("export_dictionary_csv");
+        csvText = result.csv;
+      } else {
+        const data = await apiFetch("/dictionary/export/csv");
+        csvText = data.csv;
+      }
+      const blob = new Blob([csvText], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stt-dictionary-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, [apiFetch]);
 
   const filtered = useMemo(() => {
     let result = entries;
 
     if (activeTab === "favorites") {
-      result = result.filter((e) => e.isFavorite);
+      result = result.filter((e) => e.is_favorite);
     } else if (activeTab !== "all") {
       result = result.filter((e) => e.category === activeTab);
     }
@@ -334,15 +480,15 @@ export default function DictionaryPage() {
     return result;
   }, [entries, activeTab, search]);
 
-  const pinned = useMemo(() => filtered.filter((e) => e.isFavorite), [filtered]);
-  const unpinned = useMemo(() => filtered.filter((e) => !e.isFavorite), [filtered]);
+  const pinned = useMemo(() => filtered.filter((e) => e.is_favorite), [filtered]);
+  const unpinned = useMemo(() => filtered.filter((e) => !e.is_favorite), [filtered]);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: entries.length };
     for (const e of entries) {
       c[e.category] = (c[e.category] ?? 0) + 1;
     }
-    c.favorites = entries.filter((e) => e.isFavorite).length;
+    c.favorites = entries.filter((e) => e.is_favorite).length;
     return c;
   }, [entries]);
 
@@ -359,109 +505,147 @@ export default function DictionaryPage() {
               Manage custom words, names, abbreviations, and terminology.
             </p>
           </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditingEntry(null);
-              setModalOpen(true);
-            }}
-            className="gap-1.5 shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            Add Word
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search dictionary..."
-            className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-border-hover transition-colors"
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleImportCSV}
+              disabled={importing}
+              className="gap-1"
+              title="Import CSV"
             >
-              <X className="w-3.5 h-3.5 text-text-disabled" />
-            </button>
-          )}
-        </div>
-
-        {/* Category Tabs */}
-        <div className="mb-6">
-          <TabSwitcher
-            tabs={TABS.map((t) => ({
-              ...t,
-              label: t.id === "all"
-                ? `All (${counts.all ?? 0})`
-                : t.id === "favorites"
-                  ? `Favorites (${counts.favorites ?? 0})`
-                  : `${t.label} (${counts[t.id] ?? 0})`,
-            }))}
-            activeTab={activeTab}
-            onChange={setActiveTab}
-          />
-        </div>
-
-        {/* Content */}
-        {filtered.length === 0 ? (
-          <EmptyState query={search} />
-        ) : (
-          <div className="space-y-6">
-            {/* Pinned Section */}
-            {pinned.length > 0 && (
-              <div>
-                <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
-                  Pinned Terms
-                </h2>
-                <div className="space-y-2">
-                  {pinned.map((entry) => (
-                    <EntryCard
-                      key={entry.id}
-                      entry={entry}
-                      onEdit={() => {
-                        setEditingEntry(entry);
-                        setModalOpen(true);
-                      }}
-                      onDelete={() => setDeletingEntry(entry)}
-                      onToggleFavorite={() => toggleFavorite(entry.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* All entries */}
-            {unpinned.length > 0 && (
-              <div>
-                {pinned.length > 0 && (
-                  <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
-                    All Terms
-                  </h2>
-                )}
-                <div className="space-y-2">
-                  {unpinned.map((entry) => (
-                    <EntryCard
-                      key={entry.id}
-                      entry={entry}
-                      onEdit={() => {
-                        setEditingEntry(entry);
-                        setModalOpen(true);
-                      }}
-                      onDelete={() => setDeletingEntry(entry)}
-                      onToggleFavorite={() => toggleFavorite(entry.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+              <Upload className="w-4 h-4" />
+              {importing ? "Importing..." : "Import"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExportCSV}
+              className="gap-1"
+              title="Export CSV"
+            >
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setEditingEntry(null);
+                setModalOpen(true);
+              }}
+              className="gap-1.5 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              Add Word
+            </Button>
           </div>
+        </div>
+
+        {error && (
+          <div className="mb-4 px-4 py-2 rounded-[10px] bg-[rgba(229,83,83,0.1)] border border-[rgba(229,83,83,0.2)] text-[#E55353] text-[13px]">
+            {error}
+            <button onClick={() => setError("")} className="ml-2 underline">Dismiss</button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <>
+            {/* Search */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-disabled" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search dictionary..."
+                className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-disabled outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full hover:bg-border-hover transition-colors"
+                >
+                  <X className="w-3.5 h-3.5 text-text-disabled" />
+                </button>
+              )}
+            </div>
+
+            {/* Category Tabs */}
+            <div className="mb-6">
+              <TabSwitcher
+                tabs={TABS.map((t) => ({
+                  ...t,
+                  label: t.id === "all"
+                    ? `All (${counts.all ?? 0})`
+                    : t.id === "favorites"
+                      ? `Favorites (${counts.favorites ?? 0})`
+                      : `${t.label} (${counts[t.id] ?? 0})`,
+                }))}
+                activeTab={activeTab}
+                onChange={setActiveTab}
+              />
+            </div>
+
+            {/* Content */}
+            {filtered.length === 0 ? (
+              <EmptyState query={search} />
+            ) : (
+              <div className="space-y-6">
+                {/* Pinned Section */}
+                {pinned.length > 0 && (
+                  <div>
+                    <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                      Pinned Terms
+                    </h2>
+                    <div className="space-y-2">
+                      {pinned.map((entry) => (
+                        <EntryCard
+                          key={entry.id}
+                          entry={entry}
+                          onEdit={() => {
+                            setEditingEntry(entry);
+                            setModalOpen(true);
+                          }}
+                          onDelete={() => setDeletingEntry(entry)}
+                          onToggleFavorite={() => toggleFavorite(entry.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* All entries */}
+                {unpinned.length > 0 && (
+                  <div>
+                    {pinned.length > 0 && (
+                      <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                        All Terms
+                      </h2>
+                    )}
+                    <div className="space-y-2">
+                      {unpinned.map((entry) => (
+                        <EntryCard
+                          key={entry.id}
+                          entry={entry}
+                          onEdit={() => {
+                            setEditingEntry(entry);
+                            setModalOpen(true);
+                          }}
+                          onDelete={() => setDeletingEntry(entry)}
+                          onToggleFavorite={() => toggleFavorite(entry.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 

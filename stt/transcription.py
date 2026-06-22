@@ -195,6 +195,10 @@ def _transcribe_cpp(
     except Exception as exc:
         raise RuntimeError(f"Failed to load whisper.cpp model '{config.model_name}': {exc}") from exc
 
+    prompt = _OUTPUT_PROMPT
+    if config.hotwords:
+        prompt = f"{_OUTPUT_PROMPT} Expected terms: {config.hotwords}"
+
     try:
         with _whisper_cpp_lock:  # serialise — whisper.cpp is not thread-safe
             raw_segments = model.transcribe(
@@ -206,7 +210,7 @@ def _transcribe_cpp(
                 print_realtime=False,
                 language=config.language or "",
                 # --- Quality tuning ---
-                initial_prompt=_OUTPUT_PROMPT,
+                initial_prompt=prompt,
                 temperature=0.0,
                 temperature_inc=0.2,
                 no_speech_thold=config.whisper_no_speech_thold,
@@ -309,7 +313,7 @@ def _transcribe_fw(
                 audio,
                 batch_size=batch_size,
                 **{k: v for k, v in transcribe_kwargs.items()
-                   if k not in ("word_timestamps", "hotwords")},  # batched doesn't support these yet
+                   if k != "word_timestamps"},  # batched doesn't support word_timestamps yet
             )
         else:
             raw_segments, info = model.transcribe(audio, **transcribe_kwargs)

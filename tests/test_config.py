@@ -407,6 +407,9 @@ class TestBuildConfigKeyInjection(unittest.TestCase):
             "cpu_threads": 4,
             "language": None,
             "beam_size": None,
+            "hotwords": "",
+            "diarization": False,
+            "diarization_threshold": 0.65,
             "llm_provider": None,
             "llm_mode": None,
             "llm_model": None,
@@ -417,12 +420,15 @@ class TestBuildConfigKeyInjection(unittest.TestCase):
             "clipboard": False,
             "no_type": False,
             "type_path": "wtype",
+            "clipboard_path": "wl-copy",
             "debug": False,
             "json_mode": False,
             "ws_port": None,
+            "ws_audio": False,
             "input_file": None,
             "list_microphones": False,
             "download_model": None,
+            "log_file": None,
         }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)

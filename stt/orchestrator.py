@@ -910,8 +910,45 @@ def _transcribe_and_print(
     if hooks and hooks.on_activity:
         hooks.on_activity("Transcribing")
     ts_asr = time.monotonic()
+
+    # Merge dictionary hotwords into transcription config (thread-safe: local copy)
+    tcfg = config.transcription
     try:
-        result = _transcribe_with_partials(audio, sr, config.transcription, _on_partial)
+        # Use weighted hotwords for faster-whisper (supports "term:boost" syntax)
+        use_weighted = tcfg.backend is not TranscriptionBackend.WHISPER_CPP
+        dict_hotwords = get_store().get_dict_hotwords(weighted=use_weighted)
+        if dict_hotwords:
+            merged = ", ".join(filter(None, [tcfg.hotwords, dict_hotwords]))
+            # Create a local copy with merged hotwords to avoid mutating shared config
+            from stt.config import TranscriptionConfig
+            tcfg = TranscriptionConfig(
+                backend=tcfg.backend,
+                model_name=tcfg.model_name,
+                compute_type=tcfg.compute_type,
+                device=tcfg.device,
+                cpu_threads=tcfg.cpu_threads,
+                language=tcfg.language,
+                beam_size=tcfg.beam_size,
+                condition_on_previous_text=tcfg.condition_on_previous_text,
+                hotwords=merged,
+                word_timestamps=tcfg.word_timestamps,
+                batch_size=tcfg.batch_size,
+                noise_reduce=tcfg.noise_reduce,
+                noise_reduce_prop_decrease=tcfg.noise_reduce_prop_decrease,
+                vad_filter=False,  # orchestrator VAD already segmented this audio
+                vad_min_silence_ms=tcfg.vad_min_silence_ms,
+                vad_max_speech_sec=tcfg.vad_max_speech_sec,
+                whisper_no_speech_thold=tcfg.whisper_no_speech_thold,
+                whisper_entropy_thold=tcfg.whisper_entropy_thold,
+                whisper_logprob_thold=tcfg.whisper_logprob_thold,
+                whisper_compression_ratio_thold=tcfg.whisper_compression_ratio_thold,
+            )
+            _debug(config, f"dictionary hotwords merged: {len(dict_hotwords.split(','))} terms")
+    except Exception:
+        pass
+
+    try:
+        result = _transcribe_with_partials(audio, sr, tcfg, _on_partial)
     except Exception as exc:
         _debug(config, f"transcription error: {exc}")
         if hooks and hooks.on_error:
@@ -931,6 +968,25 @@ def _transcribe_and_print(
 
     raw = result.text
     norm = _normalize_text(raw)
+
+    # Layer 1: Exact dictionary replacements (regex word-boundary)
+    try:
+        raw_before = raw
+        raw = get_store().apply_dictionary_replacements(raw)
+        if raw != raw_before:
+            _debug(config, f"dict exact: {raw_before!r} -> {raw!r}")
+    except Exception:
+        pass
+
+    # Layer 2: Fuzzy phonetic matching (Levenshtein ratio)
+    try:
+        raw_before = raw
+        raw = get_store().apply_fuzzy_replacements(raw)
+        if raw != raw_before:
+            _debug(config, f"dict fuzzy: {raw_before!r} -> {raw!r}")
+    except Exception:
+        pass
+
     # Filter common whisper silence hallucinations (e.g. "thank you")
     # when the captured segment has very low energy.
     if norm in _SILENCE_HALLUCINATIONS:
@@ -980,6 +1036,7 @@ def _transcribe_and_print(
 
     # Build few-shot context from past corrected transcripts (latency-gated)
     few_shot_context = ""
+    dict_llm_context = ""
     try:
         store = get_store()
         candidates = store.recent_cleanups(limit=20)
@@ -989,6 +1046,10 @@ def _transcribe_and_print(
             ctx_ms = (time.monotonic() - before_ctx) * 1000
             if few_shot_context:
                 _debug(config, f"few-shot: {ctx_ms:.0f}ms embedding latency")
+        # Build dictionary context for LLM (Layer 3)
+        dict_llm_context = store.build_dict_llm_context()
+        if dict_llm_context:
+            _debug(config, f"dict LLM context: {len(dict_llm_context)} chars")
     except Exception:
         pass
 
@@ -996,7 +1057,7 @@ def _transcribe_and_print(
     try:
         collected: list[str] = []
         with _llm_semaphore:
-            for token in rewrite_stream(raw, config.llm, few_shot_context=few_shot_context):
+            for token in rewrite_stream(raw, config.llm, few_shot_context=few_shot_context, dictionary_context=dict_llm_context):
                 if token:
                     collected.append(token)
                     sys.stdout.write(token)
