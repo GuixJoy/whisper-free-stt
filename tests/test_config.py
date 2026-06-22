@@ -420,7 +420,7 @@ class TestBuildConfigKeyInjection(unittest.TestCase):
             "clipboard": False,
             "no_type": False,
             "type_path": "wtype",
-            "clipboard_path": "wl-copy",
+            "clipboard_path": None,
             "debug": False,
             "json_mode": False,
             "ws_port": None,

@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from stt.history import get_store
@@ -54,7 +54,7 @@ def get_hotwords():
 def get_entry(entry_id: int):
     entry = get_store().get_dictionary_entry(entry_id)
     if entry is None:
-        return {"error": "not found", "id": entry_id}
+        raise HTTPException(status_code=404, detail=f"Dictionary entry {entry_id} not found")
     return entry
 
 
@@ -67,7 +67,7 @@ def create_entry(body: CreateEntryRequest):
         notes=body.notes,
     )
     if entry is None:
-        return {"error": "duplicate or invalid", "phrase": body.phrase}
+        raise HTTPException(status_code=409, detail=f"Duplicate or invalid: '{body.phrase}'")
     return entry
 
 
@@ -81,21 +81,23 @@ def update_entry(entry_id: int, body: UpdateEntryRequest):
         notes=body.notes or "",
     )
     if entry is None:
-        return {"error": "update failed", "id": entry_id}
+        raise HTTPException(status_code=404, detail=f"Dictionary entry {entry_id} not found or update failed")
     return entry
 
 
 @router.delete("/{entry_id}")
 def delete_entry(entry_id: int):
     ok = get_store().delete_dictionary_entry(entry_id)
-    return {"deleted": ok, "id": entry_id}
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Dictionary entry {entry_id} not found")
+    return {"deleted": True, "id": entry_id}
 
 
 @router.post("/{entry_id}/favorite")
 def toggle_favorite(entry_id: int):
     new_state = get_store().toggle_dictionary_favorite(entry_id)
     if new_state is None:
-        return {"error": "not found", "id": entry_id}
+        raise HTTPException(status_code=404, detail=f"Dictionary entry {entry_id} not found")
     return {"id": entry_id, "is_favorite": new_state}
 
 

@@ -812,12 +812,12 @@ class HistoryStore:
                             skipped += 1
                             continue
                         try:
-                            conn.execute(
+                            cur = conn.execute(
                                 """INSERT OR IGNORE INTO dictionary_entries
                                    (phrase, replacement) VALUES (?, ?)""",
                                 (phrase, replacement),
                             )
-                            if conn.total_changes > 0:
+                            if cur.rowcount and cur.rowcount > 0:
                                 imported += 1
                             else:
                                 skipped += 1
@@ -874,11 +874,11 @@ class HistoryStore:
 
     def apply_dictionary_replacements(self, text: str) -> str:
         """Layer 1: Exact regex word-boundary replacement."""
+        import re
         replacements = self.get_dict_replacements()
         for entry in replacements:
             phrase = entry["phrase"]
             replacement = entry["replacement"]
-            import re
             pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', flags=re.IGNORECASE)
             if phrase != replacement:
                 text, count = pattern.subn(replacement, text)

@@ -170,8 +170,11 @@ async def delete_dictionary_entry(sid: str, data: dict):
     """Handle dictionary delete request from browser."""
     entry_id = data.get("id") if isinstance(data, dict) else None
     if entry_id:
-        get_store().delete_dictionary_entry(entry_id)
-        await sio.emit("dictionary_deleted", {"id": entry_id}, to=sid)
+        ok = get_store().delete_dictionary_entry(entry_id)
+        if ok:
+            await sio.emit("dictionary_deleted", {"id": entry_id}, to=sid)
+        else:
+            await sio.emit("dictionary_error", {"error": "delete failed", "id": entry_id}, to=sid)
 
 
 @sio.event
@@ -180,7 +183,10 @@ async def toggle_dictionary_favorite(sid: str, data: dict):
     entry_id = data.get("id") if isinstance(data, dict) else None
     if entry_id:
         new_state = get_store().toggle_dictionary_favorite(entry_id)
-        await sio.emit("dictionary_favorited", {"id": entry_id, "is_favorite": new_state}, to=sid)
+        if new_state is not None:
+            await sio.emit("dictionary_favorited", {"id": entry_id, "is_favorite": new_state}, to=sid)
+        else:
+            await sio.emit("dictionary_error", {"error": "not found", "id": entry_id}, to=sid)
 
 
 @sio.event
