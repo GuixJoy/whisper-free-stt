@@ -982,41 +982,43 @@ def _transcribe_and_print(
         hooks.on_state("transcribing")
     ts_asr = time.monotonic()
 
-    # Merge dictionary hotwords into transcription config (thread-safe: local copy)
+    # Build a local transcription config (thread-safe, VAD already done by orchestrator)
     tcfg = config.transcription
     try:
-        # Use weighted hotwords for faster-whisper (supports "term:boost" syntax)
+        from stt.config import TranscriptionConfig
+        # Always create a copy with vad_filter=False — orchestrator already segments audio
+        tcfg = TranscriptionConfig(
+            backend=tcfg.backend,
+            model_name=tcfg.model_name,
+            compute_type=tcfg.compute_type,
+            device=tcfg.device,
+            cpu_threads=tcfg.cpu_threads,
+            language=tcfg.language,
+            beam_size=tcfg.beam_size,
+            condition_on_previous_text=tcfg.condition_on_previous_text,
+            hotwords=tcfg.hotwords,
+            word_timestamps=tcfg.word_timestamps,
+            batch_size=tcfg.batch_size,
+            noise_reduce=tcfg.noise_reduce,
+            noise_reduce_prop_decrease=tcfg.noise_reduce_prop_decrease,
+            vad_filter=False,  # orchestrator VAD already segmented this audio
+            vad_min_silence_ms=tcfg.vad_min_silence_ms,
+            vad_max_speech_sec=tcfg.vad_max_speech_sec,
+            whisper_no_speech_thold=tcfg.whisper_no_speech_thold,
+            whisper_entropy_thold=tcfg.whisper_entropy_thold,
+            whisper_logprob_thold=tcfg.whisper_logprob_thold,
+            whisper_compression_ratio_thold=tcfg.whisper_compression_ratio_thold,
+        )
+
+        # Merge dictionary hotwords into the local config
         use_weighted = tcfg.backend is not TranscriptionBackend.WHISPER_CPP
         dict_hotwords = get_store().get_dict_hotwords(weighted=use_weighted)
         if dict_hotwords:
             merged = ", ".join(filter(None, [tcfg.hotwords, dict_hotwords]))
-            # Create a local copy with merged hotwords to avoid mutating shared config
-            from stt.config import TranscriptionConfig
-            tcfg = TranscriptionConfig(
-                backend=tcfg.backend,
-                model_name=tcfg.model_name,
-                compute_type=tcfg.compute_type,
-                device=tcfg.device,
-                cpu_threads=tcfg.cpu_threads,
-                language=tcfg.language,
-                beam_size=tcfg.beam_size,
-                condition_on_previous_text=tcfg.condition_on_previous_text,
-                hotwords=merged,
-                word_timestamps=tcfg.word_timestamps,
-                batch_size=tcfg.batch_size,
-                noise_reduce=tcfg.noise_reduce,
-                noise_reduce_prop_decrease=tcfg.noise_reduce_prop_decrease,
-                vad_filter=False,  # orchestrator VAD already segmented this audio
-                vad_min_silence_ms=tcfg.vad_min_silence_ms,
-                vad_max_speech_sec=tcfg.vad_max_speech_sec,
-                whisper_no_speech_thold=tcfg.whisper_no_speech_thold,
-                whisper_entropy_thold=tcfg.whisper_entropy_thold,
-                whisper_logprob_thold=tcfg.whisper_logprob_thold,
-                whisper_compression_ratio_thold=tcfg.whisper_compression_ratio_thold,
-            )
+            object.__setattr__(tcfg, "hotwords", merged)
             _debug(config, f"dictionary hotwords merged: {len(dict_hotwords.split(','))} terms")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to build transcription config with dictionary: %s", exc)
 
     try:
         result = _transcribe_with_partials(audio, sr, tcfg, _on_partial)
@@ -1038,7 +1040,6 @@ def _transcribe_and_print(
         return
 
     raw = result.text
-    norm = _normalize_text(raw)
 
     # Layer 1: Exact dictionary replacements (regex word-boundary)
     try:
@@ -1046,8 +1047,8 @@ def _transcribe_and_print(
         raw = get_store().apply_dictionary_replacements(raw)
         if raw != raw_before:
             _debug(config, f"dict exact: {raw_before!r} -> {raw!r}")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Dictionary exact replacement failed: %s", exc)
 
     # Layer 2: Fuzzy phonetic matching (Levenshtein ratio)
     try:
@@ -1055,8 +1056,10 @@ def _transcribe_and_print(
         raw = get_store().apply_fuzzy_replacements(raw)
         if raw != raw_before:
             _debug(config, f"dict fuzzy: {raw_before!r} -> {raw!r}")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Dictionary fuzzy replacement failed: %s", exc)
+
+    norm = _normalize_text(raw)
 
     # Filter common whisper silence hallucinations (e.g. "thank you")
     # when the captured segment has very low energy.
