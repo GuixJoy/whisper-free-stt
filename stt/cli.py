@@ -13,7 +13,6 @@ from stt.log import get_logger
 from stt.config import (
     AppConfig,
     AudioConfig,
-    ClipboardConfig,
     ComputeType,
     DiarizationConfig,
     LLMConfig,
@@ -21,7 +20,6 @@ from stt.config import (
     LLMProvider,
     TranscriptionBackend,
     TranscriptionConfig,
-    TypingConfig,
     VADConfig,
     load_dotenv,
 )
@@ -44,6 +42,10 @@ _ASR_PROFILES: dict[str, _ASRProfile] = {
     "balanced": _ASRProfile(model_name="base.en", beam_size=1, condition_on_previous_text=True),
     "accuracy": _ASRProfile(model_name="small.en", beam_size=3, condition_on_previous_text=True),
     # faster-whisper (supports distil/turbo models not in whisper.cpp)
+    "small-cuda": _ASRProfile(
+        model_name="small.en", beam_size=3, condition_on_previous_text=False,
+        backend=TranscriptionBackend.FASTER_WHISPER,
+    ),
     "distil": _ASRProfile(
         model_name="distil-large-v3", beam_size=5, condition_on_previous_text=False,
         backend=TranscriptionBackend.FASTER_WHISPER,
@@ -61,22 +63,76 @@ def _has_cuda() -> bool:
         import ctranslate2
         if ctranslate2.get_cuda_device_count() == 0:
             return False
-        import ctypes as _ct, os as _os, numpy as _np, time as _time
+        import ctypes as _ct, os as _os, sys as _sys, site as _site
         # 1. Load libcublas
         loaded = False
-        for d in ["/usr/local/lib/ollama/cuda_v12", "/usr/local/lib/ollama/cuda_v13"]:
-            lib = _os.path.join(d, "libcublas.so.12")
-            if _os.path.isfile(lib):
-                try:
-                    _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-                    loaded = True
-                    break
-                except OSError:
-                    continue
-        if not loaded:
-            for lib in ("libcublas.so.12", "libcublas.so.11"):
-                try: _ct.CDLL(lib, _ct.RTLD_GLOBAL); loaded = True; break
-                except OSError: continue
+        if _sys.platform == "win32":
+            # Windows: try pip-installed nvidia-cublas, then CUDA toolkit
+            # Check pip-installed nvidia-cublas package
+            for sp in (_site.getsitepackages() if hasattr(_site, 'getsitepackages') else []):
+                cublas_dll = _os.path.join(sp, "nvidia", "cublas", "bin", "cublas64_12.dll")
+                if _os.path.isfile(cublas_dll):
+                    try:
+                        _ct.CDLL(cublas_dll)
+                        loaded = True
+                        break
+                    except OSError:
+                        continue
+            # Check PyInstaller frozen app directories
+            if not loaded and getattr(_sys, 'frozen', False):
+                app_dir = _os.path.dirname(_sys.executable)
+                meipass = getattr(_sys, '_MEIPASS', app_dir)
+                for base in (app_dir, meipass):
+                    for sub in ("", "nvidia/cublas/bin", "lib/nvidia/cublas/bin"):
+                        cublas_dll = _os.path.join(base, sub, "cublas64_12.dll") if sub else _os.path.join(base, "cublas64_12.dll")
+                        if _os.path.isfile(cublas_dll):
+                            try:
+                                _ct.CDLL(cublas_dll)
+                                loaded = True
+                                break
+                            except OSError:
+                                continue
+                    if loaded:
+                        break
+            if not loaded:
+                # Try system PATH (CUDA toolkit)
+                for lib in ("cublas64_12.dll", "cublas64_11.dll"):
+                    try:
+                        _ct.CDLL(lib)
+                        loaded = True
+                        break
+                    except OSError:
+                        continue
+            if not loaded:
+                # Try CUDA toolkit default install path
+                for cuda_ver in ("v12.8", "v12.6", "v12.4", "v12.1", "v12.0", "v11.8"):
+                    cuda_bin = rf"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\{cuda_ver}\bin"
+                    for lib_name in ("cublas64_12.dll", "cublas64_11.dll"):
+                        lib_path = _os.path.join(cuda_bin, lib_name)
+                        if _os.path.isfile(lib_path):
+                            try:
+                                _ct.CDLL(lib_path)
+                                loaded = True
+                                break
+                            except OSError:
+                                continue
+                    if loaded:
+                        break
+        else:
+            # Linux / macOS
+            for d in ["/usr/local/lib/ollama/cuda_v12", "/usr/local/lib/ollama/cuda_v13"]:
+                lib = _os.path.join(d, "libcublas.so.12")
+                if _os.path.isfile(lib):
+                    try:
+                        _ct.CDLL(lib, _ct.RTLD_GLOBAL)
+                        loaded = True
+                        break
+                    except OSError:
+                        continue
+            if not loaded:
+                for lib in ("libcublas.so.12", "libcublas.so.11"):
+                    try: _ct.CDLL(lib, _ct.RTLD_GLOBAL); loaded = True; break
+                    except OSError: continue
         if not loaded:
             return False
         # 2. Avoid running an inference here (can download models / slow startup).
@@ -84,6 +140,21 @@ def _has_cuda() -> bool:
         return True
     except Exception:
         return False
+
+
+def _get_vram_mb() -> int:
+    """Return free VRAM in MB for the first CUDA device, or 0 if unavailable."""
+    try:
+        import subprocess
+        if subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                          capture_output=True, text=True, timeout=5).returncode == 0:
+            out = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+                                 capture_output=True, text=True, timeout=5).stdout.strip()
+            if out:
+                return int(out.split("\n")[0].strip())
+    except Exception:
+        pass
+    return 0
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -151,12 +222,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--deepseek-api-key", type=str, default=None, help="DeepSeek API key (overrides DEEPSEEK_API_KEY env)")
     parser.add_argument("--openrouter-api-key", type=str, default=None, help="OpenRouter API key (overrides OPENROUTER_API_KEY env)")
 
-    # Clipboard
-    parser.add_argument("--clipboard", action="store_true", help="Copy final text to clipboard (wl-copy on Wayland, xclip on X11)")
-    parser.add_argument("--no-type", action="store_true", help="Do not type final text into focused input")
-    parser.add_argument("--type-path", type=str, default=None, help="Typing binary path (default: auto-detect wtype/xdotool)")
-    parser.add_argument("--clipboard-path", type=str, default=None, help="Clipboard binary path (default: auto-detect wl-copy/xclip)")
-
     # Debug
     parser.add_argument("--debug", action="store_true", help="Print diagnostic info at each pipeline stage")
     parser.add_argument("--json-mode", action="store_true", help="Output JSON events to stdout (for Tauri/UI integration)")
@@ -197,7 +262,18 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     has_cuda = _has_cuda()
     profile_name = args.asr_profile
     if profile_name == "auto":
-        profile_name = "turbo" if has_cuda else "accuracy"
+        if has_cuda:
+            vram_mb = _get_vram_mb()
+            if vram_mb >= 6000:
+                profile_name = "turbo"       # large-v3-turbo (~3.5GB VRAM)
+            elif vram_mb >= 3000:
+                profile_name = "distil"      # distil-large-v3 (~2.5GB VRAM)
+            elif vram_mb >= 1500:
+                profile_name = "small-cuda"  # small.en on CUDA (~1.2GB VRAM)
+            else:
+                profile_name = "accuracy"    # small.en on CPU (low VRAM)
+        else:
+            profile_name = "accuracy"
 
     profile = _ASR_PROFILES[profile_name]
     model_name = args.model if args.model is not None else profile.model_name
@@ -208,7 +284,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     if compute_type is ComputeType.AUTO:
         compute_type = ComputeType.FLOAT16 if device == "cuda" else ComputeType.INT8
 
-    return AppConfig(
+        return AppConfig(
         audio=AudioConfig(
             sample_rate=args.sample_rate,
             device_index=args.device_index,
@@ -229,6 +305,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             beam_size=beam_size,
             condition_on_previous_text=profile.condition_on_previous_text,
             hotwords=getattr(args, "hotwords", "") or "",
+            profile_name=profile_name,
         ),
         llm=LLMConfig(
             mode=llm_mode,
@@ -236,16 +313,6 @@ def build_config(args: argparse.Namespace) -> AppConfig:
             model=llm_model,
             fallback_model=llm_fallback,
             timeout_sec=llm_timeout,
-        ),
-        clipboard=ClipboardConfig(
-            enabled=args.clipboard,
-            wl_copy_path=args.clipboard_path or "wl-copy",
-            xclip_path=args.clipboard_path or "xclip",
-        ),
-        typing=TypingConfig(
-            enabled=not args.no_type,
-            wtype_path=args.type_path or "wtype",
-            xdotool_path=args.type_path or "xdotool",
         ),
         diarization=DiarizationConfig(
             enabled=args.diarization,
@@ -257,37 +324,75 @@ def build_config(args: argparse.Namespace) -> AppConfig:
 
 
 def _ensure_cuda_libs() -> None:
-    """Pre-load CUDA libraries from known Ollama paths.
+    """Pre-load CUDA libraries from known paths.
 
-    Setting os.environ['LD_LIBRARY_PATH'] after process start has no effect on
-    the Linux dynamic linker — we must load the library ourselves via ctypes
-    so the symbols are available when ctranslate2 tries to use them.
+    On Linux: setting os.environ['LD_LIBRARY_PATH'] after process start has no
+    effect on the dynamic linker — we must load via ctypes so symbols are
+    available when ctranslate2 tries to use them.
+
+    On Windows: add the CUDA toolkit bin directory to PATH so DLLs are found.
     """
     import ctypes as _ct
     import os as _os
-    candidate_dirs = [
-        "/usr/local/lib/ollama/cuda_v12",
-        "/usr/local/lib/ollama/cuda_v13",
-    ]
-    for d in candidate_dirs:
-        lib_path = _os.path.join(d, "libcublas.so.12")
-        if _os.path.isfile(lib_path):
+    import sys as _sys
+    import site as _site
+
+    if _sys.platform == "win32":
+        # Windows: add pip-installed nvidia-cublas bin to PATH
+        # Check standard site-packages paths
+        for sp in (_site.getsitepackages() if hasattr(_site, 'getsitepackages') else []):
+            cublas_bin = _os.path.join(sp, "nvidia", "cublas", "bin")
+            if _os.path.isdir(cublas_bin) and cublas_bin not in _os.environ.get("PATH", ""):
+                _os.environ["PATH"] = cublas_bin + ";" + _os.environ.get("PATH", "")
+        # Check PyInstaller frozen app directories
+        if getattr(_sys, 'frozen', False):
+            # Running as PyInstaller bundle
+            app_dir = _os.path.dirname(_sys.executable)
+            meipass = getattr(_sys, '_MEIPASS', app_dir)
+            for base in (app_dir, meipass):
+                cublas_bin = _os.path.join(base, "nvidia", "cublas", "bin")
+                if _os.path.isdir(cublas_bin) and cublas_bin not in _os.environ.get("PATH", ""):
+                    _os.environ["PATH"] = cublas_bin + ";" + _os.environ.get("PATH", "")
+                # Also check lib subdirectory
+                cublas_bin = _os.path.join(base, "lib", "nvidia", "cublas", "bin")
+                if _os.path.isdir(cublas_bin) and cublas_bin not in _os.environ.get("PATH", ""):
+                    _os.environ["PATH"] = cublas_bin + ";" + _os.environ.get("PATH", "")
+        # Also add CUDA toolkit bin to PATH
+        for cuda_ver in ("v12.8", "v12.6", "v12.4", "v12.1", "v12.0", "v11.8"):
+            cuda_bin = rf"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\{cuda_ver}\bin"
+            if _os.path.isdir(cuda_bin) and cuda_bin not in _os.environ.get("PATH", ""):
+                _os.environ["PATH"] = cuda_bin + ";" + _os.environ.get("PATH", "")
+        # Try loading directly
+        for lib in ("cublas64_12.dll", "cublas64_11.dll"):
             try:
-                _ct.CDLL(lib_path, _ct.RTLD_GLOBAL)
-                # Also add the dir to LD_LIBRARY_PATH for subprocesses
-                ld = _os.environ.get("LD_LIBRARY_PATH", "")
-                if d not in ld:
-                    _os.environ["LD_LIBRARY_PATH"] = f"{d}:{ld}" if ld else d
+                _ct.CDLL(lib)
                 return
             except OSError:
                 continue
-    # Fallback: try system ld path
-    for lib in ("libcublas.so.12", "libcublas.so.11"):
-        try:
-            _ct.CDLL(lib, _ct.RTLD_GLOBAL)
-            return
-        except OSError:
-            continue
+    else:
+        # Linux: load from Ollama bundled CUDA libs
+        candidate_dirs = [
+            "/usr/local/lib/ollama/cuda_v12",
+            "/usr/local/lib/ollama/cuda_v13",
+        ]
+        for d in candidate_dirs:
+            lib_path = _os.path.join(d, "libcublas.so.12")
+            if _os.path.isfile(lib_path):
+                try:
+                    _ct.CDLL(lib_path, _ct.RTLD_GLOBAL)
+                    ld = _os.environ.get("LD_LIBRARY_PATH", "")
+                    if d not in ld:
+                        _os.environ["LD_LIBRARY_PATH"] = f"{d}:{ld}" if ld else d
+                    return
+                except OSError:
+                    continue
+        # Fallback: try system ld path
+        for lib in ("libcublas.so.12", "libcublas.so.11"):
+            try:
+                _ct.CDLL(lib, _ct.RTLD_GLOBAL)
+                return
+            except OSError:
+                continue
 
 
 def _list_microphones(config: AppConfig) -> None:

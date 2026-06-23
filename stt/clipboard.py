@@ -1,8 +1,9 @@
-"""Clipboard integration — auto-detects Wayland (wl-copy) or X11 (xclip)."""
+"""Clipboard integration — auto-detects Windows, Wayland (wl-copy) or X11 (xclip)."""
 
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import shutil
 
@@ -15,6 +16,10 @@ logger = get_logger(__name__)
 _tool_cache: dict[str, str | None] = {}
 
 
+def _is_windows() -> bool:
+    return platform.system() == "Windows"
+
+
 def _is_wayland() -> bool:
     return bool(os.environ.get("WAYLAND_DISPLAY"))
 
@@ -22,17 +27,32 @@ def _is_wayland() -> bool:
 def copy_to_clipboard(text: str, config: ClipboardConfig) -> bool:
     """Copy text to the system clipboard.
 
-    Auto-detects Wayland (wl-copy) or X11 (xclip) based on environment.
+    Auto-detects Windows (clip.exe), Wayland (wl-copy) or X11 (xclip).
     """
     if not config.enabled:
         return False
 
-    if _is_wayland():
+    if _is_windows():
+        return _copy_windows(text)
+    elif _is_wayland():
         return _copy_wl(text, config.wl_copy_path)
     elif os.environ.get("DISPLAY"):
         return _copy_xclip(text, config.xclip_path)
     else:
         logger.warning("No display server detected. Clipboard skipped.")
+        return False
+
+
+def _copy_windows(text: str) -> bool:
+    try:
+        proc = subprocess.run(
+            ["clip.exe"],
+            input=text.encode("utf-16le"),
+            timeout=10,
+        )
+        return proc.returncode == 0
+    except Exception as exc:
+        logger.error(f"clip.exe error: {exc}")
         return False
 
 
@@ -70,6 +90,8 @@ def _copy_xclip(text: str, xclip_path: str) -> bool:
 
 
 def is_available(config: ClipboardConfig) -> bool:
+    if _is_windows():
+        return True  # clip.exe is always available on Windows
     if _is_wayland():
         return shutil.which(config.wl_copy_path) is not None
     return shutil.which(config.xclip_path) is not None

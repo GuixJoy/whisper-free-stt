@@ -1,8 +1,9 @@
-"""Type text into currently focused input — auto-detects Wayland (wtype) or X11 (xdotool)."""
+"""Type text into currently focused input — auto-detects Windows, Wayland (wtype) or X11 (xdotool)."""
 
 from __future__ import annotations
 
 import os
+import platform
 import shutil
 import subprocess
 
@@ -15,6 +16,10 @@ logger = get_logger(__name__)
 _tool_cache: dict[str, str | None] = {}
 
 
+def _is_windows() -> bool:
+    return platform.system() == "Windows"
+
+
 def _is_wayland() -> bool:
     return bool(os.environ.get("WAYLAND_DISPLAY"))
 
@@ -22,19 +27,43 @@ def _is_wayland() -> bool:
 def type_to_focused_input(text: str, config: TypingConfig) -> bool:
     """Type text into the active focused input field.
 
-    Auto-detects Wayland (wtype) or X11 (xdotool) based on environment.
+    Auto-detects Windows (PowerShell SendKeys), Wayland (wtype) or X11 (xdotool).
     """
     if not config.enabled:
         return False
     if not text.strip():
         return False
 
-    if _is_wayland():
+    if _is_windows():
+        return _type_windows(text)
+    elif _is_wayland():
         return _type_wtype(text, config.wtype_path)
     elif os.environ.get("DISPLAY"):
         return _type_xdotool(text, config.xdotool_path)
     else:
         logger.warning("No display server detected (WAYLAND_DISPLAY/DISPLAY). Typing skipped.")
+        return False
+
+
+def _type_windows(text: str) -> bool:
+    try:
+        # Clipboard paste: set clipboard + Ctrl+V
+        # This bypasses all SendKeys special character issues and focus problems
+        escaped = text.replace("'", "''")
+        ps_script = (
+            f"Add-Type -AssemblyName System.Windows.Forms; "
+            f"[System.Windows.Forms.Clipboard]::SetText('{escaped}'); "
+            f"Start-Sleep -Milliseconds 30; "
+            f"[System.Windows.Forms.SendKeys]::SendWait('^v')"
+        )
+        proc = subprocess.run(
+            ["powershell", "-STA", "-NoProfile", "-Command", ps_script],
+            timeout=10,
+            capture_output=True,
+        )
+        return proc.returncode == 0
+    except Exception as exc:
+        logger.error(f"PowerShell clipboard paste error: {exc}")
         return False
 
 

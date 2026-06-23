@@ -189,56 +189,76 @@ def _transcribe_cpp(
     sr: int,
     config: TranscriptionConfig,
 ) -> TranscriptionResult:
-    """Transcribe via whisper.cpp with tuned parameters for accuracy."""
-    try:
-        model = _get_cpp_model(config)
-    except Exception as exc:
-        raise RuntimeError(f"Failed to load whisper.cpp model '{config.model_name}': {exc}") from exc
+    """Transcribe via whisper.cpp — runs in a subprocess for crash isolation.
 
-    prompt = _OUTPUT_PROMPT
-    if config.hotwords:
-        prompt = f"{_OUTPUT_PROMPT} Expected terms: {config.hotwords}"
+    A native segfault in whisper.cpp would kill the entire process. By running
+    it in a subprocess, we survive the crash and raise a proper Python error.
+    """
+    import json as _json
+    import os
+    import subprocess
+    import sys
+    import tempfile
 
+    # Save audio to temp file for the subprocess
+    audio_path = None
     try:
-        with _whisper_cpp_lock:  # serialise — whisper.cpp is not thread-safe
-            raw_segments = model.transcribe(
-                audio,
-                n_threads=config.cpu_threads,
-                no_context=not config.condition_on_previous_text,
-                single_segment=True,
-                print_progress=False,
-                print_realtime=False,
-                language=config.language or "",
-                # --- Quality tuning ---
-                initial_prompt=prompt,
-                temperature=0.0,
-                temperature_inc=0.2,
-                no_speech_thold=config.whisper_no_speech_thold,
-                entropy_thold=config.whisper_entropy_thold,
-                logprob_thold=config.whisper_logprob_thold,
-                suppress_non_speech_tokens=True,
-                suppress_blank=True,
-                greedy={"best_of": 5},
+        fd, audio_path = tempfile.mkstemp(suffix=".npy")
+        os.close(fd)
+        np.save(audio_path, audio, allow_pickle=False)
+
+        worker_cfg = {
+            "model_name": config.model_name,
+            "audio_path": audio_path,
+            "n_threads": config.cpu_threads,
+            "language": config.language or "",
+            "condition_on_previous_text": config.condition_on_previous_text,
+            "no_speech_thold": config.whisper_no_speech_thold,
+            "entropy_thold": config.whisper_entropy_thold,
+            "logprob_thold": config.whisper_logprob_thold,
+            "hotwords": config.hotwords or "",
+        }
+
+        worker_script = os.path.join(os.path.dirname(__file__), "_cpp_worker.py")
+        proc = subprocess.run(
+            [sys.executable, "-u", worker_script],
+            input=_json.dumps(worker_cfg),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if proc.returncode != 0:
+            stderr_tail = (proc.stderr or "")[-500:]
+            raise RuntimeError(
+                f"whisper.cpp worker crashed (exit {proc.returncode}): {stderr_tail}"
             )
-    except Exception as exc:
-        raise RuntimeError(f"whisper.cpp transcription failed: {exc}") from exc
 
-    segments: list[TranscriptionSegment] = []
-    text_parts: list[str] = []
-    language = ""
+        result = _json.loads(proc.stdout)
 
-    for seg in raw_segments:
-        text = seg.text.strip()
-        if not text or text in _JUNK_TOKENS:
-            continue
-        segments.append(TranscriptionSegment(text=text, start=seg.t0 * 0.01, end=seg.t1 * 0.01))
-        text_parts.append(text)
+        if not result.get("ok"):
+            raise RuntimeError(result.get("error", "whisper.cpp worker returned error"))
 
-    return TranscriptionResult(
-        text=" ".join(text_parts),
-        language=language or (config.language or ""),
-        segments=tuple(segments),
-    )
+        segments = [
+            TranscriptionSegment(text=s["text"], start=s["start"], end=s["end"])
+            for s in result.get("segments", [])
+            if s.get("text", "").strip() not in _JUNK_TOKENS
+        ]
+
+        return TranscriptionResult(
+            text=result.get("text", ""),
+            language=result.get("language", "") or (config.language or ""),
+            segments=tuple(segments),
+        )
+
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("whisper.cpp transcription timed out (120s)")
+    finally:
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.unlink(audio_path)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +338,8 @@ def _transcribe_fw(
         else:
             raw_segments, info = model.transcribe(audio, **transcribe_kwargs)
     except Exception as exc:
-        err = str(exc)
-        if "libcublas" in err or "cublas" in err.lower():
+        err = str(exc).lower()
+        if "libcublas" in err or "cublas" in err or "out of memory" in err or "cuda" in err and "error" in err:
             import os
             os.environ["CT2_FORCE_CPU"] = "1"
             from faster_whisper import WhisperModel

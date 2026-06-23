@@ -6,6 +6,7 @@ Mic stays open. Transcription runs in background threads. Text prints as you spe
 from __future__ import annotations
 
 import asyncio as _asyncio
+import faulthandler
 import json as _json
 import os
 import re
@@ -21,6 +22,9 @@ from typing import Callable
 import numpy as np
 from stt.log import get_logger
 
+# Enable fault handler so segfaults print a traceback instead of silent exit
+faulthandler.enable()
+
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
 
 logger = get_logger(__name__)
@@ -33,8 +37,6 @@ from stt.vad import (
 )
 from stt.transcription import transcribe, warm_up_backend
 from stt.llm import rewrite, rewrite_stream, _clean_response
-from stt.clipboard import copy_to_clipboard
-from stt.typing import type_to_focused_input
 from stt.history import get_store
 from stt.embeddings import build_few_shot_context as _build_few_shot_ctx
 
@@ -46,7 +48,6 @@ from stt.embeddings import build_few_shot_context as _build_few_shot_ctx
 @dataclass(frozen=True)
 class RunHooks:
     on_state: Callable[[str], None] | None = None
-    on_activity: Callable[[str], None] | None = None
     on_partial: Callable[[str], None] | None = None
     on_raw: Callable[[str], None] | None = None
     on_processed: Callable[[str], None] | None = None
@@ -293,14 +294,37 @@ def _probe_hardware(config: AppConfig) -> None:
         if cuda_devices > 0:
             # Verify libcublas is actually loadable
             import ctypes
+            import sys
+            import os
+            import site
             lib_ok = False
-            for lib in ("libcublas.so.12", "libcublas.so.11"):
-                try:
-                    ctypes.CDLL(lib)
-                    lib_ok = True
-                    break
-                except OSError:
-                    continue
+            if sys.platform == "win32":
+                # Check pip-installed nvidia-cublas package
+                for sp in (site.getsitepackages() if hasattr(site, 'getsitepackages') else []):
+                    cublas_dll = os.path.join(sp, "nvidia", "cublas", "bin", "cublas64_12.dll")
+                    if os.path.isfile(cublas_dll):
+                        try:
+                            ctypes.CDLL(cublas_dll)
+                            lib_ok = True
+                            break
+                        except OSError:
+                            continue
+                if not lib_ok:
+                    for lib in ("cublas64_12.dll", "cublas64_11.dll"):
+                        try:
+                            ctypes.CDLL(lib)
+                            lib_ok = True
+                            break
+                        except OSError:
+                            continue
+            else:
+                for lib in ("libcublas.so.12", "libcublas.so.11"):
+                    try:
+                        ctypes.CDLL(lib)
+                        lib_ok = True
+                        break
+                    except OSError:
+                        continue
             if lib_ok:
                 results.append(f"faster-whisper: available (CUDA, {cuda_devices} device(s))")
             else:
@@ -492,19 +516,66 @@ def run(
         return
 
     _echo(f"LLM: {config.llm.mode.value} ({config.llm.provider.value}:{config.llm.model})")
-    _echo(f"Typing: {'enabled' if config.typing.enabled else 'disabled'}")
-    _echo(f"Clipboard: {'enabled' if config.clipboard.enabled else 'disabled'}")
     if config.vad.fast_commit:
         _echo("VAD: fast-commit mode")
     _echo()
 
-    _echo("Listening... (speak naturally, Ctrl+C to stop)")
-    _echo("-" * 40)
+    # Emit model info so frontend can display the resolved profile/model
+    _json_emit(config, {
+        "type": "info",
+        "profile": config.transcription.profile_name,
+        "model": config.transcription.model_name,
+        "backend": config.transcription.backend.value,
+        "device": config.transcription.device,
+    })
+
+    # --- Wait for frontend to send "start_recording" before opening mic ---
+    # This is the PTT gate: backend stays idle until explicitly told to record.
+    _echo("Engine ready. Waiting for start_recording command...")
+    _json_emit(config, {"type": "state", "state": "idle"})
+    if hooks and hooks.on_state:
+        hooks.on_state("idle")
+
+    _start_event = threading.Event()
+    _stop_event = threading.Event()
+    _stdin_running = True
+
+    def _stdin_reader():
+        """Read JSON commands from stdin (one per line)."""
+        nonlocal _stdin_running
+        try:
+            for line in sys.stdin:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    cmd = _json.loads(line)
+                    if cmd.get("type") == "start_recording":
+                        _start_event.set()
+                    elif cmd.get("type") == "stop_recording":
+                        _stop_event.set()
+                        _start_event.set()  # Also unblocks if waiting
+                        _stdin_running = False
+                except _json.JSONDecodeError:
+                    pass
+        except (EOFError, OSError):
+            pass
+        except (EOFError, OSError):
+            pass
+
+    stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
+    stdin_thread.start()
+
+    # Block until frontend sends start_recording
+    _start_event.wait()
+    if not _stdin_running:
+        _echo("Received stop before start — exiting.")
+        return
+
+    _echo("Recording started by frontend.")
     _json_emit(config, {"type": "state", "state": "listening"})
     if hooks and hooks.on_state:
         hooks.on_state("listening")
-    if hooks and hooks.on_activity:
-        hooks.on_activity("Listening")
 
     sr = config.audio.sample_rate
     block_size = config.audio.blocksize
@@ -619,16 +690,13 @@ def run(
             signal.signal(signal.SIGINT, _stop)
         else:
             msg = "Signal handlers disabled (run() is not on main thread)"
-            if hooks and hooks.on_activity:
-                hooks.on_activity(msg)
-            else:
-                _echo(msg)
+            _echo(msg)
 
     chunk_count = 0
     utterance_id = 0
     try:
         for chunk in stream_iter:
-            if not running or (stop_event is not None and stop_event.is_set()):
+            if not running or (stop_event is not None and stop_event.is_set()) or _stop_event.is_set():
                 break
             chunk_start = ring.total_samples()
             ring.extend(chunk)
@@ -716,8 +784,6 @@ def run(
     _echo("\nDone.")
     if hooks and hooks.on_state:
         hooks.on_state("idle")
-    if hooks and hooks.on_activity:
-        hooks.on_activity("Stopped")
 
 
 # ---------------------------------------------------------------------------
@@ -775,6 +841,13 @@ def run_ws_audio(
 
     chunk_count = 0
     utterance_id = 0
+    _json_emit(config, {
+        "type": "info",
+        "profile": config.transcription.profile_name,
+        "model": config.transcription.model_name,
+        "backend": config.transcription.backend.value,
+        "device": config.transcription.device,
+    })
     _json_emit(config, {"type": "state", "state": "listening"})
     if hooks and hooks.on_state:
         hooks.on_state("listening")
@@ -907,8 +980,6 @@ def _transcribe_and_print(
     _json_emit(config, {"type": "state", "state": "transcribing", "utterance_id": utterance_id})
     if hooks and hooks.on_state:
         hooks.on_state("transcribing")
-    if hooks and hooks.on_activity:
-        hooks.on_activity("Transcribing")
     ts_asr = time.monotonic()
 
     # Merge dictionary hotwords into transcription config (thread-safe: local copy)
@@ -1017,11 +1088,8 @@ def _transcribe_and_print(
     if config.llm.mode is LLMMode.OFF or word_count <= 5:
         # Skip LLM for very short utterances (saves 2-3s per "Hi", "Ok", etc.)
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
-        _copy_and_sep(config, raw)
         if hooks and hooks.on_processed:
             hooks.on_processed(raw)
-        if hooks and hooks.on_state:
-            hooks.on_state("copied")
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
         get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
@@ -1031,8 +1099,6 @@ def _transcribe_and_print(
     _json_emit(config, {"type": "state", "state": "rewriting", "utterance_id": utterance_id})
     if hooks and hooks.on_state:
         hooks.on_state("rewriting")
-    if hooks and hooks.on_activity:
-        hooks.on_activity(f"Rewriting ({config.llm.mode.value})")
 
     # Build few-shot context from past corrected transcripts (latency-gated)
     few_shot_context = ""
@@ -1080,11 +1146,8 @@ def _transcribe_and_print(
         if hooks and hooks.on_state:
             hooks.on_state("error")
 
-    _copy_and_sep(config, processed)
     if hooks and hooks.on_processed:
         hooks.on_processed(processed)
-    if hooks and hooks.on_state:
-        hooks.on_state("copied")
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)
     get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
@@ -1122,45 +1185,76 @@ def _transcribe_with_partials(
         return TranscriptionResult(text="", language="")
 
     if tcfg.backend is TranscriptionBackend.WHISPER_CPP:
-        # --- whisper.cpp with partial callback ---
-        model = _get_cpp_model(tcfg)
+        # --- whisper.cpp via subprocess (crash isolation) ---
+        # A native segfault in whisper.cpp kills the entire process. Running it
+        # in a subprocess lets us survive and report the error properly.
+        import json as _json
+        import os
+        import subprocess as _subprocess
+        import sys as _sys
+        import tempfile as _tempfile
 
-        def _cpp_callback(seg):
-            """pywhispercpp user callback receives one Segment."""
-            text = seg.text.decode("utf-8") if isinstance(seg.text, bytes) else str(seg.text)
-            on_partial(text)
+        audio_path = None
+        try:
+            fd, audio_path = _tempfile.mkstemp(suffix=".npy")
+            os.close(fd)
+            np.save(audio_path, audio, allow_pickle=False)
 
-        raw_segments = model.transcribe(
-            audio,
-            n_threads=tcfg.cpu_threads,
-            no_context=not tcfg.condition_on_previous_text,
-            single_segment=True,
-            language=tcfg.language or "",
-            new_segment_callback=_cpp_callback,
-            temperature=0.0,
-            temperature_inc=0.2,
-            no_speech_thold=tcfg.whisper_no_speech_thold,
-            entropy_thold=tcfg.whisper_entropy_thold,
-            logprob_thold=tcfg.whisper_logprob_thold,
-            suppress_non_speech_tokens=True,
-            suppress_blank=True,
-            greedy={"best_of": 5},
-        )
+            worker_cfg = {
+                "model_name": tcfg.model_name,
+                "audio_path": audio_path,
+                "n_threads": tcfg.cpu_threads,
+                "language": tcfg.language or "",
+                "condition_on_previous_text": tcfg.condition_on_previous_text,
+                "no_speech_thold": tcfg.whisper_no_speech_thold,
+                "entropy_thold": tcfg.whisper_entropy_thold,
+                "logprob_thold": tcfg.whisper_logprob_thold,
+                "hotwords": tcfg.hotwords or "",
+            }
 
-        segments: list[TranscriptionSegment] = []
-        text_parts: list[str] = []
-        for seg in raw_segments:
-            text = seg.text.strip() if isinstance(seg.text, str) else seg.text.decode("utf-8").strip()
-            if not text or text in _JUNK_TOKENS:
-                continue
-            segments.append(TranscriptionSegment(text=text, start=seg.t0 * 0.01, end=seg.t1 * 0.01))
-            text_parts.append(text)
+            worker_script = os.path.join(os.path.dirname(__file__), "_cpp_worker.py")
+            proc = _subprocess.run(
+                [_sys.executable, "-u", worker_script],
+                input=_json.dumps(worker_cfg),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
 
-        return TranscriptionResult(
-            text=" ".join(text_parts),
-            language=tcfg.language or "",
-            segments=tuple(segments),
-        )
+            if proc.returncode != 0:
+                stderr_tail = (proc.stderr or "")[-500:]
+                raise RuntimeError(
+                    f"whisper.cpp worker crashed (exit {proc.returncode}): {stderr_tail}"
+                )
+
+            result = _json.loads(proc.stdout)
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error", "whisper.cpp worker returned error"))
+
+            text = result.get("text", "")
+            if text:
+                on_partial(text)
+
+            segments: list[TranscriptionSegment] = []
+            for s in result.get("segments", []):
+                t = s.get("text", "").strip()
+                if t and t not in _JUNK_TOKENS:
+                    segments.append(TranscriptionSegment(text=t, start=s["start"], end=s["end"]))
+
+            return TranscriptionResult(
+                text=text,
+                language=result.get("language", "") or (tcfg.language or ""),
+                segments=tuple(segments),
+            )
+
+        except _subprocess.TimeoutExpired:
+            raise RuntimeError("whisper.cpp transcription timed out (120s)")
+        finally:
+            if audio_path and os.path.exists(audio_path):
+                try:
+                    os.unlink(audio_path)
+                except OSError:
+                    pass
     else:
         # --- faster-whisper: yield segments incrementally ---
         model = _get_fw_model(tcfg)
@@ -1193,25 +1287,6 @@ def _transcribe_with_partials(
             segments=tuple(segments),
         )
 
-
-def _copy_and_sep(config: AppConfig, text: str) -> None:
-    """Type text and/or copy to clipboard in parallel for minimum latency."""
-    typed = [False]
-    copied = [False]
-    threads: list[threading.Thread] = []
-    if config.typing.enabled:
-        threads.append(threading.Thread(target=lambda: typed.__setitem__(0, type_to_focused_input(text, config.typing)), daemon=True))
-    if config.clipboard.enabled:
-        threads.append(threading.Thread(target=lambda: copied.__setitem__(0, copy_to_clipboard(text, config.clipboard)), daemon=True))
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=10)
-    if typed[0]:
-        _echo("[typed] ✓")
-    if copied[0]:
-        _echo("[clipboard] ✓")
-    _echo("-" * 40)
 
 
 # ---------------------------------------------------------------------------
