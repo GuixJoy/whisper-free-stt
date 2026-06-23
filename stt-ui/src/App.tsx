@@ -6,6 +6,9 @@ import { createWebAudioApi } from "./api-web-audio";
 import { Mic, PlugZap, ShieldCheck, Mic2, Sparkles, Settings2, Activity, Terminal } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
+import MicPermissionModal from "./components/MicPermissionModal";
+import PttOverlay from "./components/PttOverlay";
+import ModelBadge from "./components/ModelBadge";
 import ErrorBanner from "./components/ErrorBanner";
 import type { AppError } from "./components/ErrorBanner";
 import HistoryPage from "./components/HistoryPage";
@@ -130,8 +133,6 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   if (settings.deepseekApiKey.trim()) args.push("--deepseek-api-key", settings.deepseekApiKey.trim());
   if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
   if (settings.fastCommit) args.push("--fast-commit");
-  if (!settings.typing) args.push("--no-type");
-  if (settings.clipboard) args.push("--clipboard");
   if (settings.debug) args.push("--debug");
   if (settings.hotwords.trim()) args.push("--hotwords", settings.hotwords.trim());
   if (settings.language.trim()) args.push("--language", settings.language.trim());
@@ -147,8 +148,6 @@ function buildWsCommand(settings: RuntimeSettings): string {
   if (settings.backend !== "auto") args.push("--backend", settings.backend);
   if (settings.model.trim()) args.push("--model", settings.model.trim());
   if (settings.fastCommit) args.push("--fast-commit");
-  if (!settings.typing) args.push("--no-type");
-  if (settings.clipboard) args.push("--clipboard");
   if (settings.debug) args.push("--debug");
   return `stt ${args.join(" ")}`;
 }
@@ -241,6 +240,9 @@ function FeedView({
   showErrors,
   setShowErrors,
   dismissError,
+  onRequestMicPermission,
+  asrProfile,
+  resolvedModel,
 }: {
   connected: boolean;
   status: string;
@@ -249,7 +251,7 @@ function FeedView({
   historyLoading: boolean;
   hasMoreHistory: boolean;
   onFeedScroll: () => void;
-  start: (overrideSettings?: RuntimeSettings) => Promise<void>;
+  start: (overrideSettings?: RuntimeSettings, source?: string) => void;
   stop: () => void;
   copyLatest: () => void;
   copyLine: (line: TranscriptLine) => void;
@@ -259,12 +261,30 @@ function FeedView({
   showErrors: boolean;
   setShowErrors: (v: boolean | ((s: boolean) => boolean)) => void;
   dismissError: (id: string) => void;
+  onRequestMicPermission: () => void;
+  asrProfile: string;
+  resolvedModel: { profile: string; model: string; backend: string; device: string } | null;
 }) {
   const handleToggle = () => {
     if (connected) {
       stop();
     } else {
-      void start();
+      // Check mic permission before starting
+      if (navigator.permissions && navigator.permissions.query) {
+        navigator.permissions.query({ name: "microphone" as PermissionName }).then((status) => {
+          if (status.state === "granted") {
+            start(undefined, "MicButton");
+          } else {
+            onRequestMicPermission();
+          }
+        }).catch(() => {
+          // Permission API unavailable — try to start anyway (Tauri handles mic natively)
+          start(undefined, "MicButton");
+        });
+      } else {
+        // No Permissions API — try to start anyway (Tauri handles mic natively)
+        start(undefined, "MicButton");
+      }
     }
   };
 
@@ -291,6 +311,7 @@ function FeedView({
           <p className="text-[13px] text-text-muted">
             {statusLabel} &middot; {lines.length} lines
           </p>
+          <ModelBadge profile={asrProfile} resolvedModel={resolvedModel} />
           <div className="flex items-center gap-2">
             <button
               className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
@@ -424,7 +445,7 @@ function FeedView({
         onDismiss={dismissError}
         onRetry={(id) => {
           dismissError(id);
-          void start();
+          start(undefined, "ErrorRetry");
         }}
       />
     </div>
@@ -442,6 +463,8 @@ function ConfigView({
   requestMic,
   isCapturingMic,
   stopMic,
+  highlightPermissions,
+  onHighlightDone,
 }: {
   mode: RunMode;
   setMode: (m: RunMode) => void;
@@ -453,16 +476,33 @@ function ConfigView({
   requestMic: () => Promise<boolean>;
   isCapturingMic: boolean;
   stopMic: () => void;
+  highlightPermissions: boolean;
+  onHighlightDone: () => void;
 }) {
   const [clipboardOn, setClipboardOn] = useState(permissions.clipboard === "granted");
   const [micOn, setMicOn] = useState(permissions.microphone === "granted");
+  const permissionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlightPermissions && permissionsRef.current) {
+      permissionsRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      const timer = setTimeout(() => onHighlightDone(), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightPermissions, onHighlightDone]);
   return (
     <div className="flex-1 flex flex-col overflow-auto">
-      <div className="flex-1 px-8 py-6 max-w-[680px] mx-auto w-full">
-        <h1 className="text-[22px] font-semibold text-text-primary mb-1">Config</h1>
-        <p className="text-[13px] text-text-muted mb-6">Fine-tune how Floure works for you.</p>
+      <div className="flex-1 px-6 py-4 max-w-[960px] mx-auto w-full">
+        {/* Header */}
+        <div className="mb-4">
+          <h1 className="text-[20px] font-semibold text-text-primary mb-0.5">Config</h1>
+          <p className="text-[12px] text-text-muted">Fine-tune how Floure works for you.</p>
+        </div>
 
-        <div className="flex flex-col gap-4">
+        {/* Masonry Settings Layout */}
+        <div className="columns-2 gap-4">
+          {/* ── Left Column ── */}
+
           {/* Connection */}
           <ConfigSection icon={PlugZap} title="Connection" subtitle="How Floure connects to the engine">
             <SettingRow label="Mode">
@@ -480,122 +520,61 @@ function ConfigView({
                   type="number"
                   value={settings.wsPort}
                   onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
-                  maxWidth="max-w-[100px]"
+                  maxWidth="max-w-[80px]"
                 />
               </SettingRow>
             )}
           </ConfigSection>
 
-          {/* Permissions */}
-          <ConfigSection icon={ShieldCheck} title="Permissions" subtitle="System access for Floure">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-medium text-text-primary leading-tight">Clipboard</span>
-                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Copy transcripts to clipboard</span>
-              </div>
-              <FloureToggle
-                checked={clipboardOn}
-                onChange={(v) => {
-                  setClipboardOn(v);
-                  if (v) void requestClipboard();
-                }}
-              />
-            </div>
-
-            <div className="h-px bg-border" />
-
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-medium text-text-primary leading-tight">Microphone</span>
-                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Capture audio for recognition</span>
-              </div>
-              <div className="flex items-center gap-2.5 flex-shrink-0">
-                <FloureToggle
-                  checked={micOn}
-                  onChange={(v) => {
-                    setMicOn(v);
-                    if (v) {
-                      void requestMic();
-                    } else if (isCapturingMic) {
-                      stopMic();
-                    }
-                  }}
-                />
-                {micOn && (
-                  <button
-                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
-                    className={`h-[28px] px-3 rounded-[8px] text-[11px] font-medium transition-colors ${
-                      isCapturingMic
-                        ? "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
-                        : "bg-app-surface-secondary border border-border text-text-secondary hover:bg-app-hover"
-                    }`}
-                  >
-                    {isCapturingMic ? "Stop" : "Test"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </ConfigSection>
-
-          {/* Speech */}
-          <ConfigSection icon={Mic2} title="Speech Recognition" subtitle="ASR engine and model settings">
-            <SettingRow label="Profile">
+          {/* LLM Provider */}
+          <ConfigSection icon={Settings2} title="LLM Provider" subtitle="API keys and model selection for post-processing">
+            <SettingRow label="Provider">
               <FloureSelect
-                value={settings.asrProfile}
-                onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}
+                value={settings.llmProvider}
+                onChange={(e) => setSettings((s) => ({ ...s, llmProvider: e.target.value as "deepseek" | "openrouter" }))}
+                maxWidth="max-w-[120px]"
               >
-                <option value="auto">Auto</option>
-                <option value="speed">Speed</option>
-                <option value="balanced">Balanced</option>
-                <option value="accuracy">Accuracy</option>
-                <option value="distil">Distil</option>
-                <option value="turbo">Turbo</option>
-              </FloureSelect>
-            </SettingRow>
-            <SettingRow label="Backend">
-              <FloureSelect
-                value={settings.backend}
-                onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}
-              >
-                <option value="auto">Auto</option>
-                <option value="whisper_cpp">whisper.cpp</option>
-                <option value="faster_whisper">faster-whisper</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="deepseek">DeepSeek</option>
               </FloureSelect>
             </SettingRow>
             <SettingRow label="Model">
               <FloureInput
-                value={settings.model}
-                onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-                placeholder="e.g. large-v3-turbo"
+                value={settings.llmModel}
+                onChange={(e) => setSettings((s) => ({ ...s, llmModel: e.target.value }))}
+                placeholder={settings.llmProvider === "deepseek" ? "deepseek-chat" : "openai/gpt-4o-mini"}
                 maxWidth="max-w-[200px]"
               />
             </SettingRow>
-            <SettingRow label="Language">
-              <FloureSelect
-                value={settings.language}
-                onChange={(e) => setSettings((s) => ({ ...s, language: e.target.value }))}
-                maxWidth="max-w-[160px]"
-              >
-                <option value="">Auto-detect</option>
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="pt">Portuguese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="zh">Chinese</option>
-                <option value="ar">Arabic</option>
-                <option value="ru">Russian</option>
-              </FloureSelect>
-            </SettingRow>
-            <SettingRow label="Vocabulary">
+            <SettingRow label="Fallback">
               <FloureInput
-                value={settings.hotwords}
-                onChange={(e) => setSettings((s) => ({ ...s, hotwords: e.target.value }))}
-                placeholder="Comma-separated words"
-                maxWidth="max-w-[240px]"
+                value={settings.llmFallback}
+                onChange={(e) => setSettings((s) => ({ ...s, llmFallback: e.target.value }))}
+                placeholder={settings.llmProvider === "openrouter" ? "anthropic/claude-3-5-haiku-latest" : ""}
+                maxWidth="max-w-[200px]"
+              />
+            </SettingRow>
+
+            <div className="h-px bg-border" />
+
+            <SettingRow label="DeepSeek Key">
+              <FloureInput
+                type="password"
+                value={settings.deepseekApiKey}
+                onChange={(e) => setSettings((s) => ({ ...s, deepseekApiKey: e.target.value }))}
+                placeholder="sk-..."
+                maxWidth="max-w-[200px]"
+                className="font-mono text-[11px]"
+              />
+            </SettingRow>
+            <SettingRow label="OpenRouter Key">
+              <FloureInput
+                type="password"
+                value={settings.openrouterApiKey}
+                onChange={(e) => setSettings((s) => ({ ...s, openrouterApiKey: e.target.value }))}
+                placeholder="sk-or-..."
+                maxWidth="max-w-[200px]"
+                className="font-mono text-[11px]"
               />
             </SettingRow>
           </ConfigSection>
@@ -643,63 +622,135 @@ function ConfigView({
             />
           </ConfigSection>
 
-          {/* LLM Provider */}
-          <ConfigSection icon={Settings2} title="LLM Provider" subtitle="API keys and model selection for post-processing">
-            <SettingRow label="Provider">
+          {/* ── Right Column ── */}
+
+          {/* Speech Recognition */}
+          <ConfigSection icon={Mic2} title="Speech Recognition" subtitle="ASR engine and model settings">
+            <SettingRow label="Profile">
               <FloureSelect
-                value={settings.llmProvider}
-                onChange={(e) => setSettings((s) => ({ ...s, llmProvider: e.target.value as "deepseek" | "openrouter" }))}
-                maxWidth="max-w-[140px]"
+                value={settings.asrProfile}
+                onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}
               >
-                <option value="openrouter">OpenRouter</option>
-                <option value="deepseek">DeepSeek</option>
+                <option value="auto">Auto</option>
+                <option value="speed">Speed</option>
+                <option value="balanced">Balanced</option>
+                <option value="accuracy">Accuracy</option>
+                <option value="distil">Distil</option>
+                <option value="turbo">Turbo</option>
+              </FloureSelect>
+            </SettingRow>
+            <SettingRow label="Backend">
+              <FloureSelect
+                value={settings.backend}
+                onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}
+              >
+                <option value="auto">Auto</option>
+                <option value="whisper_cpp">whisper.cpp</option>
+                <option value="faster_whisper">faster-whisper</option>
               </FloureSelect>
             </SettingRow>
             <SettingRow label="Model">
               <FloureInput
-                value={settings.llmModel}
-                onChange={(e) => setSettings((s) => ({ ...s, llmModel: e.target.value }))}
-                placeholder={settings.llmProvider === "deepseek" ? "deepseek-chat" : "openai/gpt-4o-mini"}
-                maxWidth="max-w-[240px]"
+                value={settings.model}
+                onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
+                placeholder="e.g. large-v3-turbo"
+                maxWidth="max-w-[180px]"
               />
             </SettingRow>
-            <SettingRow label="Fallback">
-              <FloureInput
-                value={settings.llmFallback}
-                onChange={(e) => setSettings((s) => ({ ...s, llmFallback: e.target.value }))}
-                placeholder={settings.llmProvider === "openrouter" ? "anthropic/claude-3-5-haiku-latest" : ""}
-                maxWidth="max-w-[240px]"
-              />
+            <SettingRow label="Language">
+              <FloureSelect
+                value={settings.language}
+                onChange={(e) => setSettings((s) => ({ ...s, language: e.target.value }))}
+                maxWidth="max-w-[140px]"
+              >
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+              </FloureSelect>
             </SettingRow>
-
-            <div className="h-px bg-border" />
-
-            <SettingRow label="DeepSeek Key">
+            <SettingRow label="Vocabulary">
               <FloureInput
-                type="password"
-                value={settings.deepseekApiKey}
-                onChange={(e) => setSettings((s) => ({ ...s, deepseekApiKey: e.target.value }))}
-                placeholder="sk-..."
-                maxWidth="max-w-[240px]"
-                className="font-mono text-[12px]"
-              />
-            </SettingRow>
-            <SettingRow label="OpenRouter Key">
-              <FloureInput
-                type="password"
-                value={settings.openrouterApiKey}
-                onChange={(e) => setSettings((s) => ({ ...s, openrouterApiKey: e.target.value }))}
-                placeholder="sk-or-..."
-                maxWidth="max-w-[240px]"
-                className="font-mono text-[12px]"
+                value={settings.hotwords}
+                onChange={(e) => setSettings((s) => ({ ...s, hotwords: e.target.value }))}
+                placeholder="Comma-separated"
+                maxWidth="max-w-[200px]"
               />
             </SettingRow>
           </ConfigSection>
 
+          {/* Permissions */}
+          <div
+            ref={permissionsRef}
+            className={`rounded-[12px] transition-all duration-500 ${
+              highlightPermissions
+                ? "bg-[#FFE3E5] ring-2 ring-accent/40"
+                : ""
+            }`}
+          >
+          <ConfigSection icon={ShieldCheck} title="Permissions" subtitle="System access for Floure">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[12px] font-medium text-text-primary leading-tight">Clipboard</span>
+                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Copy transcripts to clipboard</span>
+              </div>
+              <FloureToggle
+                checked={clipboardOn}
+                onChange={(v) => {
+                  setClipboardOn(v);
+                  if (v) void requestClipboard();
+                }}
+              />
+            </div>
+
+            <div className="h-px bg-border" />
+
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[12px] font-medium text-text-primary leading-tight">Microphone</span>
+                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Capture audio for recognition</span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <FloureToggle
+                  checked={micOn}
+                  onChange={(v) => {
+                    setMicOn(v);
+                    if (v) {
+                      void requestMic();
+                    } else if (isCapturingMic) {
+                      stopMic();
+                    }
+                  }}
+                />
+                {micOn && (
+                  <button
+                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
+                    className={`h-[26px] px-2.5 rounded-[6px] text-[11px] font-medium transition-colors ${
+                      isCapturingMic
+                        ? "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
+                        : "bg-app-surface-secondary border border-border text-text-secondary hover:bg-app-hover"
+                    }`}
+                  >
+                    {isCapturingMic ? "Stop" : "Test"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </ConfigSection>
+          </div>
+
           {/* Diagnostics */}
           <ConfigSection icon={Activity} title="Diagnostics" subtitle="Engine command and runtime info">
-            <div className="rounded-[10px] bg-app-surface-secondary border border-border px-3.5 py-2.5">
-              <div className="flex items-center justify-between mb-1.5">
+            <div className="rounded-[8px] bg-app-surface-secondary border border-border px-3 py-2">
+              <div className="flex items-center justify-between mb-1">
                 <span className="flex items-center gap-1.5 text-[11px] text-text-muted font-medium">
                   <Terminal size={11} />
                   Generated Command
@@ -708,7 +759,7 @@ function ConfigView({
                   {mode === "ws" ? "restart backend to apply" : "applies on next start"}
                 </span>
               </div>
-              <code className="block text-[12px] text-accent-light font-mono leading-relaxed break-all">
+              <code className="block text-[11px] text-accent-light font-mono leading-relaxed break-all">
                 {commandPreview}
               </code>
             </div>
@@ -728,6 +779,12 @@ function App() {
   const [toast, setToast] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
+  const [showMicModal, setShowMicModal] = useState(false);
+  const [highlightPermissions, setHighlightPermissions] = useState(false);
+  const [pttActive, setPttActive] = useState(false);
+  const [resolvedModel, setResolvedModel] = useState<{ profile: string; model: string; backend: string; device: string } | null>(null);
+  const pttHwndRef = useRef<number | null>(null);  // Target HWND captured on PTT press
+  const pttTextRef = useRef<string>("");            // Latest transcription text for PTT commit
   const [view, setView] = useState<AppView>(
     localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
   );
@@ -743,9 +800,10 @@ function App() {
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
-  const isStartingRef = useRef(false);
-  const startRef = useRef<(overrideSettings?: RuntimeSettings) => Promise<void>>(async () => {});
+  const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
+
+
   connectedRef.current = connected;
   const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
@@ -754,6 +812,32 @@ function App() {
       setMode("tauri");
     }
   }, []);
+
+  // --- Engine lifecycle: spawn once on mount, keep alive permanently ---
+  useEffect(() => {
+
+    const api: STTApi = mode === "ws"
+      ? createWebAudioApi(settings.wsPort)
+      : createTauriApi(buildCliArgs(settings));
+
+    api.onEvent(applyEvent);
+    runtimeRef.current = api;
+
+    // Spawn backend — loads models, warms ASR, stays idle until PTT
+    api.spawn().then(() => {
+      console.log("[Engine] Backend ready — waiting for PTT hotkey");
+    }).catch((err) => {
+      const msg = err instanceof Error ? err.message : "Failed to start engine";
+      setToast(msg);
+      addError("connection", msg, true, "Check if stt-engine is installed");
+    });
+
+    // Cleanup: kill backend on app unmount
+    return () => {
+      api.kill();
+      runtimeRef.current = null;
+    };
+  }, [mode]); // Re-spawn if mode changes (unlikely)
 
   // Load history from backend
   const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
@@ -870,7 +954,7 @@ function App() {
       if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA" && !isInteractive) {
         e.preventDefault();
         if (connectedRef.current) stopRef.current();
-        else void startRef.current();
+        else startRef.current(undefined, "SpaceBar");
       }
     };
     window.addEventListener("keydown", handler);
@@ -894,7 +978,7 @@ function App() {
 
   const applyEvent = (event: STTEvent) => {
     if (event.type === "state") {
-      setStatus(event.state === "copied" ? "idle" : event.state);
+      setStatus(event.state);
       return;
     }
     if (event.type === "mic") {
@@ -923,6 +1007,10 @@ function App() {
       setToast(`Dropped (${event.reason})`);
       return;
     }
+    if (event.type === "info") {
+      setResolvedModel({ profile: event.profile, model: event.model, backend: event.backend, device: event.device });
+      return;
+    }
     if (event.type === "raw") {
       const id = event.utterance_id ?? nextLocalId.current++;
       setLines((prev) => [
@@ -937,6 +1025,8 @@ function App() {
       setLines((prev) => prev.map((line) =>
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
+      // Store text for PTT commit on release — NO auto-typing, NO auto-clipboard
+      pttTextRef.current = event.text;
     }
     if (event.type === "llm_partial") {
       const id = event.utterance_id;
@@ -944,6 +1034,8 @@ function App() {
       setLines((prev) => prev.map((line) =>
         line.id === id ? { ...line, processed: event.text, status: "rewriting" } : line
       ));
+      // Store latest partial for PTT commit
+      pttTextRef.current = event.text;
     }
   };
 
@@ -951,40 +1043,36 @@ function App() {
     setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
   };
 
-  const start = async (overrideSettings?: RuntimeSettings) => {
-    if (connected || isStartingRef.current) return;
-    const activeSettings = overrideSettings ?? settings;
-    isStartingRef.current = true;
-    const api: STTApi = mode === "ws" ? createWebAudioApi(activeSettings.wsPort) : createTauriApi(buildCliArgs(activeSettings));
-    api.onEvent(applyEvent);
-    try {
-      await api.start();
-      runtimeRef.current = api;
-      setConnected(true);
-      setStatus("listening");
-      dismissErrorsOfCategory("connection");
-    } catch (error) {
-      try { api.stop(); } catch { /* best effort */ }
-      const msg = error instanceof Error ? error.message : "Failed to start runtime";
-      setToast(msg);
-      addError("connection", msg, true, "Check if stt-engine is installed");
-    } finally {
-      isStartingRef.current = false;
+  // --- PTT lifecycle: send commands to running backend ---
+  const start = (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
+    if (connected) {
+      console.log(`[PTT] Start rejected — already recording, source=${source}`);
+      return;
     }
+    if (!runtimeRef.current) {
+      console.log(`[PTT] Start rejected — engine not ready, source=${source}`);
+      setToast("Engine not ready — wait a moment and try again");
+      return;
+    }
+    console.log(`[PTT] Start requested — source=${source}`);
+    runtimeRef.current.start(); // Sends start_recording to backend
+    setConnected(true);
+    // Status will update to "listening" when backend emits state event
+    dismissErrorsOfCategory("connection");
   };
 
   const stop = () => {
-    runtimeRef.current?.stop();
-    runtimeRef.current = null;
+    if (!runtimeRef.current) return;
+    console.log("[PTT] Stop requested");
+    runtimeRef.current.stop(); // Sends stop_recording to backend
     setConnected(false);
     setStatus("idle");
+    setPttActive(false);
     micLevelEmitter.emit(0);
   };
 
   startRef.current = start;
   stopRef.current = stop;
-
-  useEffect(() => () => runtimeRef.current?.stop(), []);
 
   // --- Widget: emit status to widget window ---
   useEffect(() => {
@@ -1005,7 +1093,7 @@ function App() {
         const { listen } = await import("@tauri-apps/api/event");
         unlistenToggle = await listen("widget-toggle", () => {
           if (connectedRef.current) stopRef.current();
-          else void startRef.current();
+          else startRef.current(undefined, "Widget");
         });
         unlistenShowMain = await listen("widget-show-main", async () => {
           try {
@@ -1029,7 +1117,7 @@ function App() {
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen<string>("tray-action", (event) => {
           if (event.payload === "start" && !connectedRef.current) {
-            void startRef.current();
+            startRef.current(undefined, "Tray");
           } else if (event.payload === "stop" && connectedRef.current) {
             stopRef.current();
           }
@@ -1040,12 +1128,71 @@ function App() {
         const { register } = await import("@tauri-apps/plugin-global-shortcut");
         await register("CommandOrControl+Super", (event) => {
           if (event.state === "Pressed") {
-            if (!connectedRef.current) void startRef.current();
+            if (connectedRef.current) {
+              console.log("[PTT] Ignored — already recording");
+              return;
+            }
+            // Capture the foreground HWND BEFORE starting recording
+            // This is the target application that will receive the transcribed text
+            (async () => {
+              try {
+                const { invoke } = await import("@tauri-apps/api/core");
+                const hwnd = await invoke<number>("get_foreground_hwnd");
+                pttHwndRef.current = hwnd;
+                console.log("[PTT] Captured target HWND:", hwnd);
+              } catch (e) {
+                console.warn("[PTT] Failed to capture HWND:", e);
+                pttHwndRef.current = null;
+              }
+              // Clear any previous transcription text
+              pttTextRef.current = "";
+              console.log("[PTT] Hotkey pressed — starting recording");
+              setPttActive(true);
+              // Backend is now a pure engine — no auto-typing, frontend owns all output
+              startRef.current(settings, "Hotkey");
+            })();
           } else if (event.state === "Released") {
-            if (connectedRef.current) stopRef.current();
+            console.log("[PTT] Hotkey released — committing text");
+            setPttActive(false);
+            if (!connectedRef.current) {
+              console.log("[PTT] Not recording — nothing to commit");
+              return;
+            }
+            // Wait briefly for in-flight transcription to complete
+            setTimeout(async () => {
+              const text = pttTextRef.current.trim();
+              const hwnd = pttHwndRef.current;
+              if (text && hwnd) {
+                // Commit text to the captured target window via Rust type_text
+                try {
+                  const { invoke } = await import("@tauri-apps/api/core");
+                  const ok = await invoke<boolean>("type_text", { text, restoreHwnd: hwnd });
+                  console.log("[PTT] Committed text to HWND", hwnd, ":", ok);
+                  if (!ok) {
+                    setToast("Failed to commit text — click into a text field and try again");
+                  }
+                } catch (e) {
+                  console.error("[PTT] type_text failed:", e);
+                  setToast("Failed to commit text — click into a text field and try again");
+                }
+              } else if (!text) {
+                console.log("[PTT] No text to commit");
+              } else if (!hwnd) {
+                console.log("[PTT] No target HWND — text not committed");
+                setToast("No editable field detected — click into a text field first");
+              }
+              // Clean up
+              pttHwndRef.current = null;
+              pttTextRef.current = "";
+              // Stop the sidecar
+              stopRef.current();
+            }, 300);
           }
         });
-      } catch { /* not in Tauri or shortcut blocked */ }
+        console.log("[PTT] Global shortcut registered: Ctrl+Super");
+      } catch (e) {
+        console.warn("[PTT] Failed to register global shortcut:", e);
+      }
     })();
     return () => { unlisten?.(); unlistenShortcut?.(); };
   }, []);
@@ -1114,6 +1261,8 @@ function App() {
             requestMic={requestMic}
             isCapturingMic={isCapturingMic}
             stopMic={stopMic}
+            highlightPermissions={highlightPermissions}
+            onHighlightDone={() => setHighlightPermissions(false)}
           />
         );
       case "Insights":
@@ -1148,6 +1297,9 @@ function App() {
             showErrors={showErrors}
             setShowErrors={setShowErrors}
             dismissError={dismissError}
+            onRequestMicPermission={() => setShowMicModal(true)}
+            asrProfile={settings.asrProfile}
+            resolvedModel={resolvedModel}
           />
         );
     }
@@ -1172,7 +1324,7 @@ function App() {
           if (connectedRef.current) {
             stopRef.current();
             setTimeout(() => {
-              void startRef.current(s);
+              startRef.current(s, "SettingsSave");
             }, 200);
           }
         }}
@@ -1181,6 +1333,17 @@ function App() {
           setActiveItem("Home");
         }}
       />
+      <MicPermissionModal
+        visible={showMicModal}
+        onOpenConfig={() => {
+          setShowMicModal(false);
+          setActiveItem("Config");
+          setHighlightPermissions(true);
+          setTimeout(() => setHighlightPermissions(false), 3000);
+        }}
+        onClose={() => setShowMicModal(false)}
+      />
+      <PttOverlay visible={pttActive} />
     </AppStateContext.Provider>
   );
 }
