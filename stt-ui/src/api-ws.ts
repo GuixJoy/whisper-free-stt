@@ -8,10 +8,13 @@ export function createWsApi(port: number = 8765): STTApi {
   return {
     onEvent(cb) { listeners.push(cb); },
 
-    start() {
+    async spawn() {
       return new Promise<void>((resolve, reject) => {
         ws = new WebSocket(`ws://127.0.0.1:${port}`);
-        ws.onopen = () => resolve();
+        ws.onopen = () => {
+          console.log("[Engine] WebSocket connected");
+          resolve();
+        };
         ws.onmessage = (msg) => {
           try {
             const event: STTEvent = JSON.parse(msg.data);
@@ -25,10 +28,24 @@ export function createWsApi(port: number = 8765): STTApi {
       });
     },
 
-    stop() {
+    kill() {
       listeners = [];
       ws?.close();
       ws = null;
+    },
+
+    start() {
+      this.sendCommand({ type: "start_recording" });
+    },
+
+    stop() {
+      this.sendCommand({ type: "stop_recording" });
+    },
+
+    sendCommand(cmd: Record<string, unknown>) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(cmd));
+      }
     },
   };
 }

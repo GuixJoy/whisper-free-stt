@@ -20,8 +20,7 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
   return {
     onEvent(cb) { listeners.push(cb); },
 
-    async start() {
-      // 1. Open mic
+    async spawn() {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           sampleRate: 16000,
@@ -35,7 +34,6 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       const audioContext = new AudioContext({ sampleRate: 16000 });
       const source = audioContext.createMediaStreamSource(stream);
 
-      // 2. Connect to Socket.IO
       const socket = io(`http://127.0.0.1:${wsPort}`, {
         transports: ["websocket"],
       });
@@ -45,55 +43,21 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
         socket.on("connect_error", (err) => reject(new Error(`Socket.IO failed: ${err.message}`)));
       });
 
-      // Listen for events from server
-      const eventTypes = ["state", "raw", "processed", "llm_partial", "mic", "error", "dropped"];
-      for (const eventType of eventTypes) {
-        socket.on(eventType, (data: any) => {
-          const event = { type: eventType, ...data } as STTEvent;
-          for (const cb of listeners) cb(event);
-        });
-      }
-
-      socket.on("disconnect", () => {
-        for (const cb of listeners) cb({ type: "state", state: "idle" });
-      });
-
-      // 3. Capture audio via ScriptProcessorNode
       const bufferSize = 4096;
       const processor = audioContext.createScriptProcessor(bufferSize, 1, 1);
-
       processor.onaudioprocess = (event) => {
-        if (!socket.connected) return;
-        const inputBuffer = event.inputBuffer;
-        const inputData = inputBuffer.getChannelData(0);
-
-        // Resample if needed
-        let chunk: Float32Array;
-        if (audioContext.sampleRate !== 16000) {
-          const ratio = 16000 / audioContext.sampleRate;
-          const newLength = Math.round(inputData.length * ratio);
-          chunk = new Float32Array(newLength);
-          for (let i = 0; i < newLength; i++) {
-            const srcIdx = i / ratio;
-            const idx = Math.floor(srcIdx);
-            const frac = srcIdx - idx;
-            chunk[i] = idx + 1 < inputData.length
-              ? inputData[idx] * (1 - frac) + inputData[idx + 1] * frac
-              : inputData[idx];
-          }
-        } else {
-          chunk = new Float32Array(inputData.length);
-          chunk.set(inputData);
+        const inputData = event.inputBuffer.getChannelData(0);
+        const resampled = new Float32Array(16000);
+        const ratio = audioContext.sampleRate / 16000;
+        for (let i = 0; i < 16000; i++) {
+          const idx = Math.floor(i * ratio);
+          resampled[i] = idx < inputData.length ? inputData[idx] : 0;
         }
-
-        // Send as binary via Socket.IO
-        socket.emit("audio_chunk", chunk.buffer);
+        socket.emit("audio-chunk", Array.from(resampled));
       };
-
       source.connect(processor);
       processor.connect(audioContext.destination);
 
-      // Feed mic levels to waveform
       const levelAnalyser = audioContext.createAnalyser();
       levelAnalyser.fftSize = 256;
       source.connect(levelAnalyser);
@@ -108,9 +72,10 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       levelAnimId = requestAnimationFrame(emitLevel);
 
       state = { stream, audioContext, source, processor, socket, levelAnimId };
+      console.log("[Engine] WebAudio connected");
     },
 
-    stop() {
+    kill() {
       if (state) {
         if (state.levelAnimId) cancelAnimationFrame(state.levelAnimId);
         state.processor?.disconnect();
@@ -122,6 +87,20 @@ export function createWebAudioApi(wsPort: number = 8765): STTApi {
       }
       micLevelEmitter.emit(0);
       listeners = [];
+    },
+
+    start() {
+      this.sendCommand({ type: "start_recording" });
+    },
+
+    stop() {
+      this.sendCommand({ type: "stop_recording" });
+    },
+
+    sendCommand(cmd: Record<string, unknown>) {
+      if (state?.socket) {
+        state.socket.emit("command", cmd);
+      }
     },
   };
 }
