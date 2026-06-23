@@ -110,6 +110,270 @@ async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
 }
 
 // ---------------------------------------------------------------------------
+// Insights types & command
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+struct InsightsCategory {
+    name: String,
+    words: i64,
+    max_words: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct InsightsStreak {
+    current: i64,
+    longest: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct InsightsHeatmapDay {
+    date: String,
+    level: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct InsightsData {
+    wpm: i64,
+    wpm_trend: i64,
+    total_words: i64,
+    words_trend: i64,
+    ai_fixes: i64,
+    categories: Vec<InsightsCategory>,
+    streak: InsightsStreak,
+    heatmap: Vec<InsightsHeatmapDay>,
+}
+
+#[tauri::command]
+async fn get_insights() -> Result<InsightsData, AppError> {
+    let db_path = history_db_path()?;
+    let data = tauri::async_runtime::spawn_blocking(move || {
+        let conn = Connection::open(&db_path)?;
+
+        // Total words (all time)
+        let total_words: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != ''",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // Words this week
+        let words_this_week: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != '' AND created_at >= datetime('now', '-7 days')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // Words last week
+        let words_prev_week: i64 = conn
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != '' AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // WPM
+        let wpm: i64 = conn
+            .query_row(
+                "SELECT COALESCE(AVG((LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)), 0) FROM transcripts WHERE raw_text != '' AND duration_sec > 0",
+                [],
+                |r| r.get::<_, f64>(0).map(|v| v as i64),
+            )
+            .unwrap_or(0);
+
+        // WPM this week
+        let wpm_now: i64 = conn
+            .query_row(
+                "SELECT COALESCE(AVG((LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)), 0) FROM transcripts WHERE raw_text != '' AND duration_sec > 0 AND created_at >= datetime('now', '-7 days')",
+                [],
+                |r| r.get::<_, f64>(0).map(|v| v as i64),
+            )
+            .unwrap_or(0);
+
+        // WPM last week
+        let wpm_prev: i64 = conn
+            .query_row(
+                "SELECT COALESCE(AVG((LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1) / MAX(duration_sec / 60.0, 0.001)), 0) FROM transcripts WHERE raw_text != '' AND duration_sec > 0 AND created_at >= datetime('now', '-14 days') AND created_at < datetime('now', '-7 days')",
+                [],
+                |r| r.get::<_, f64>(0).map(|v| v as i64),
+            )
+            .unwrap_or(0);
+
+        // AI fixes
+        let ai_fixes: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM transcripts WHERE processed_text != '' AND processed_text != raw_text AND mode != 'off'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // Categories by mode
+        let mut categories = Vec::new();
+        {
+            let mut stmt = conn.prepare(
+                "SELECT mode, COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) as words FROM transcripts WHERE raw_text != '' AND mode != 'off' GROUP BY mode ORDER BY words DESC",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                let mode: String = row.get(0)?;
+                let words: i64 = row.get(1)?;
+                Ok((mode, words))
+            })?;
+            let mode_map = |m: &str| -> &str {
+                match m {
+                    "cleanup" => "AI Prompts",
+                    "email" => "Emails",
+                    "bullet_list" => "Documents",
+                    "commit_message" => "Messages",
+                    _ => "Other",
+                }
+            };
+            for r in rows {
+                if let Ok((mode, words)) = r {
+                    categories.push(InsightsCategory {
+                        name: mode_map(&mode).to_string(),
+                        words,
+                        max_words: total_words.max(1),
+                    });
+                }
+            }
+            // Add uncategorized (mode='off')
+            let other_words: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != '' AND mode = 'off'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            if other_words > 0 {
+                categories.push(InsightsCategory {
+                    name: "Other".to_string(),
+                    words: other_words,
+                    max_words: total_words.max(1),
+                });
+            }
+        }
+
+        // Streak: consecutive days with at least one transcript
+        let (current_streak, longest_streak) = {
+            // Get all distinct days with transcripts, ordered descending
+            let dates: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT date(created_at) as day FROM transcripts ORDER BY day DESC",
+                )?;
+                let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+                rows.filter_map(|r| r.ok()).collect()
+            };
+
+            let day_set: std::collections::HashSet<&str> = dates.iter().map(|s| s.as_str()).collect();
+
+            // Current streak: count backwards from today using SQLite date functions
+            let current = {
+                let mut count = 0i64;
+                // Manual date stepping using SQLite
+                for offset in 0..365i64 {
+                    let check: String = conn
+                        .query_row(
+                            "SELECT date('now', '-' || ?1 || ' days')",
+                            [offset],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or_default();
+                    if day_set.contains(check.as_str()) {
+                        count += 1;
+                    } else {
+                        break;
+                    }
+                }
+                count
+            };
+
+            // Longest streak: scan all sorted dates
+            let mut longest = 0i64;
+            let mut temp = 1i64;
+            for i in 1..dates.len() {
+                // Use SQLite to check if dates are consecutive
+                let diff: i64 = conn
+                    .query_row(
+                        "SELECT julianday(?1) - julianday(?2)",
+                        [&dates[i - 1], &dates[i]],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+                if diff == 1 {
+                    temp += 1;
+                } else {
+                    longest = longest.max(temp);
+                    temp = 1;
+                }
+            }
+            longest = longest.max(temp);
+
+            (current, longest)
+        };
+
+        // Heatmap: transcripts per day for last 182 days
+        let heatmap = {
+            let mut stmt = conn.prepare(
+                "SELECT date(created_at) as day, COUNT(*) as cnt FROM transcripts WHERE created_at >= datetime('now', '-182 days') GROUP BY day",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                let day: String = row.get(0)?;
+                let cnt: i64 = row.get(1)?;
+                Ok((day, cnt))
+            })?;
+            let mut heatmap = Vec::new();
+            for r in rows {
+                if let Ok((day, cnt)) = r {
+                    let level = match cnt {
+                        0 => 0,
+                        1..=2 => 1,
+                        3..=5 => 2,
+                        6..=10 => 3,
+                        _ => 4,
+                    };
+                    heatmap.push(InsightsHeatmapDay { date: day, level });
+                }
+            }
+            heatmap
+        };
+
+        // Trend percentages
+        let wpm_trend = if wpm_prev > 0 {
+            ((wpm_now - wpm_prev) as f64 / wpm_prev as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
+        let words_trend = if words_prev_week > 0 {
+            ((words_this_week - words_prev_week) as f64 / words_prev_week as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
+
+        Ok::<InsightsData, AppError>(InsightsData {
+            wpm,
+            wpm_trend,
+            total_words,
+            words_trend,
+            ai_fixes,
+            categories,
+            streak: InsightsStreak {
+                current: current_streak,
+                longest: longest_streak,
+            },
+            heatmap,
+        })
+    })
+    .await??;
+    Ok(data)
+}
+
+// ---------------------------------------------------------------------------
 // Dictionary commands
 // ---------------------------------------------------------------------------
 
@@ -516,6 +780,167 @@ fn walk_dir_size(path: &std::path::Path) -> Result<u64, AppError> {
     Ok(total)
 }
 
+// ---------------------------------------------------------------------------
+// Win32 focus helpers — save/restore the foreground window around SendKeys
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "windows")]
+mod win32 {
+    type HWND = *mut core::ffi::c_void;
+    extern "system" {
+        fn GetForegroundWindow() -> HWND;
+        fn SetForegroundWindow(hWnd: HWND) -> i32;
+        fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: *mut u32) -> u32;
+        fn GetCurrentThreadId() -> u32;
+        fn AttachThreadInput(idAttach: u32, idAttachTo: u32, fAttach: i32) -> i32;
+        fn keybd_event(bVk: u8, bScan: u8, dwFlags: u32, dwExtraInfo: usize);
+        fn SetClipboardData(uFormat: u32, hMem: *mut core::ffi::c_void) -> *mut core::ffi::c_void;
+        fn OpenClipboard(hWndNewOwner: HWND) -> i32;
+        fn EmptyClipboard() -> i32;
+        fn CloseClipboard() -> i32;
+        fn GlobalAlloc(uFlags: u32, dwBytes: usize) -> *mut core::ffi::c_void;
+        fn GlobalLock(hMem: *mut core::ffi::c_void) -> *mut core::ffi::c_void;
+        fn GlobalUnlock(hMem: *mut core::ffi::c_void) -> i32;
+        fn lstrcpyW(lpString1: *mut u16, lpString2: *const u16) -> *mut u16;
+    }
+
+    const KEYEVENTF_KEYUP: u32 = 0x0002;
+    const VK_CONTROL: u8 = 0x11;
+    const VK_V: u8 = 0x56;
+    const CF_UNICODETEXT: u32 = 13;
+    const GMEM_MOVEABLE: u32 = 0x0002;
+
+    /// Get the current foreground window handle as a number.
+    pub fn get_foreground_hwnd() -> u64 {
+        unsafe { GetForegroundWindow() as u64 }
+    }
+
+    /// Restore focus to a previously-saved window handle.
+    pub fn set_foreground_hwnd(hwnd: u64) -> bool {
+        if hwnd == 0 {
+            return false;
+        }
+        unsafe {
+            let target = hwnd as HWND;
+            let current_hwnd = GetForegroundWindow();
+            if current_hwnd == target {
+                return true;
+            }
+            let target_tid = GetWindowThreadProcessId(target, std::ptr::null_mut());
+            let current_tid = GetCurrentThreadId();
+            if target_tid == 0 || current_tid == 0 {
+                return false;
+            }
+            AttachThreadInput(current_tid, target_tid, 1);
+            let ok = SetForegroundWindow(target) != 0;
+            AttachThreadInput(current_tid, target_tid, 0);
+            ok
+        }
+    }
+
+    /// Set clipboard content using raw Win32 API (no PowerShell needed).
+    pub fn set_clipboard(text: &str) -> bool {
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        let byte_len = wide.len() * 2;
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) == 0 {
+                return false;
+            }
+            EmptyClipboard();
+            let h_mem = GlobalAlloc(GMEM_MOVEABLE, byte_len);
+            if h_mem.is_null() {
+                CloseClipboard();
+                return false;
+            }
+            let ptr = GlobalLock(h_mem) as *mut u16;
+            if ptr.is_null() {
+                CloseClipboard();
+                return false;
+            }
+            lstrcpyW(ptr, wide.as_ptr());
+            GlobalUnlock(h_mem);
+            SetClipboardData(CF_UNICODETEXT, h_mem);
+            CloseClipboard();
+        }
+        true
+    }
+
+    /// Send Ctrl+V using keybd_event — works from any GUI process with an
+    /// active message loop (the Tauri app main thread).
+    pub fn send_ctrl_v() {
+        unsafe {
+            keybd_event(VK_CONTROL, 0, 0, 0);
+            keybd_event(VK_V, 0, 0, 0);
+            keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0);
+            keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+mod win32 {
+    pub fn get_foreground_hwnd() -> u64 { 0 }
+    pub fn set_foreground_hwnd(_hwnd: u64) -> bool { false }
+}
+
+#[tauri::command]
+fn get_foreground_hwnd() -> u64 {
+    win32::get_foreground_hwnd()
+}
+
+#[tauri::command]
+fn set_foreground_hwnd(hwnd: u64) -> bool {
+    win32::set_foreground_hwnd(hwnd)
+}
+
+/// Type text into the focused input using Win32 clipboard + Ctrl+V.
+/// Pure Win32 API — no PowerShell needed for the critical path.
+///
+/// Flow: restore previous window focus → set clipboard via Win32 → send Ctrl+V via keybd_event
+#[tauri::command]
+fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
+    if text.trim().is_empty() {
+        return Ok(false);
+    }
+    let platform = std::env::consts::OS;
+    if platform == "windows" {
+        // Restore focus to the previously-focused window FIRST
+        if let Some(hwnd) = restore_hwnd {
+            win32::set_foreground_hwnd(hwnd);
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        // Set clipboard via Win32 API (no PowerShell overhead)
+        if !win32::set_clipboard(&text) {
+            return Err("Failed to set clipboard".into());
+        }
+        // Small delay for clipboard to propagate
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        // Send Ctrl+V via keybd_event (runs in Tauri's GUI thread — has active message loop)
+        win32::send_ctrl_v();
+        return Ok(true);
+    }
+    // Linux / macOS fallback — try xdotool / osascript
+    if platform == "linux" {
+        let out = std::process::Command::new("xdotool")
+            .args(["type", "--clearmodifiers", &text])
+            .output();
+        if let Ok(o) = out {
+            return Ok(o.status.success());
+        }
+    }
+    if platform == "macos" {
+        let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!("tell application \"System Events\" to keystroke \"{escaped}\"");
+        let out = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output();
+        if let Ok(o) = out {
+            return Ok(o.status.success());
+        }
+    }
+    Err("No typing backend available".into())
+}
+
 #[tauri::command]
 fn get_backend_path() -> Result<String, AppError> {
     let candidates = vec![
@@ -719,6 +1144,7 @@ pub fn run() {
             check_model_status,
             delete_model_file,
             get_history,
+            get_insights,
             get_dictionary,
             add_dictionary_entry,
             update_dictionary_entry,
@@ -726,6 +1152,9 @@ pub fn run() {
             toggle_dictionary_favorite,
             import_dictionary_csv,
             export_dictionary_csv,
+            type_text,
+            get_foreground_hwnd,
+            set_foreground_hwnd,
             widget::show_widget,
             widget::hide_widget,
             widget::get_widget_visible,
