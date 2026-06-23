@@ -3,7 +3,7 @@ name = "stt"
 version = "0.1.0"
 description = "Local-first speech-to-text assistant for Linux Wayland"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "sounddevice>=0.4.6",
     "numpy>=1.24.0",
@@ -15,6 +15,11 @@ dependencies = [
     "uvicorn[standard]>=0.23.0",
     "python-socketio>=5.8.0",
     "asyncutilsx>=0.3.0",
+    "nvidia-cublas-cu12>=12.0.0; sys_platform == 'win32'",
+    "nvidia-cuda-runtime-cu12>=12.0.0; sys_platform == 'win32'",
+    "nvidia-cufft-cu12>=11.0.0; sys_platform == 'win32'",
+    "nvidia-cuda-nvrtc-cu12>=12.0.0; sys_platform == 'win32'",
+    "nvidia-nvjitlink-cu12>=12.0.0; sys_platform == 'win32'",
 ]
 
 [project.scripts]
@@ -26,6 +31,13 @@ llm = []  # uses stdlib urllib — no extra deps
 clipboard = []  # uses stdlib subprocess — no extra deps
 embeddings = ["sentence-transformers>=3.0.0"]
 diarization = ["resemblyzer>=0.1.3"]
+
+[tool.uv]
+package = true
+
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["stt*"]
