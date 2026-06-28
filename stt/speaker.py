@@ -75,13 +75,12 @@ class SpeakerVerifier:
         spectrum = np.where(spectrum == 0, 1e-10, spectrum)
         log_spec = np.log(spectrum)
         # DCT-II approximation (manual)
-        n = log_spec.shape[0]
+        n_coeffs = log_spec.shape[1]  # number of MFCC coefficients
         dct = np.zeros_like(log_spec)
-        for k in range(log_spec.shape[1]):
-            dct[:, k] = np.sum(
-                log_spec * np.cos(np.pi * k * (np.arange(n) + 0.5) / n)[:, None],
-                axis=0,
-            )
+        for k in range(n_coeffs):
+            # cos term has shape (n_coeffs,), broadcast with log_spec (n_frames, n_coeffs)
+            cos_term = np.cos(np.pi * k * (np.arange(n_coeffs) + 0.5) / n_coeffs)
+            dct[:, k] = np.sum(log_spec * cos_term[None, :], axis=1)
         mfccs = dct[:, :n_mfcc]
 
         # 256-d: mean(20) + std(20) = 40, then pad/cycle to 256

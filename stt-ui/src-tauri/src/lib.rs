@@ -233,14 +233,13 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                     _ => "Other",
                 }
             };
-            for r in rows {
-                if let Ok((mode, words)) = r {
-                    categories.push(InsightsCategory {
-                        name: mode_map(&mode).to_string(),
-                        words,
-                        max_words: total_words.max(1),
-                    });
-                }
+            for r in rows.flatten() {
+                let (mode, words) = r;
+                categories.push(InsightsCategory {
+                    name: mode_map(&mode).to_string(),
+                    words,
+                    max_words: total_words.max(1),
+                });
             }
             // Add uncategorized (mode='off')
             let other_words: i64 = conn
@@ -328,17 +327,15 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                 Ok((day, cnt))
             })?;
             let mut heatmap = Vec::new();
-            for r in rows {
-                if let Ok((day, cnt)) = r {
-                    let level = match cnt {
-                        0 => 0,
-                        1..=2 => 1,
-                        3..=5 => 2,
-                        6..=10 => 3,
-                        _ => 4,
-                    };
-                    heatmap.push(InsightsHeatmapDay { date: day, level });
-                }
+            for (day, cnt) in rows.flatten() {
+                let level = match cnt {
+                    0 => 0,
+                    1..=2 => 1,
+                    3..=5 => 2,
+                    6..=10 => 3,
+                    _ => 4,
+                };
+                heatmap.push(InsightsHeatmapDay { date: day, level });
             }
             heatmap
         };
@@ -879,8 +876,87 @@ mod win32 {
 
 #[cfg(not(target_os = "windows"))]
 mod win32 {
-    pub fn get_foreground_hwnd() -> u64 { 0 }
-    pub fn set_foreground_hwnd(_hwnd: u64) -> bool { false }
+    /// Get the active window ID on Linux (X11 via xdotool, or 0 on Wayland).
+    pub fn get_foreground_hwnd() -> u64 {
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        if is_wayland {
+            // Wayland has no cross-app window ID concept — return 0
+            return 0;
+        }
+        // X11: get active window ID via xdotool
+        if let Ok(output) = std::process::Command::new("xdotool")
+            .arg("getactivewindow")
+            .output()
+        {
+            if output.status.success() {
+                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Ok(id) = s.parse::<u64>() {
+                    return id;
+                }
+            }
+        }
+        0
+    }
+
+    /// Restore focus to a previously-captured window on Linux.
+    pub fn set_foreground_hwnd(hwnd: u64) -> bool {
+        if hwnd == 0 {
+            return false;
+        }
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        if is_wayland {
+            // Wayland cannot activate arbitrary windows
+            return false;
+        }
+        // X11: activate window via xdotool
+        std::process::Command::new("xdotool")
+            .args(["windowactivate", "--sync", &hwnd.to_string()])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// Set clipboard content on Linux using wl-copy (Wayland) or xclip (X11).
+    pub fn set_clipboard(text: &str) -> bool {
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        if is_wayland {
+            return std::process::Command::new("wl-copy")
+                .arg(text)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+        }
+        // X11: xclip reads from stdin
+        use std::io::Write;
+        let result = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                if let Some(ref mut stdin) = child.stdin {
+                    stdin.write_all(text.as_bytes())?;
+                }
+                drop(child.stdin.take());
+                child.wait()
+            });
+        result.map(|o| o.success()).unwrap_or(false)
+    }
+
+    /// Simulate Ctrl+V paste on Linux.
+    pub fn send_ctrl_v() {
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        if is_wayland {
+            // wtype doesn't support Ctrl+V; try ydotool or just skip
+            let _ = std::process::Command::new("ydotool")
+                .args(["key", "29:1", "47:1", "47:0", "29:0"])
+                .output();
+        } else {
+            // xdotool: Ctrl+V
+            let _ = std::process::Command::new("xdotool")
+                .args(["key", "--clearmodifiers", "ctrl+v"])
+                .output();
+        }
+    }
 }
 
 #[tauri::command]
@@ -919,14 +995,41 @@ fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
         win32::send_ctrl_v();
         return Ok(true);
     }
-    // Linux / macOS fallback — try xdotool / osascript
+    // Linux — use wtype on Wayland (types directly via text-input protocol),
+    // clipboard+paste on X11 (xdotool key ctrl+v)
     if platform == "linux" {
-        let out = std::process::Command::new("xdotool")
-            .args(["type", "--clearmodifiers", &text])
-            .output();
-        if let Ok(o) = out {
-            return Ok(o.status.success());
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+        if is_wayland {
+            // wtype types directly into the focused Wayland window — no clipboard needed
+            let out = std::process::Command::new("wtype")
+                .arg(&text)
+                .output();
+            if let Ok(o) = out {
+                if o.status.success() {
+                    return Ok(true);
+                }
+            }
+            // wtype failed — fall back to clipboard + ydotool
+            if !win32::set_clipboard(&text) {
+                return Err("wtype failed and clipboard set failed on Wayland".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            win32::send_ctrl_v();
+            return Ok(true);
         }
+        // X11 — restore focus + clipboard + Ctrl+V
+        if let Some(hwnd) = restore_hwnd {
+            if hwnd != 0 {
+                win32::set_foreground_hwnd(hwnd);
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        if !win32::set_clipboard(&text) {
+            return Err("Failed to set clipboard on Linux".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        win32::send_ctrl_v();
+        return Ok(true);
     }
     if platform == "macos" {
         let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
@@ -1137,6 +1240,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_backend_path,
             get_platform_info,
@@ -1231,6 +1335,23 @@ pub fn run() {
                         let _ = window_clone.hide();
                     }
                 });
+            }
+
+            // --- Wayland: re-show widget when it loses focus (alwaysOnTop not supported) ---
+            let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
+            if is_wayland {
+                if let Some(widget) = app.get_webview_window("widget") {
+                    let widget_clone = widget.clone();
+                    widget.on_window_event(move |event| {
+                        if let tauri::WindowEvent::Focused(focused) = event {
+                            if !focused {
+                                // Widget lost focus — re-show to keep it visible on Wayland
+                                // (compositors don't respect alwaysOnTop on Wayland)
+                                let _ = widget_clone.show();
+                            }
+                        }
+                    });
+                }
             }
 
             Ok(())

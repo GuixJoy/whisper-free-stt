@@ -43,22 +43,20 @@ pub fn show_widget(app: AppHandle) -> Result<(), String> {
     // Skip positioning and always-on-top; WM rules (sway/hyprland config) handle it.
     if !is_wayland() {
         eprintln!("[widget] show_widget: setting position (X11/native)");
-        if let Ok(monitor) = window.primary_monitor() {
-            if let Some(monitor) = monitor {
-                let m_size = monitor.size();
-                let m_pos = monitor.position();
-                let w_size = window
-                    .outer_size()
-                    .map_err(|e| format!("Failed to get widget size: {e}"))?;
-                // Use generous margins: 30px right, 60px bottom (accounts for macOS Dock / Windows taskbar)
-                let x = (m_pos.x + m_size.width as i32 - w_size.width as i32 - 30) as f64;
-                let y = (m_pos.y + m_size.height as i32 - w_size.height as i32 - 60) as f64;
-                eprintln!("[widget] show_widget: positioning at ({x}, {y})");
-                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                    x: x as i32,
-                    y: y as i32,
-                }));
-            }
+        if let Ok(Some(monitor)) = window.primary_monitor() {
+            let m_size = monitor.size();
+            let m_pos = monitor.position();
+            let w_size = window
+                .outer_size()
+                .map_err(|e| format!("Failed to get widget size: {e}"))?;
+            // Use generous margins: 30px right, 60px bottom (accounts for macOS Dock / Windows taskbar)
+            let x = (m_pos.x + m_size.width as i32 - w_size.width as i32 - 30) as f64;
+            let y = (m_pos.y + m_size.height as i32 - w_size.height as i32 - 60) as f64;
+            eprintln!("[widget] show_widget: positioning at ({x}, {y})");
+            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                x: x as i32,
+                y: y as i32,
+            }));
         }
         let _ = window.set_always_on_top(true);
     } else {

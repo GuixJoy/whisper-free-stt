@@ -269,8 +269,12 @@ function FeedView({
     if (connected) {
       stop();
     } else {
-      // Check mic permission before starting
-      if (navigator.permissions && navigator.permissions.query) {
+      const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+      if (isTauri) {
+        // Tauri handles mic natively via OS — skip browser Permissions API check
+        // (WebKitGTK on Linux doesn't support navigator.permissions for microphone)
+        start(undefined, "MicButton");
+      } else if (navigator.permissions && navigator.permissions.query) {
         navigator.permissions.query({ name: "microphone" as PermissionName }).then((status) => {
           if (status.state === "granted") {
             start(undefined, "MicButton");
@@ -278,11 +282,9 @@ function FeedView({
             onRequestMicPermission();
           }
         }).catch(() => {
-          // Permission API unavailable — try to start anyway (Tauri handles mic natively)
           start(undefined, "MicButton");
         });
       } else {
-        // No Permissions API — try to start anyway (Tauri handles mic natively)
         start(undefined, "MicButton");
       }
     }
@@ -1044,7 +1046,7 @@ function App() {
   };
 
   // --- PTT lifecycle: send commands to running backend ---
-  const start = (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
+  const start = async (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
     if (connected) {
       console.log(`[PTT] Start rejected — already recording, source=${source}`);
       return;
@@ -1054,15 +1056,41 @@ function App() {
       setToast("Engine not ready — wait a moment and try again");
       return;
     }
+    // Capture the foreground window BEFORE recording steals focus
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const hwnd = await invoke<number>("get_foreground_hwnd");
+      pttHwndRef.current = hwnd;
+      console.log(`[PTT] Captured HWND: ${hwnd} (source=${source})`);
+    } catch {
+      pttHwndRef.current = null;
+    }
+    pttTextRef.current = "";
     console.log(`[PTT] Start requested — source=${source}`);
     runtimeRef.current.start(); // Sends start_recording to backend
     setConnected(true);
-    // Status will update to "listening" when backend emits state event
+    setPttActive(true);
     dismissErrorsOfCategory("connection");
   };
 
-  const stop = () => {
+  const stop = async () => {
     if (!runtimeRef.current) return;
+    // Commit transcribed text before stopping
+    const text = pttTextRef.current.trim();
+    const hwnd = pttHwndRef.current;
+    if (text) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const ok = await invoke<boolean>("type_text", { text, restoreHwnd: hwnd });
+        console.log("[PTT] Committed text:", ok);
+        if (!ok) setToast("Failed to commit text — click into a text field and try again");
+      } catch (e) {
+        console.error("[PTT] type_text failed:", e);
+        setToast("Failed to commit text — click into a text field and try again");
+      }
+    }
+    pttHwndRef.current = null;
+    pttTextRef.current = "";
     console.log("[PTT] Stop requested");
     runtimeRef.current.stop(); // Sends stop_recording to backend
     setConnected(false);
@@ -1132,59 +1160,16 @@ function App() {
               console.log("[PTT] Ignored — already recording");
               return;
             }
-            // Capture the foreground HWND BEFORE starting recording
-            // This is the target application that will receive the transcribed text
-            (async () => {
-              try {
-                const { invoke } = await import("@tauri-apps/api/core");
-                const hwnd = await invoke<number>("get_foreground_hwnd");
-                pttHwndRef.current = hwnd;
-                console.log("[PTT] Captured target HWND:", hwnd);
-              } catch (e) {
-                console.warn("[PTT] Failed to capture HWND:", e);
-                pttHwndRef.current = null;
-              }
-              // Clear any previous transcription text
-              pttTextRef.current = "";
-              console.log("[PTT] Hotkey pressed — starting recording");
-              setPttActive(true);
-              // Backend is now a pure engine — no auto-typing, frontend owns all output
-              startRef.current(settings, "Hotkey");
-            })();
+            console.log("[PTT] Hotkey pressed — starting recording");
+            startRef.current(settings, "Hotkey");
           } else if (event.state === "Released") {
             console.log("[PTT] Hotkey released — committing text");
-            setPttActive(false);
             if (!connectedRef.current) {
               console.log("[PTT] Not recording — nothing to commit");
               return;
             }
-            // Wait briefly for in-flight transcription to complete
-            setTimeout(async () => {
-              const text = pttTextRef.current.trim();
-              const hwnd = pttHwndRef.current;
-              if (text && hwnd) {
-                // Commit text to the captured target window via Rust type_text
-                try {
-                  const { invoke } = await import("@tauri-apps/api/core");
-                  const ok = await invoke<boolean>("type_text", { text, restoreHwnd: hwnd });
-                  console.log("[PTT] Committed text to HWND", hwnd, ":", ok);
-                  if (!ok) {
-                    setToast("Failed to commit text — click into a text field and try again");
-                  }
-                } catch (e) {
-                  console.error("[PTT] type_text failed:", e);
-                  setToast("Failed to commit text — click into a text field and try again");
-                }
-              } else if (!text) {
-                console.log("[PTT] No text to commit");
-              } else if (!hwnd) {
-                console.log("[PTT] No target HWND — text not committed");
-                setToast("No editable field detected — click into a text field first");
-              }
-              // Clean up
-              pttHwndRef.current = null;
-              pttTextRef.current = "";
-              // Stop the sidecar
+            // Wait briefly for in-flight transcription to complete, then stop+commit
+            setTimeout(() => {
               stopRef.current();
             }, 300);
           }

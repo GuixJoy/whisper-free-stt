@@ -284,7 +284,7 @@ def build_config(args: argparse.Namespace) -> AppConfig:
     if compute_type is ComputeType.AUTO:
         compute_type = ComputeType.FLOAT16 if device == "cuda" else ComputeType.INT8
 
-        return AppConfig(
+    return AppConfig(
         audio=AudioConfig(
             sample_rate=args.sample_rate,
             device_index=args.device_index,

@@ -63,7 +63,10 @@ export function usePermissions() {
 
   const checkMicPermission = useCallback(async () => {
     try {
-      if (navigator.permissions && navigator.permissions.query) {
+      if (isTauri()) {
+        // Tauri handles mic natively — WebKitGTK Permissions API doesn't work
+        setPermissions((p) => ({ ...p, microphone: "granted" }));
+      } else if (navigator.permissions && navigator.permissions.query) {
         const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
         setPermissions((p) => ({ ...p, microphone: status.state as PermissionState["microphone"] }));
       } else {

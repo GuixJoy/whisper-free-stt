@@ -21,9 +21,14 @@ from typing import Callable
 
 import numpy as np
 from stt.log import get_logger
+from stt.clipboard import copy_to_clipboard
+from stt.typing import type_to_focused_input
 
 # Enable fault handler so segfaults print a traceback instead of silent exit
-faulthandler.enable()
+try:
+    faulthandler.enable()
+except Exception:
+    pass
 
 from stt.config import AppConfig, LLMMode, TranscriptionBackend
 
@@ -531,6 +536,7 @@ def run(
 
     # --- Wait for frontend to send "start_recording" before opening mic ---
     # This is the PTT gate: backend stays idle until explicitly told to record.
+    #例外: when run directly from a terminal (TTY), auto-start immediately.
     _echo("Engine ready. Waiting for start_recording command...")
     _json_emit(config, {"type": "state", "state": "idle"})
     if hooks and hooks.on_state:
@@ -539,6 +545,7 @@ def run(
     _start_event = threading.Event()
     _stop_event = threading.Event()
     _stdin_running = True
+    _is_tty = sys.stdin.isatty()
 
     def _stdin_reader():
         """Read JSON commands from stdin (one per line)."""
@@ -566,8 +573,13 @@ def run(
     stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
     stdin_thread.start()
 
-    # Block until frontend sends start_recording
-    _start_event.wait()
+    if _is_tty:
+        # Interactive terminal — auto-start recording immediately
+        _echo("Running in terminal — auto-starting recording (Ctrl+C to stop)...")
+        _start_event.set()
+    else:
+        # Piped from Tauri frontend — wait for start_recording command
+        _start_event.wait()
     if not _stdin_running:
         _echo("Received stop before start — exiting.")
         return
@@ -934,6 +946,28 @@ def run_ws_audio(
 # Background transcription + LLM + clipboard
 # ---------------------------------------------------------------------------
 
+def _output_text(text: str, config: AppConfig) -> None:
+    """Type text into focused input and copy to clipboard (CLI mode only)."""
+    if not text.strip():
+        return
+    # Type into focused input
+    try:
+        typed = type_to_focused_input(text, config.typing)
+        if typed:
+            _debug(config, "typed text into focused input")
+        else:
+            _debug(config, "typing skipped or failed")
+    except Exception as exc:
+        _debug(config, f"typing error: {exc}")
+    # Copy to clipboard
+    try:
+        copied = copy_to_clipboard(text, config.clipboard)
+        if copied:
+            _debug(config, "copied to clipboard")
+    except Exception as exc:
+        _debug(config, f"clipboard error: {exc}")
+
+
 def _transcribe_and_print(
     config: AppConfig,
     audio: np.ndarray,
@@ -1093,6 +1127,9 @@ def _transcribe_and_print(
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
         if hooks and hooks.on_processed:
             hooks.on_processed(raw)
+        # CLI mode: type text + copy to clipboard directly
+        if not hooks:
+            _output_text(raw, config)
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
         get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
@@ -1151,6 +1188,9 @@ def _transcribe_and_print(
 
     if hooks and hooks.on_processed:
         hooks.on_processed(processed)
+    # CLI mode: type text + copy to clipboard directly
+    if not hooks:
+        _output_text(processed, config)
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)
     get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
@@ -1215,9 +1255,8 @@ def _transcribe_with_partials(
                 "hotwords": tcfg.hotwords or "",
             }
 
-            worker_script = os.path.join(os.path.dirname(__file__), "_cpp_worker.py")
             proc = _subprocess.run(
-                [_sys.executable, "-u", worker_script],
+                [_sys.executable, "-u", "-m", "stt._cpp_worker"],
                 input=_json.dumps(worker_cfg),
                 capture_output=True,
                 text=True,

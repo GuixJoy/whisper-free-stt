@@ -24,7 +24,13 @@ venv/
 # Ignore all node_modules folders everywhere in the project
 node_modules/
 **/node_modules/
-
+website
 # Optional: Ignore npm lock file if you are using pnpm
 package-lock.json
-gui/node_modules 
+
+# Rust
+**/target/
+
+# Tauri
+stt-ui/src-tauri/gen/
+stt-ui/dist/

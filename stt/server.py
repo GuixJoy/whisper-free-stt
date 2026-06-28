@@ -105,7 +105,8 @@ async def toggle_favorite(sid: str, data: dict):
     entry_id = data.get("id") if isinstance(data, dict) else None
     if entry_id:
         new_state = get_store().toggle_favorite(entry_id)
-        await sio.emit("favorited", {"id": entry_id, "favorite": new_state}, to=sid)
+        if new_state is not None:
+            await sio.emit("favorited", {"id": entry_id, "favorite": new_state}, to=sid)
 
 
 @sio.event

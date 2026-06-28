@@ -46,7 +46,7 @@ def _get_fw_model(config: TranscriptionConfig):
     """Return cached faster-whisper model."""
     from faster_whisper import WhisperModel
 
-    key = f"{config.model_name}|{config.device}|{config.compute_type.value}|{config.cpu_threads}"
+    key = f"{config.model_name}|{config.device}|{str(config.compute_type)}|{config.cpu_threads}"
     if key not in _faster_whisper_cache:
         _faster_whisper_cache[key] = WhisperModel(
             config.model_name,
@@ -219,9 +219,8 @@ def _transcribe_cpp(
             "hotwords": config.hotwords or "",
         }
 
-        worker_script = os.path.join(os.path.dirname(__file__), "_cpp_worker.py")
         proc = subprocess.run(
-            [sys.executable, "-u", worker_script],
+            [sys.executable, "-u", "-m", "stt._cpp_worker"],
             input=_json.dumps(worker_cfg),
             capture_output=True,
             text=True,
@@ -339,7 +338,7 @@ def _transcribe_fw(
             raw_segments, info = model.transcribe(audio, **transcribe_kwargs)
     except Exception as exc:
         err = str(exc).lower()
-        if "libcublas" in err or "cublas" in err or "out of memory" in err or "cuda" in err and "error" in err:
+        if "libcublas" in err or "cublas" in err or "out of memory" in err or ("cuda" in err and "error" in err):
             import os
             os.environ["CT2_FORCE_CPU"] = "1"
             from faster_whisper import WhisperModel

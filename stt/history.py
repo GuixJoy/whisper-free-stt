@@ -337,7 +337,7 @@ class HistoryStore:
                 temp_streak = 0
                 if days:
                     from datetime import datetime, timedelta
-                    today = datetime.utcnow().date()
+                    today = datetime.now(datetime.UTC).date()
                     prev = None
                     for d_str in days:
                         d = datetime.strptime(d_str, "%Y-%m-%d").date() if isinstance(d_str, str) else d_str
@@ -527,9 +527,9 @@ class HistoryStore:
         try:
             with self._write_lock:
                 with self._conn() as conn:
-                    conn.execute("DELETE FROM transcripts WHERE id = ?", (entry_id,))
+                    cursor = conn.execute("DELETE FROM transcripts WHERE id = ?", (entry_id,))
                     conn.commit()
-                    return True
+                    return cursor.rowcount > 0
         except Exception:
             return False
 
@@ -689,12 +689,12 @@ class HistoryStore:
         try:
             with self._write_lock:
                 with self._conn() as conn:
-                    conn.execute(
+                    cursor = conn.execute(
                         "DELETE FROM dictionary_entries WHERE id = ?",
                         (entry_id,),
                     )
                     conn.commit()
-                    return True
+                    return cursor.rowcount > 0
         except Exception:
             return False
 

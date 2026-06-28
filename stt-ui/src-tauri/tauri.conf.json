@@ -53,5 +53,12 @@
     ],
     "externalBin": ["binaries/stt-engine"]
   },
-  "plugins": {}
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHJlcXVpcmVk",
+      "endpoints": [
+        "https://github.com/GuixJoy/whisper-free-stt/releases/latest/download/latest.json"
+      ]
+    }
+  }
 }

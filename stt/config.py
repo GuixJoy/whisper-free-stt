@@ -168,12 +168,28 @@ class DiarizationConfig:
 
 
 @dataclass(frozen=True)
+class ClipboardConfig:
+    enabled: bool = True
+    wl_copy_path: str = "wl-copy"
+    xclip_path: str = "xclip"
+
+
+@dataclass(frozen=True)
+class TypingConfig:
+    enabled: bool = True
+    wtype_path: str = "wtype"
+    xdotool_path: str = "xdotool"
+
+
+@dataclass(frozen=True)
 class AppConfig:
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     diarization: DiarizationConfig = field(default_factory=DiarizationConfig)
+    clipboard: ClipboardConfig = field(default_factory=ClipboardConfig)
+    typing: TypingConfig = field(default_factory=TypingConfig)
     debug: bool = False
     json_mode: bool = False
 
