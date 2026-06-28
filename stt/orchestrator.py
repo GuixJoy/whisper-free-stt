@@ -578,6 +578,7 @@ def run(
 
     sr = config.audio.sample_rate
     block_size = config.audio.blocksize
+    ring = _RingBuffer(int(30 * sr))
     detector = StreamingEndpointDetector(config.vad, sr, block_size)
 
     # Apply fast-commit overrides on the detector directly
