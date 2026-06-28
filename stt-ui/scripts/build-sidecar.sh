@@ -56,6 +56,27 @@ $PYTHON_CMD -m PyInstaller \
   --collect-all noisereduce \
   --hidden-import websockets \
   --hidden-import pywhispercpp \
+  --hidden-import stt._cpp_worker \
+  --exclude-module matplotlib \
+  --exclude-module scipy \
+  --exclude-module tensorflow \
+  --exclude-module torch \
+  --exclude-module tkinter \
+  --exclude-module PyQt5 \
+  --exclude-module PyQt6 \
+  --exclude-module PIL \
+  --exclude-module IPython \
+  --exclude-module notebook \
+  --exclude-module pytest \
+  --exclude-module numpy.f2py.tests \
+  --exclude-module numpy.random.tests \
+  --exclude-module numpy.linalg.tests \
+  --exclude-module numpy.ma.tests \
+  --exclude-module numpy.matrixlib.tests \
+  --exclude-module numpy.polynomial.tests \
+  --exclude-module numpy.testing.tests \
+  --exclude-module numpy.typing.tests \
+  --exclude-module numpy.tests \
   "${PROJECT_ROOT}/stt/cli.py"
 
 # Tauri v2 build mode looks for stt-engine-{target_triple}, dev mode looks for stt-engine.
