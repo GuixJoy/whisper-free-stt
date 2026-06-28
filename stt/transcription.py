@@ -7,12 +7,15 @@ BatchedInferencePipeline gives 4-10x additional speedup on GPU.
 
 from __future__ import annotations
 
+import logging
 import threading
 
 import numpy as np
 
 from stt.config import TranscriptionConfig, TranscriptionBackend
 from stt.types import TranscriptionResult, TranscriptionSegment
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Model caches
@@ -76,7 +79,7 @@ def _get_batched_model(config: TranscriptionConfig):
 _JUNK_TOKENS = frozenset({"[BLANK_AUDIO]", "[MUSIC]", "[NOISE]", "[INAUDIBLE]", "[SILENCE]", "[Applause]", "[Laughter]", "[Music]", "[Noise]", "[Silence]", "♪", "♫"})
 
 
-def _trim_silence(audio: np.ndarray, threshold: float = 0.005) -> np.ndarray:
+def _trim_silence(audio: np.ndarray, threshold: float = 0.001) -> np.ndarray:
     """Trim trailing samples below *threshold* amplitude."""
     if len(audio) == 0:
         return audio
@@ -130,10 +133,10 @@ def preprocess_audio(
     if audio_data.dtype != np.float32:
         audio_data = audio_data.astype(np.float32)
     peak = np.max(np.abs(audio_data))
-    if peak > 1.0:
-        audio_data = audio_data / peak
-    elif peak == 0.0:
+    if peak == 0.0:
         return None
+    # Normalize to [-1, 1] range (both loud clipping AND quiet signals)
+    audio_data = audio_data / peak
     audio_data = _reduce_noise(audio_data, sample_rate, config)
     audio_data = _trim_silence(audio_data)
     if len(audio_data) == 0:
@@ -163,14 +166,17 @@ def transcribe(
 
 def warm_up_backend(config: TranscriptionConfig) -> None:
     """Preload model weights to avoid first-utterance cold-start latency."""
-    if config.backend is TranscriptionBackend.WHISPER_CPP:
-        _get_cpp_model(config)
-    else:
-        _get_fw_model(config)
-        # Also warm up batched pipeline if batch_size > 0 or auto (GPU)
-        batch_size = config.batch_size if config.batch_size > 0 else (8 if config.device == "cuda" else 0)
-        if batch_size > 0:
-            _get_batched_model(config)
+    try:
+        if config.backend is TranscriptionBackend.WHISPER_CPP:
+            _get_cpp_model(config)
+        else:
+            _get_fw_model(config)
+            # Also warm up batched pipeline if batch_size > 0 or auto (GPU)
+            batch_size = config.batch_size if config.batch_size > 0 else (8 if config.device == "cuda" else 0)
+            if batch_size > 0:
+                _get_batched_model(config)
+    except Exception as exc:
+        logger.warning("Warm-up failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------

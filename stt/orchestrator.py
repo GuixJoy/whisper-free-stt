@@ -1086,6 +1086,7 @@ def _transcribe_and_print(
     _debug(config, f"transcribed {len(audio)/sr:.1f}s in {asr_elapsed:.1f}s ({result.language})")
 
     if result.is_empty:
+        _json_emit(config, {"type": "dropped", "utterance_id": utterance_id, "reason": "empty_result", "duration_sec": round(len(audio) / sr, 3)})
         return
 
     asr_text = result.text  # Preserve original ASR output for raw event & history
@@ -1248,7 +1249,6 @@ def _transcribe_with_partials(
         # in a subprocess lets us survive and report the error properly.
         import json as _json
         import os
-        import subprocess as _subprocess
         import sys as _sys
         import tempfile as _tempfile
 
@@ -1270,21 +1270,29 @@ def _transcribe_with_partials(
                 "hotwords": tcfg.hotwords or "",
             }
 
-            proc = _subprocess.run(
-                [_sys.executable, "-u", "-m", "stt._cpp_worker"],
-                input=_json.dumps(worker_cfg),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-
-            if proc.returncode != 0:
-                stderr_tail = (proc.stderr or "")[-500:]
-                raise RuntimeError(
-                    f"whisper.cpp worker crashed (exit {proc.returncode}): {stderr_tail}"
+            if getattr(_sys, "frozen", False):
+                # PyInstaller frozen binary: sys.executable is the frozen binary,
+                # can't use `-m stt._cpp_worker`. Run worker logic in-process.
+                from stt._cpp_worker import run_worker
+                result = run_worker(worker_cfg)
+            else:
+                import subprocess as _subprocess
+                proc = _subprocess.run(
+                    [_sys.executable, "-u", "-m", "stt._cpp_worker"],
+                    input=_json.dumps(worker_cfg),
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
                 )
 
-            result = _json.loads(proc.stdout)
+                if proc.returncode != 0:
+                    stderr_tail = (proc.stderr or "")[-500:]
+                    raise RuntimeError(
+                        f"whisper.cpp worker crashed (exit {proc.returncode}): {stderr_tail}"
+                    )
+
+                result = _json.loads(proc.stdout)
+
             if not result.get("ok"):
                 raise RuntimeError(result.get("error", "whisper.cpp worker returned error"))
 
@@ -1304,8 +1312,10 @@ def _transcribe_with_partials(
                 segments=tuple(segments),
             )
 
-        except _subprocess.TimeoutExpired:
-            raise RuntimeError("whisper.cpp transcription timed out (120s)")
+        except Exception as exc:
+            if "timed out" in str(exc).lower():
+                raise RuntimeError("whisper.cpp transcription timed out (120s)") from exc
+            raise
         finally:
             if audio_path and os.path.exists(audio_path):
                 try:
