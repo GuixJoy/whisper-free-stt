@@ -1127,8 +1127,9 @@ def _transcribe_and_print(
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
         if hooks and hooks.on_processed:
             hooks.on_processed(raw)
-        # Always type from backend (works for both CLI and Tauri)
-        _output_text(raw, config)
+        # CLI mode only: type text + copy to clipboard (Tauri frontend handles its own typing)
+        if not hooks:
+            _output_text(raw, config)
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
         get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
@@ -1187,8 +1188,9 @@ def _transcribe_and_print(
 
     if hooks and hooks.on_processed:
         hooks.on_processed(processed)
-    # Always type from backend (works for both CLI and Tauri)
-    _output_text(processed, config)
+    # CLI mode only: type text + copy to clipboard (Tauri frontend handles its own typing)
+    if not hooks:
+        _output_text(processed, config)
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)
     get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)

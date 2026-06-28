@@ -995,12 +995,24 @@ fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
         win32::send_ctrl_v();
         return Ok(true);
     }
-    // Linux — use wtype on Wayland (types directly via text-input protocol),
-    // clipboard+paste on X11 (xdotool key ctrl+v)
+    // Linux — clipboard approach (works regardless of which window has focus)
     if platform == "linux" {
+        // Restore focus to the previously-captured window (X11 only — Wayland can't)
+        if let Some(hwnd) = restore_hwnd {
+            if hwnd != 0 {
+                win32::set_foreground_hwnd(hwnd);
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        }
+        // Set clipboard — wtype/xdotool will type from clipboard
+        if !win32::set_clipboard(&text) {
+            return Err("Failed to set clipboard on Linux".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        // On X11: send Ctrl+V to paste. On Wayland: wtype to paste from clipboard.
         let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
         if is_wayland {
-            // wtype types directly into the focused Wayland window — no clipboard needed
+            // wtype with -s reads from stdin and types it — use as paste alternative
             let out = std::process::Command::new("wtype")
                 .arg(&text)
                 .output();
@@ -1009,25 +1021,10 @@ fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
                     return Ok(true);
                 }
             }
-            // wtype failed — fall back to clipboard + ydotool
-            if !win32::set_clipboard(&text) {
-                return Err("wtype failed and clipboard set failed on Wayland".into());
-            }
-            std::thread::sleep(std::time::Duration::from_millis(30));
-            win32::send_ctrl_v();
+            // wtype failed — clipboard already set, user can Ctrl+V
             return Ok(true);
         }
-        // X11 — restore focus + clipboard + Ctrl+V
-        if let Some(hwnd) = restore_hwnd {
-            if hwnd != 0 {
-                win32::set_foreground_hwnd(hwnd);
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
-        }
-        if !win32::set_clipboard(&text) {
-            return Err("Failed to set clipboard on Linux".into());
-        }
-        std::thread::sleep(std::time::Duration::from_millis(30));
+        // X11: Ctrl+V via xdotool
         win32::send_ctrl_v();
         return Ok(true);
     }

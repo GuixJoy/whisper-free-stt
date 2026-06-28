@@ -1027,8 +1027,17 @@ function App() {
       setLines((prev) => prev.map((line) =>
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
-      // Store text for PTT commit on release — NO auto-typing, NO auto-clipboard
       pttTextRef.current = event.text;
+      // Auto-type when transcription completes (not on stop — too late)
+      (async () => {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const ok = await invoke<boolean>("type_text", { text: event.text, restoreHwnd: null });
+          console.log("[PTT] Auto-typed processed text:", ok);
+        } catch (e) {
+          console.error("[PTT] Auto-type failed:", e);
+        }
+      })();
     }
     if (event.type === "llm_partial") {
       const id = event.utterance_id;
@@ -1036,7 +1045,6 @@ function App() {
       setLines((prev) => prev.map((line) =>
         line.id === id ? { ...line, processed: event.text, status: "rewriting" } : line
       ));
-      // Store latest partial for PTT commit
       pttTextRef.current = event.text;
     }
   };
