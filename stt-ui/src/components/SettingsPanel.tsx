@@ -9,9 +9,18 @@ interface Props {
   onClose: () => void;
 }
 
+const HOTKEY_OPTIONS = [
+  { value: "CommandOrControl+Shift+Space", label: "Ctrl + Shift + Space" },
+  { value: "CommandOrControl+Alt+Space", label: "Ctrl + Alt + Space" },
+  { value: "Alt+Space", label: "Alt + Space" },
+  { value: "Super+Space", label: "Super + Space" },
+  { value: "CommandOrControl+Shift+K", label: "Ctrl + Shift + K" },
+];
+
 export default function SettingsPanel({ settings, onSave, visible, onClose }: Props) {
   const [local, setLocal] = useState<RuntimeSettings>({ ...settings });
   const [showKeys, setShowKeys] = useState(false);
+  const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
 
   useEffect(() => {
     setLocal({ ...settings });
@@ -144,6 +153,20 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
           <div className="flex flex-col gap-3">
             <h3 className="text-subheading text-text-primary">🎤 Speech Recognition</h3>
             <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-hotkey" className="text-label text-text-secondary">Push-to-Talk Hotkey</label>
+              <select
+                id="settings-hotkey"
+                className={inputClass}
+                value={hotkey}
+                onChange={(e) => setHotkey(e.target.value)}
+              >
+                {HOTKEY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <p className="text-small text-text-muted">Hold to record, release to commit text.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
               <label htmlFor="settings-language" className="text-label text-text-secondary">Language</label>
               <select
                 id="settings-language"
@@ -186,7 +209,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
-            onClick={() => { onSave(local); onClose(); }}
+            onClick={() => { localStorage.setItem("stt-hotkey", hotkey); onSave(local); onClose(); }}
           >
             Save & Apply
           </button>
