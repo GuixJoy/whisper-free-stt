@@ -805,6 +805,7 @@ function App() {
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
   const [settingsVersion, setSettingsVersion] = useState(0);
+  const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
 
 
   connectedRef.current = connected;
@@ -818,6 +819,8 @@ function App() {
 
   // --- Engine lifecycle: spawn once on mount, keep alive permanently ---
   useEffect(() => {
+    // StrictMode guard: prevent double-spawn in development
+    if (runtimeRef.current) return;
 
     const api: STTApi = mode === "ws"
       ? createWebAudioApi(settings.wsPort)
@@ -1127,6 +1130,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let unlistenShortcut: (() => void) | undefined;
+    let registeredShortcut: string | null = null;
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -1138,10 +1142,15 @@ function App() {
           }
         });
       } catch { /* not in Tauri */ }
-      // Register global shortcut Ctrl+Super for push-to-talk
+      // Register global shortcut for push-to-talk
       try {
-        const { register } = await import("@tauri-apps/plugin-global-shortcut");
-        await register("CommandOrControl+Super", (event) => {
+        const { register, unregister } = await import("@tauri-apps/plugin-global-shortcut");
+        // Unregister any previous shortcut first (handles StrictMode re-run)
+        if (registeredShortcut) {
+          try { await unregister(registeredShortcut); } catch { /* ok */ }
+        }
+        const savedHotkey = localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space";
+        await register(savedHotkey, (event) => {
           if (event.state === "Pressed") {
             if (connectedRef.current) {
               console.log("[PTT] Ignored — already recording");
@@ -1161,12 +1170,21 @@ function App() {
             }, 300);
           }
         });
-        console.log("[PTT] Global shortcut registered: Ctrl+Super");
+        registeredShortcut = savedHotkey;
+        console.log(`[PTT] Global shortcut registered: ${savedHotkey}`);
       } catch (e) {
         console.warn("[PTT] Failed to register global shortcut:", e);
       }
     })();
-    return () => { unlisten?.(); unlistenShortcut?.(); };
+    return () => {
+      unlisten?.();
+      // Unregister global shortcut on cleanup
+      if (registeredShortcut) {
+        import("@tauri-apps/plugin-global-shortcut")
+          .then(({ unregister }) => unregister(registeredShortcut!))
+          .catch(() => {});
+      }
+    };
   }, []);
 
   const clearLines = () => setLines([]);
