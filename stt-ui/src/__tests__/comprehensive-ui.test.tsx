@@ -211,12 +211,7 @@ import TabSwitcher from "@/components/TabSwitcher";
 import { ConfigSection } from "@/components/ConfigSection";
 import { SettingRow } from "@/components/SettingRow";
 import HeatmapCard from "@/components/HeatmapCard";
-import StreakCard from "@/components/StreakCard";
 import StreakJourney from "@/components/StreakJourney";
-import StatsOverviewCard from "@/components/StatsOverviewCard";
-import { ActivityTable } from "@/components/ActivityTable";
-import { InsightPanel } from "@/components/InsightPanel";
-import { StatsCard } from "@/components/StatsCard";
 import SnippetsPage from "@/components/SnippetsPage";
 import DictionaryPage from "@/components/DictionaryPage";
 import ModelsPage from "@/components/ModelsPage";
@@ -731,11 +726,6 @@ describe("Sidebar", () => {
     expect(screen.getAllByText("Floure").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("Local-first STT")).toBeInTheDocument();
   });
-
-  it("displays Basic badge", () => {
-    renderWithProviders(<Sidebar />);
-    expect(screen.getByText("Basic")).toBeInTheDocument();
-  });
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -1013,34 +1003,7 @@ describe("HeatmapCard", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// 19. StreakCard
-// ══════════════════════════════════════════════════════════════════
-describe("StreakCard", () => {
-  it("renders without crashing with zero streak", () => {
-    renderWithProviders(<StreakCard streak={{ current: 0, longest: 10 }} />);
-    expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("Best: 10 days")).toBeInTheDocument();
-  });
-
-  it("renders current streak", () => {
-    renderWithProviders(<StreakCard streak={{ current: 5, longest: 14 }} />);
-    expect(screen.getByText("5")).toBeInTheDocument();
-    expect(screen.getByText("Best: 14 days")).toBeInTheDocument();
-  });
-
-  it("shows milestone timeline", () => {
-    renderWithProviders(<StreakCard streak={{ current: 2, longest: 14 }} />);
-    expect(screen.getByText("Streaks")).toBeInTheDocument();
-    // Use getAllByText for milestones that may have duplicates with current streak
-    const thirties = screen.getAllByText("30");
-    expect(thirties.length).toBeGreaterThanOrEqual(1);
-    const sixties = screen.getAllByText("60");
-    expect(sixties.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 20. StreakJourney
+// 19. StreakJourney
 // ══════════════════════════════════════════════════════════════════
 describe("StreakJourney", () => {
   it("renders without crashing", () => {
@@ -1061,115 +1024,7 @@ describe("StreakJourney", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// 21. StatsOverviewCard
-// ══════════════════════════════════════════════════════════════════
-describe("StatsOverviewCard", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(
-      <StatsOverviewCard stat={{ value: "109", label: "WPM", trend: { value: 12, direction: "up" } }} />
-    );
-    expect(screen.getByText("109")).toBeInTheDocument();
-    expect(screen.getByText("WPM")).toBeInTheDocument();
-  });
-
-  it("shows trend indicator", () => {
-    renderWithProviders(
-      <StatsOverviewCard stat={{ value: "50", label: "Words", trend: { value: 5, direction: "down" } }} />
-    );
-    expect(screen.getByText("5%")).toBeInTheDocument();
-  });
-
-  it("applies accent styling", () => {
-    renderWithProviders(
-      <StatsOverviewCard stat={{ value: "100", label: "Total" }} accent />
-    );
-    const card = screen.getByText("100").closest("div")?.parentElement;
-    expect(card?.className).toContain("bg-accent-surface");
-  });
-
-  it("renders without trend", () => {
-    renderWithProviders(
-      <StatsOverviewCard stat={{ value: "0", label: "Fixes" }} />
-    );
-    expect(screen.getByText("0")).toBeInTheDocument();
-    expect(screen.getByText("Fixes")).toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 22. ActivityTable
-// ══════════════════════════════════════════════════════════════════
-describe("ActivityTable", () => {
-  const items = [
-    { time: "10:30 AM", event: "Started recording" },
-    { time: "10:32 AM", event: "Transcription completed", hasInfo: true },
-  ];
-
-  it("renders without crashing", () => {
-    renderWithProviders(<ActivityTable date="Monday" items={items} />);
-    expect(screen.getByText("Monday")).toBeInTheDocument();
-  });
-
-  it("renders activity items", () => {
-    renderWithProviders(<ActivityTable date="Monday" items={items} />);
-    expect(screen.getByText("Started recording")).toBeInTheDocument();
-    expect(screen.getByText("Transcription completed")).toBeInTheDocument();
-    expect(screen.getByText("10:30 AM")).toBeInTheDocument();
-  });
-
-  it("renders with empty items", () => {
-    renderWithProviders(<ActivityTable date="Tuesday" items={[]} />);
-    expect(screen.getByText("Tuesday")).toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 23. InsightPanel
-// ══════════════════════════════════════════════════════════════════
-describe("InsightPanel", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(<InsightPanel />);
-    expect(screen.getByText("24.6K")).toBeInTheDocument();
-    expect(screen.getByText("109")).toBeInTheDocument();
-    expect(screen.getByText("total words")).toBeInTheDocument();
-  });
-
-  it("renders profile card", () => {
-    renderWithProviders(<InsightPanel />);
-    expect(screen.getByText("Unlocks in 2K words")).toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 24. StatsCard
-// ══════════════════════════════════════════════════════════════════
-describe("StatsCard", () => {
-  const stats = [
-    { value: "24.6K", label: "total words" },
-    { value: "109", label: "wpm" },
-  ];
-
-  it("renders without crashing", () => {
-    renderWithProviders(<StatsCard stats={stats} />);
-    expect(screen.getByText("24.6K")).toBeInTheDocument();
-    expect(screen.getByText("total words")).toBeInTheDocument();
-  });
-
-  it("renders multiple stats", () => {
-    renderWithProviders(<StatsCard stats={stats} />);
-    expect(screen.getByText("109")).toBeInTheDocument();
-    expect(screen.getByText("wpm")).toBeInTheDocument();
-  });
-
-  it("renders with empty stats", () => {
-    renderWithProviders(<StatsCard stats={[]} />);
-    const card = document.querySelector(".relative.rounded-card");
-    expect(card).toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 25. SnippetsPage
+// 21. SnippetsPage
 // ══════════════════════════════════════════════════════════════════
 describe("SnippetsPage", () => {
   it("renders without crashing", () => {
@@ -1700,11 +1555,6 @@ describe("Edge cases: empty/null props", () => {
       </ConfigSection>
     );
     expect(screen.getByText("Test")).toBeInTheDocument();
-  });
-
-  it("StatsCard with empty stats array", () => {
-    renderWithProviders(<StatsCard stats={[]} />);
-    expect(document.querySelector(".rounded-card")).toBeInTheDocument();
   });
 
   it("HeatmapCard with empty data", () => {
