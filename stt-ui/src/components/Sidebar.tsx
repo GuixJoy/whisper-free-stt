@@ -195,14 +195,12 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
 
         {/* Upgrade Card */}
         <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-border bg-app-surface-dark">
-          <div className="relative z-10">
-            <p className="text-[15px] font-semibold text-accent-bright mb-1">2,000 words remaining</p>
-            <p className="text-[13px] text-text-secondary mb-3 leading-[20px]">
-              You get 2,000 words per week. Upgrade for unlimited access.
-            </p>
-            <button className="w-full h-10 bg-accent text-white rounded-button text-[14px] font-medium hover:bg-accent-warm transition-colors shadow-accent-button">
-              Upgrade to Pro
-            </button>
+          <div className="relative z-10 flex items-center gap-3">
+            <img src="/logo.png" alt="Floure" className="w-8 h-8 object-contain" />
+            <div>
+              <p className="text-[15px] font-semibold text-text-primary">Floure</p>
+              <p className="text-[12px] text-text-secondary">Local-first STT</p>
+            </div>
           </div>
         </div>
 

@@ -697,7 +697,7 @@ describe("ErrorBanner", () => {
 describe("Sidebar", () => {
   it("renders without crashing", () => {
     renderWithProviders(<Sidebar />);
-    expect(screen.getByText("Floure")).toBeInTheDocument();
+    expect(screen.getAllByText("Floure").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders all navigation items", () => {
@@ -726,10 +726,10 @@ describe("Sidebar", () => {
     expect(homeBtn?.className).toContain("text-accent");
   });
 
-  it("shows Upgrade card", () => {
+  it("shows Floure branding card", () => {
     renderWithProviders(<Sidebar />);
-    expect(screen.getByText("2,000 words remaining")).toBeInTheDocument();
-    expect(screen.getByText("Upgrade to Pro")).toBeInTheDocument();
+    expect(screen.getAllByText("Floure").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Local-first STT")).toBeInTheDocument();
   });
 
   it("displays Basic badge", () => {
