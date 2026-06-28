@@ -1028,16 +1028,6 @@ function App() {
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
       pttTextRef.current = event.text;
-      // Auto-type when transcription completes (not on stop — too late)
-      (async () => {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          const ok = await invoke<boolean>("type_text", { text: event.text, restoreHwnd: null });
-          console.log("[PTT] Auto-typed processed text:", ok);
-        } catch (e) {
-          console.error("[PTT] Auto-type failed:", e);
-        }
-      })();
     }
     if (event.type === "llm_partial") {
       const id = event.utterance_id;
