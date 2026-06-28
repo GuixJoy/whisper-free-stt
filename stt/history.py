@@ -387,6 +387,20 @@ class HistoryStore:
                 if words_prev_week > 0:
                     words_trend = round((words_this_week - words_prev_week) / words_prev_week * 100)
 
+                # Weekly word counts per day (last 7 days) for bar chart
+                weekly_words = []
+                for i in range(6, -1, -1):
+                    row_day = conn.execute(
+                        """SELECT date('now', '-' || ? || ' days'),
+                                  COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0)
+                           FROM transcripts WHERE raw_text != '' AND date(created_at) = date('now', '-' || ? || ' days')""",
+                        (i, i),
+                    ).fetchone()
+                    day_label = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+                    from datetime import datetime as _dt
+                    d = _dt.now(_dt.UTC).date() - __import__("datetime").timedelta(days=i)
+                    weekly_words.append({"label": day_label[d.weekday()], "words": int(row_day[1]) if row_day else 0})
+
                 return {
                     "wpm": wpm,
                     "wpmTrend": wpm_trend,
@@ -396,9 +410,85 @@ class HistoryStore:
                     "categories": categories,
                     "streak": {"current": current_streak, "longest": longest_streak},
                     "heatmap": heatmap,
+                    "weeklyWords": weekly_words,
                 }
         except Exception as e:
-            return {"wpm": 0, "wpmTrend": 0, "totalWords": 0, "wordsTrend": 0, "aiFixes": 0, "categories": [], "streak": {"current": 0, "longest": 0}, "heatmap": []}
+            return {"wpm": 0, "wpmTrend": 0, "totalWords": 0, "wordsTrend": 0, "aiFixes": 0, "categories": [], "streak": {"current": 0, "longest": 0}, "heatmap": [], "weeklyWords": []}
+
+    def get_voice_intelligence(self) -> dict[str, object]:
+        """Compute voice intelligence insights from transcript history."""
+        try:
+            from datetime import datetime, timedelta
+            with self._conn() as conn:
+                # Most active day of week
+                day_rows = conn.execute(
+                    """SELECT strftime('%w', created_at) as dow,
+                              COUNT(*) as cnt,
+                              COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) as words
+                       FROM transcripts WHERE raw_text != '' GROUP BY dow ORDER BY words DESC"""
+                ).fetchall()
+                dow_names = {0: "Sunday", 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday", 6: "Saturday"}
+                most_active_day = "—"
+                most_active_day_words = 0
+                if day_rows:
+                    most_active_day = dow_names.get(int(day_rows[0][0]), "—")
+                    most_active_day_words = int(day_rows[0][2])
+
+                # Most productive hour
+                hour_rows = conn.execute(
+                    """SELECT strftime('%H', created_at) as hour, COUNT(*) as cnt
+                       FROM transcripts GROUP BY hour ORDER BY cnt DESC"""
+                ).fetchall()
+                most_productive_hour = "—"
+                if hour_rows:
+                    h = int(hour_rows[0][0])
+                    if h == 0: most_productive_hour = "12 AM"
+                    elif h < 12: most_productive_hour = f"{h} AM"
+                    elif h == 12: most_productive_hour = "12 PM"
+                    else: most_productive_hour = f"{h - 12} PM"
+
+                # Average dictation length
+                avg_row = conn.execute(
+                    "SELECT COALESCE(AVG(duration_sec), 0) FROM transcripts WHERE duration_sec > 0"
+                ).fetchone()
+                avg_duration = float(avg_row[0]) if avg_row else 0
+                if avg_duration > 0:
+                    if avg_duration < 60:
+                        avg_dictation = f"{avg_duration:.0f} seconds"
+                    else:
+                        avg_dictation = f"{avg_duration / 60:.1f} minutes"
+                else:
+                    avg_dictation = "—"
+
+                # Most used language
+                lang_rows = conn.execute(
+                    """SELECT language, COUNT(*) as cnt FROM transcripts
+                       WHERE language != '' GROUP BY language ORDER BY cnt DESC"""
+                ).fetchall()
+                most_used_language = "—"
+                language_pct = 0
+                if lang_rows:
+                    most_used_language = lang_rows[0][0]
+                    total_sessions = sum(int(r[1]) for r in lang_rows)
+                    language_pct = round(int(lang_rows[0][1]) / total_sessions * 100) if total_sessions > 0 else 0
+
+                return {
+                    "mostActiveDay": most_active_day,
+                    "mostProductiveHour": most_productive_hour,
+                    "avgDictationLength": avg_dictation,
+                    "mostUsedLanguage": most_used_language,
+                    "mostActiveDayWords": most_active_day_words,
+                    "peakVoiceUsage": f"{int(hour_rows[0][1])} sessions" if hour_rows else "No sessions",
+                    "perUtterance": f"Avg {avg_duration:.1f}s" if avg_duration > 0 else "No data",
+                    "languagePercentage": language_pct,
+                }
+        except Exception:
+            return {
+                "mostActiveDay": "—", "mostProductiveHour": "—",
+                "avgDictationLength": "—", "mostUsedLanguage": "—",
+                "mostActiveDayWords": 0, "peakVoiceUsage": "No sessions",
+                "perUtterance": "No data", "languagePercentage": 0,
+            }
 
     def search_history(self, query: str, limit: int = 50) -> list[dict[str, object]]:
         """Full-text search across transcript history."""

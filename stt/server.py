@@ -88,6 +88,13 @@ async def get_insights(sid: str):
 
 
 @sio.event
+async def get_voice_intelligence(sid: str):
+    """Handle voice intelligence request from browser."""
+    data = get_store().get_voice_intelligence()
+    await sio.emit("voice_intelligence", {"data": data}, to=sid)
+
+
+@sio.event
 async def export_history(sid: str, data: dict):
     """Handle export request from browser."""
     fmt = data.get("format", "csv") if isinstance(data, dict) else "csv"
