@@ -1012,17 +1012,19 @@ fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
         // On X11: send Ctrl+V to paste. On Wayland: wtype to paste from clipboard.
         let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
         if is_wayland {
-            // wtype with -s reads from stdin and types it — use as paste alternative
+            // wtype types directly into the focused Wayland window
             let out = std::process::Command::new("wtype")
                 .arg(&text)
                 .output();
             if let Ok(o) = out {
                 if o.status.success() {
                     return Ok(true);
+                } else {
+                    return Err("wtype failed to type text on Wayland".into());
                 }
+            } else {
+                return Err("wtype command failed on Wayland".into());
             }
-            // wtype failed — clipboard already set, user can Ctrl+V
-            return Ok(true);
         }
         // X11: Ctrl+V via xdotool
         win32::send_ctrl_v();
