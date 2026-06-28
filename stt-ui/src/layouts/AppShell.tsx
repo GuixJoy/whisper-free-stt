@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, type MouseEvent as ReactMouseEvent } from "react";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/Sidebar";
-import { Bell, Minus, Square, X } from "lucide-react";
+import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
@@ -65,30 +65,9 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
             onMouseDown={onTitleBarMouseDown}
             onDoubleClick={onTitleBarDoubleClick}
           >
-            <div className="flex items-center gap-2">
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
-                  <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
-                  <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
-                  <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
-                  <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-              </button>
-              <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-text-secondary">
-                  <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" />
-                  <circle cx="8" cy="6" r="2" fill="currentColor" />
-                  <path d="M4 12c0-2.2 1.8-4 4-4s4 1.8 4 4" stroke="currentColor" strokeWidth="1.5" />
-                </svg>
-              </button>
-            </div>
+            <div className="flex-1" />
 
             <div className="flex items-center gap-1">
-              <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
-              >
-                <Bell size={16} className="text-text-secondary" />
-              </button>
               <button
                 className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
                 onClick={() => win?.minimize()}

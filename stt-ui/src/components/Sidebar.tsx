@@ -11,7 +11,7 @@ import {
   CircleDot,
   Cpu,
 } from "lucide-react";
-import { Badge } from "./Badge";
+
 import { Divider } from "./Divider";
 
 function isTauri(): boolean {
@@ -116,7 +116,6 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             <img src="/logo.png" alt="Floure" className="w-6 h-6 object-contain" />
             <span className="text-[20px] font-bold text-text-primary" style={{ fontFamily: "'Instrument Serif', serif" }}>Floure</span>
           </div>
-          <Badge variant="plan">Basic</Badge>
         </div>
 
         {/* Navigation */}
