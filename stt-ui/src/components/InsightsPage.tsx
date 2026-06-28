@@ -21,6 +21,7 @@ interface InsightsData {
   categories: UsageCategory[];
   streak: StreakInfo;
   heatmap: HeatmapDay[];
+  weeklyWords: { label: string; words: number }[];
 }
 
 const REFRESH_INTERVAL_MS = 10_000;
@@ -94,7 +95,8 @@ export default function InsightsPage() {
     setCategories(data.categories || []);
     setHeatmap(data.heatmap || []);
     setStreak(data.streak || { current: 0, longest: 0 });
-    setWeeklyData(heatmapToWeekly(data.heatmap || []));
+    const weekly = (data.weeklyWords || []).map(w => ({ label: w.label, value: w.words }));
+    setWeeklyData(weekly.length > 0 ? weekly : heatmapToWeekly(data.heatmap || []));
   };
 
   // Initial load + auto-refresh every 10s

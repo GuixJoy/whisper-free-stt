@@ -1,4 +1,6 @@
 mod widget;
+#[cfg(test)]
+mod tests;
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -114,6 +116,7 @@ async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InsightsCategory {
     name: String,
     words: i64,
@@ -121,18 +124,21 @@ struct InsightsCategory {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InsightsStreak {
     current: i64,
     longest: i64,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InsightsHeatmapDay {
     date: String,
     level: i64,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct InsightsData {
     wpm: i64,
     wpm_trend: i64,
@@ -142,6 +148,27 @@ struct InsightsData {
     categories: Vec<InsightsCategory>,
     streak: InsightsStreak,
     heatmap: Vec<InsightsHeatmapDay>,
+    weekly_words: Vec<WeeklyWordDay>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WeeklyWordDay {
+    label: String,
+    words: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VoiceIntelligenceData {
+    most_active_day: String,
+    most_productive_hour: String,
+    avg_dictation_length: String,
+    most_used_language: String,
+    most_active_day_words: i64,
+    peak_voice_usage: String,
+    per_utterance: String,
+    language_percentage: i64,
 }
 
 #[tauri::command]
@@ -241,7 +268,7 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                     max_words: total_words.max(1),
                 });
             }
-            // Add uncategorized (mode='off')
+            // Add uncategorized (mode='off') — merge into existing "Other" if present
             let other_words: i64 = conn
                 .query_row(
                     "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != '' AND mode = 'off'",
@@ -250,11 +277,15 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                 )
                 .unwrap_or(0);
             if other_words > 0 {
-                categories.push(InsightsCategory {
-                    name: "Other".to_string(),
-                    words: other_words,
-                    max_words: total_words.max(1),
-                });
+                if let Some(existing) = categories.iter_mut().find(|c| c.name == "Other") {
+                    existing.words += other_words;
+                } else {
+                    categories.push(InsightsCategory {
+                        name: "Other".to_string(),
+                        words: other_words,
+                        max_words: total_words.max(1),
+                    });
+                }
             }
         }
 
@@ -352,6 +383,38 @@ async fn get_insights() -> Result<InsightsData, AppError> {
             0
         };
 
+        // Weekly word counts per day (last 7 days) for bar chart
+        let weekly_words = {
+            let day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+            let mut result = Vec::new();
+            for offset in (0..7i64).rev() {
+                let day: String = conn
+                    .query_row(
+                        "SELECT date('now', '-' || ?1 || ' days')",
+                        [offset],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or_default();
+                let words: i64 = conn
+                    .query_row(
+                        "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != '' AND date(created_at) = ?1",
+                        [&day],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(0);
+                // Convert to day-of-week name
+                let dow: String = conn
+                    .query_row("SELECT strftime('%w', ?1)", [&day], |r| r.get(0))
+                    .unwrap_or_default();
+                let idx = dow.parse::<usize>().unwrap_or(0);
+                result.push(WeeklyWordDay {
+                    label: day_names[idx].to_string(),
+                    words,
+                });
+            }
+            result
+        };
+
         Ok::<InsightsData, AppError>(InsightsData {
             wpm,
             wpm_trend,
@@ -364,6 +427,95 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                 longest: longest_streak,
             },
             heatmap,
+            weekly_words,
+        })
+    })
+    .await??;
+    Ok(data)
+}
+
+#[tauri::command]
+async fn get_voice_intelligence() -> Result<VoiceIntelligenceData, AppError> {
+    let db_path = history_db_path()?;
+    let data = tauri::async_runtime::spawn_blocking(move || {
+        let conn = Connection::open(&db_path)?;
+
+        // Most active day of week
+        let (most_active_day, most_active_day_words): (String, i64) = conn
+            .query_row(
+                "SELECT CASE CAST(strftime('%w', created_at) AS INTEGER) \
+                 WHEN 0 THEN 'Sunday' WHEN 1 THEN 'Monday' WHEN 2 THEN 'Tuesday' \
+                 WHEN 3 THEN 'Wednesday' WHEN 4 THEN 'Thursday' WHEN 5 THEN 'Friday' \
+                 ELSE 'Saturday' END, \
+                 COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) \
+                 FROM transcripts WHERE raw_text != '' GROUP BY strftime('%w', created_at) ORDER BY 2 DESC LIMIT 1",
+                [],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap_or(("—".into(), 0));
+
+        // Most productive hour
+        let (most_productive_hour, peak_sessions): (i64, i64) = conn
+            .query_row(
+                "SELECT CAST(strftime('%H', created_at) AS INTEGER) as h, COUNT(*) as cnt \
+                 FROM transcripts GROUP BY h ORDER BY cnt DESC LIMIT 1",
+                [],
+                |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap_or((0, 0));
+        let hour_label = match most_productive_hour {
+            0 => "12 AM".into(),
+            1..=11 => format!("{} AM", most_productive_hour),
+            12 => "12 PM".into(),
+            13..=23 => format!("{} PM", most_productive_hour - 12),
+            _ => "—".into(),
+        };
+
+        // Average dictation length
+        let avg_duration: f64 = conn
+            .query_row(
+                "SELECT COALESCE(AVG(duration_sec), 0) FROM transcripts WHERE duration_sec > 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0.0);
+        let avg_dictation = if avg_duration > 0.0 {
+            if avg_duration < 60.0 {
+                format!("{:.0} seconds", avg_duration)
+            } else {
+                format!("{:.1} minutes", avg_duration / 60.0)
+            }
+        } else {
+            "—".into()
+        };
+
+        // Most used language
+        let (most_used_lang, lang_sessions): (String, i64) = conn
+            .query_row(
+                "SELECT language, COUNT(*) as cnt FROM transcripts \
+                 WHERE language != '' GROUP BY language ORDER BY cnt DESC LIMIT 1",
+                [],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+            )
+            .unwrap_or(("—".into(), 0));
+        let total_sessions: i64 = conn
+            .query_row("SELECT COUNT(*) FROM transcripts WHERE language != ''", [], |r| r.get(0))
+            .unwrap_or(0);
+        let language_pct = if total_sessions > 0 {
+            (lang_sessions as f64 / total_sessions as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
+
+        Ok::<VoiceIntelligenceData, AppError>(VoiceIntelligenceData {
+            most_active_day,
+            most_productive_hour: hour_label,
+            avg_dictation_length: avg_dictation,
+            most_used_language: most_used_lang,
+            most_active_day_words,
+            peak_voice_usage: format!("{} sessions", peak_sessions),
+            per_utterance: if avg_duration > 0.0 { format!("Avg {:.1}s", avg_duration) } else { "No data".into() },
+            language_percentage: language_pct,
         })
     })
     .await??;
@@ -1248,6 +1400,7 @@ pub fn run() {
             delete_model_file,
             get_history,
             get_insights,
+            get_voice_intelligence,
             get_dictionary,
             add_dictionary_entry,
             update_dictionary_entry,
