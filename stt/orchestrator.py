@@ -544,12 +544,12 @@ def run(
 
     _start_event = threading.Event()
     _stop_event = threading.Event()
-    _stdin_running = True
+    _stdin_alive = True
     _is_tty = sys.stdin.isatty()
 
     def _stdin_reader():
         """Read JSON commands from stdin (one per line)."""
-        nonlocal _stdin_running
+        nonlocal _stdin_alive
         try:
             for line in sys.stdin:
                 line = line.strip()
@@ -562,13 +562,11 @@ def run(
                     elif cmd.get("type") == "stop_recording":
                         _stop_event.set()
                         _start_event.set()  # Also unblocks if waiting
-                        _stdin_running = False
                 except _json.JSONDecodeError:
                     pass
         except (EOFError, OSError):
             pass
-        except (EOFError, OSError):
-            pass
+        _stdin_alive = False
 
     stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
     stdin_thread.start()
@@ -577,21 +575,9 @@ def run(
         # Interactive terminal — auto-start recording immediately
         _echo("Running in terminal — auto-starting recording (Ctrl+C to stop)...")
         _start_event.set()
-    else:
-        # Piped from Tauri frontend — wait for start_recording command
-        _start_event.wait()
-    if not _stdin_running:
-        _echo("Received stop before start — exiting.")
-        return
-
-    _echo("Recording started by frontend.")
-    _json_emit(config, {"type": "state", "state": "listening"})
-    if hooks and hooks.on_state:
-        hooks.on_state("listening")
 
     sr = config.audio.sample_rate
     block_size = config.audio.blocksize
-    ring = _RingBuffer(int(30 * sr))
     detector = StreamingEndpointDetector(config.vad, sr, block_size)
 
     # Apply fast-commit overrides on the detector directly
@@ -704,81 +690,109 @@ def run(
             msg = "Signal handlers disabled (run() is not on main thread)"
             _echo(msg)
 
-    chunk_count = 0
-    utterance_id = 0
-    try:
-        for chunk in stream_iter:
-            if not running or (stop_event is not None and stop_event.is_set()) or _stop_event.is_set():
+    # --- PTT loop: wait for start → record → wait for stop → repeat ---
+    while _stdin_alive or _is_tty:
+        if not _is_tty:
+            _start_event.wait()
+            if not _stdin_alive:
+                _echo("Received stop before start — exiting.")
+                return
+        else:
+            if not running:
                 break
-            chunk_start = ring.total_samples()
-            ring.extend(chunk)
-            chunk_end = ring.total_samples()
-            rms = compute_rms(chunk)
-            if hooks and hooks.on_mic_level:
-                hooks.on_mic_level(rms)
-            if config.json_mode and chunk_count % 8 == 0:
-                _json_emit(config, {"type": "mic", "level": round(rms, 6)})
-            chunk_count += 1
 
-            if config.debug and chunk_count % 8 == 0:
-                st, et = detector.thresholds()
-                noise = detector.noise_floor
-                snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
-                state = detector.vad_state.name
-                _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
-                if config.vad.use_spectral_vad:
-                    score = detector._compute_speech_score(chunk)
-                    _debug(config, f"  spectral: score={score:.4f}")
+        _echo("Recording started by frontend.")
+        _json_emit(config, {"type": "state", "state": "listening"})
+        if hooks and hooks.on_state:
+            hooks.on_state("listening")
 
-            event = detector.update(
-                rms=rms,
-                chunk_start_sample=chunk_start,
-                chunk_end_sample=chunk_end,
-                chunk=chunk if config.vad.use_spectral_vad else None,
-            )
-            if event is None or event.kind == "start":
-                if event:
-                    _debug(config, f"speech start at {event.start_sample/sr:.2f}s")
-                continue
-            if event.end_sample is None:
-                continue
+        chunk_count = 0
+        ring = _RingBuffer(int(30 * sr))
+        utterance_id = 0
+        try:
+            for chunk in stream_iter:
+                if not running or (stop_event is not None and stop_event.is_set()) or _stop_event.is_set():
+                    break
+                chunk_start = ring.total_samples()
+                ring.extend(chunk)
+                chunk_end = ring.total_samples()
+                rms = compute_rms(chunk)
+                if hooks and hooks.on_mic_level:
+                    hooks.on_mic_level(rms)
+                if config.json_mode and chunk_count % 8 == 0:
+                    _json_emit(config, {"type": "mic", "level": round(rms, 6)})
+                chunk_count += 1
 
-            segment = ring.slice_range(event.start_sample, event.end_sample)
-            if len(segment) == 0:
-                continue
+                if config.debug and chunk_count % 8 == 0:
+                    st, et = detector.thresholds()
+                    noise = detector.noise_floor
+                    snr_db = 20 * np.log10(rms / max(noise, 1e-10)) if noise > 0 else 0
+                    state = detector.vad_state.name
+                    _debug(config, f"rms={rms:.6f} noise={noise:.4f} snr={snr_db:.1f}dB state={state}")
+                    if config.vad.use_spectral_vad:
+                        score = detector._compute_speech_score(chunk)
+                        _debug(config, f"  spectral: score={score:.4f}")
 
-            dur = len(segment) / sr
-            rms_seg = compute_rms(segment)
-            _debug(config, f"utterance: {dur:.1f}s, rms={rms_seg:.4f}"
-                    + (" [forced split]" if event.forced_split else ""))
-
-            if dur < config.vad.min_recording_sec:
-                continue
-
-            # Speaker gate: reject segments that don't match enrolled speaker
-            if config.diarization.enabled and speaker_verifier is not None and speaker_profile is not None:
-                accepted, score = speaker_verifier.verify(segment, sr, speaker_profile, threshold=config.diarization.similarity_threshold)
-                _json_emit(config, {"type": "speaker", "accepted": accepted, "similarity": round(score, 4)})
-                if not accepted:
-                    _debug(config, f"speaker rejected: sim={score:.3f}")
+                event = detector.update(
+                    rms=rms,
+                    chunk_start_sample=chunk_start,
+                    chunk_end_sample=chunk_end,
+                    chunk=chunk if config.vad.use_spectral_vad else None,
+                )
+                if event is None or event.kind == "start":
+                    if event:
+                        _debug(config, f"speech start at {event.start_sample/sr:.2f}s")
+                    continue
+                if event.end_sample is None:
                     continue
 
-            utterance_id += 1
-            thread = threading.Thread(
-                target=_transcribe_and_print,
-                args=(config, segment.copy(), sr, ring.total_samples() / sr, utterance_id, telemetry, hooks),
-                daemon=True,
-            )
-            thread.start()
+                segment = ring.slice_range(event.start_sample, event.end_sample)
+                if len(segment) == 0:
+                    continue
 
-    except KeyboardInterrupt:
-        pass
-    finally:
-        if stream_iter is not None:
-            try:
-                stream_iter.close()
-            except Exception:
-                pass
+                dur = len(segment) / sr
+                rms_seg = compute_rms(segment)
+                _debug(config, f"utterance: {dur:.1f}s, rms={rms_seg:.4f}"
+                        + (" [forced split]" if event.forced_split else ""))
+
+                if dur < config.vad.min_recording_sec:
+                    continue
+
+                # Speaker gate: reject segments that don't match enrolled speaker
+                if config.diarization.enabled and speaker_verifier is not None and speaker_profile is not None:
+                    accepted, score = speaker_verifier.verify(segment, sr, speaker_profile, threshold=config.diarization.similarity_threshold)
+                    _json_emit(config, {"type": "speaker", "accepted": accepted, "similarity": round(score, 4)})
+                    if not accepted:
+                        _debug(config, f"speaker rejected: sim={score:.3f}")
+                        continue
+
+                utterance_id += 1
+                thread = threading.Thread(
+                    target=_transcribe_and_print,
+                    args=(config, segment.copy(), sr, ring.total_samples() / sr, utterance_id, telemetry, hooks),
+                    daemon=True,
+                )
+                thread.start()
+
+        except KeyboardInterrupt:
+            break
+        finally:
+            pass  # Don't close stream_iter — reuse across PTT sessions
+
+        # Recording session ended — wait for next start or exit
+        _stop_event.clear()
+        _start_event.clear()
+        _json_emit(config, {"type": "state", "state": "idle"})
+        if hooks and hooks.on_state:
+            hooks.on_state("idle")
+        _echo("Recording stopped. Waiting for start_recording...")
+
+    # --- Cleanup: close stream and print telemetry ---
+    if stream_iter is not None:
+        try:
+            stream_iter.close()
+        except Exception:
+            pass
 
     # --- Print telemetry summary on exit ---
     snap = telemetry.snapshot()
