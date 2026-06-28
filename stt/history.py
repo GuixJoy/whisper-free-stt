@@ -884,7 +884,7 @@ class HistoryStore:
                 text, count = pattern.subn(replacement, text)
                 if count > 0:
                     self._incr_use_count(phrase, count)
-                    logger.debug("dict exact: %s -> %s (%d times)", phrase, replacement, count)
+                    logger.debug("dict exact", phrase=phrase, replacement=replacement, count=count)
             else:
                 matches = pattern.findall(text)
                 if matches:
