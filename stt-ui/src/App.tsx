@@ -832,6 +832,7 @@ function App() {
       const msg = err instanceof Error ? err.message : "Failed to start engine";
       setToast(msg);
       addError("connection", msg, true, "Check if stt-engine is installed");
+      runtimeRef.current = null;
     });
 
     // Cleanup: kill backend on app unmount
