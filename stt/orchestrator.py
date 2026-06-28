@@ -1073,7 +1073,27 @@ def _transcribe_and_print(
     if result.is_empty:
         return
 
-    raw = result.text
+    asr_text = result.text  # Preserve original ASR output for raw event & history
+
+    # Filter common whisper silence hallucinations (e.g. "thank you")
+    # BEFORE dictionary replacements so dict can't mask a hallucination.
+    norm = _normalize_text(asr_text)
+    if norm in _SILENCE_HALLUCINATIONS:
+        seg_rms = compute_rms(audio)
+        seg_dur = len(audio) / sr
+        if seg_rms < 0.12 and seg_dur < 3.0:
+            _json_emit(
+                config,
+                {
+                    "type": "dropped",
+                    "utterance_id": utterance_id,
+                    "reason": "silence_hallucination",
+                    "duration_sec": round(seg_dur, 3),
+                },
+            )
+            return
+
+    raw = asr_text
 
     # Layer 1: Exact dictionary replacements (regex word-boundary)
     try:
@@ -1093,30 +1113,12 @@ def _transcribe_and_print(
     except Exception as exc:
         logger.warning("Dictionary fuzzy replacement failed: %s", exc)
 
-    norm = _normalize_text(raw)
-
-    # Filter common whisper silence hallucinations (e.g. "thank you")
-    # when the captured segment has very low energy.
-    if norm in _SILENCE_HALLUCINATIONS:
-        seg_rms = compute_rms(audio)
-        seg_dur = len(audio) / sr
-        if seg_rms < 0.12 and seg_dur < 3.0:
-            _json_emit(
-                config,
-                {
-                    "type": "dropped",
-                    "utterance_id": utterance_id,
-                    "reason": "silence_hallucination",
-                    "duration_sec": round(seg_dur, 3),
-                },
-            )
-            return
     # Don't duplicate partial output if the final raw matches what we already showed
     if partials and raw.strip() == partials[-1].strip():
         _echo(f"\n[final] {raw}  ← confirmed")
     else:
         _echo(f"\n[raw] {raw}")
-    _json_emit(config, {"type": "raw", "text": raw, "utterance_id": utterance_id})
+    _json_emit(config, {"type": "raw", "text": asr_text, "utterance_id": utterance_id})
     if hooks and hooks.on_raw:
         hooks.on_raw(raw)
 
@@ -1131,7 +1133,7 @@ def _transcribe_and_print(
             _output_text(raw, config)
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
-        get_store().write_async(raw, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
+        get_store().write_async(asr_text, raw, mode="off" if config.llm.mode is LLMMode.OFF else "short", duration_sec=total_elapsed)
         return
 
     _debug(config, f"LLM: mode={config.llm.mode.value}")
@@ -1191,7 +1193,7 @@ def _transcribe_and_print(
         _output_text(processed, config)
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)
-    get_store().write_async(raw, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
+    get_store().write_async(asr_text, processed, mode=config.llm.mode.value, duration_sec=total_elapsed)
 
 
 def _transcribe_with_partials(

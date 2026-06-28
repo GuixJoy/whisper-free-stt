@@ -804,6 +804,7 @@ function App() {
   const connectedRef = useRef(connected);
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
+  const [settingsVersion, setSettingsVersion] = useState(0);
 
 
   connectedRef.current = connected;
@@ -840,7 +841,7 @@ function App() {
       api.kill();
       runtimeRef.current = null;
     };
-  }, [mode]); // Re-spawn if mode changes (unlikely)
+  }, [mode, settingsVersion]); // Re-spawn when mode changes OR settings saved
 
   // Load history from backend
   const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
@@ -1292,11 +1293,9 @@ function App() {
         settings={settings}
         onSave={async (s) => {
           setSettings(s);
+          setSettingsVersion((v) => v + 1); // Trigger engine respawn with new CLI args
           if (connectedRef.current) {
             stopRef.current();
-            setTimeout(() => {
-              startRef.current(s, "SettingsSave");
-            }, 200);
           }
         }}
         onClose={() => {
