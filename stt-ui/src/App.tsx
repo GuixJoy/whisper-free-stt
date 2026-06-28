@@ -1075,20 +1075,7 @@ function App() {
 
   const stop = async () => {
     if (!runtimeRef.current) return;
-    // Commit transcribed text before stopping
-    const text = pttTextRef.current.trim();
-    const hwnd = pttHwndRef.current;
-    if (text) {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const ok = await invoke<boolean>("type_text", { text, restoreHwnd: hwnd });
-        console.log("[PTT] Committed text:", ok);
-        if (!ok) setToast("Failed to commit text — click into a text field and try again");
-      } catch (e) {
-        console.error("[PTT] type_text failed:", e);
-        setToast("Failed to commit text — click into a text field and try again");
-      }
-    }
+    // Backend handles typing directly — no need for frontend type_text
     pttHwndRef.current = null;
     pttTextRef.current = "";
     console.log("[PTT] Stop requested");
