@@ -82,7 +82,7 @@ export interface RuntimeSettings {
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   wsPort: 8765,
-  asrProfile: "distil",
+  asrProfile: "balanced",
   backend: "auto",
   model: "",
   llmMode: "cleanup",

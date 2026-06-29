@@ -1071,6 +1071,7 @@ def _transcribe_and_print(
         result = _transcribe_with_partials(audio, sr, tcfg, _on_partial)
     except Exception as exc:
         _debug(config, f"transcription error: {exc}")
+        _json_emit(config, {"type": "error", "message": f"Transcription error: {exc}", "utterance_id": utterance_id})
         if hooks and hooks.on_error:
             hooks.on_error(f"Transcription error: {exc}")
         if hooks and hooks.on_state:
