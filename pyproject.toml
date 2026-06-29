@@ -81,5 +81,6 @@ addopts = "-v --tb=short"
 [dependency-groups]
 dev = [
     "pyinstaller>=6.20.0",
+    "pytest>=9.1.1",
     "ruff>=0.8.0",
 ]
