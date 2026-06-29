@@ -59,7 +59,11 @@ export WINDOW_HEIGHT=800
 export WINDOW_WIDTH=1200
 
 # Run tauri-driver in background
-tauri-driver --port "$CHROMEDRIVER_PORT" &
+TAURI_DRIVER_ARGS=()
+if [ "$HEADED" = "--headed" ]; then
+    TAURI_DRIVER_ARGS+=(--headed)
+fi
+tauri-driver --port "$CHROMEDRIVER_PORT" "${TAURI_DRIVER_ARGS[@]}" &
 TAURI_DRIVER_PID=$!
 sleep 2
 
