@@ -143,6 +143,7 @@ struct InsightsData {
     wpm: i64,
     wpm_trend: i64,
     total_words: i64,
+    words_this_week: i64,
     words_trend: i64,
     ai_fixes: i64,
     categories: Vec<InsightsCategory>,
@@ -306,7 +307,7 @@ async fn get_insights() -> Result<InsightsData, AppError> {
             let current = {
                 let mut count = 0i64;
                 // Manual date stepping using SQLite
-                for offset in 0..365i64 {
+                for offset in 0..2000i64 {
                     let check: String = conn
                         .query_row(
                             "SELECT date('now', '-' || ?1 || ' days')",
@@ -347,8 +348,9 @@ async fn get_insights() -> Result<InsightsData, AppError> {
             (current, longest)
         };
 
-        // Heatmap: transcripts per day for last 182 days
+        // Heatmap: transcripts per day for last 182 days (fill zero-activity days)
         let heatmap = {
+            let mut activity_map = std::collections::HashMap::new();
             let mut stmt = conn.prepare(
                 "SELECT date(created_at) as day, COUNT(*) as cnt FROM transcripts WHERE created_at >= datetime('now', '-182 days') GROUP BY day",
             )?;
@@ -357,8 +359,15 @@ async fn get_insights() -> Result<InsightsData, AppError> {
                 let cnt: i64 = row.get(1)?;
                 Ok((day, cnt))
             })?;
+            for r in rows.flatten() {
+                activity_map.insert(r.0, r.1);
+            }
             let mut heatmap = Vec::new();
-            for (day, cnt) in rows.flatten() {
+            for offset in (0..182i64).rev() {
+                let day: String = conn
+                    .query_row("SELECT date('now', '-' || ?1 || ' days')", [offset], |r| r.get(0))
+                    .unwrap_or_default();
+                let cnt = activity_map.get(&day).copied().unwrap_or(0);
                 let level = match cnt {
                     0 => 0,
                     1..=2 => 1,
@@ -419,6 +428,7 @@ async fn get_insights() -> Result<InsightsData, AppError> {
             wpm,
             wpm_trend,
             total_words,
+            words_this_week,
             words_trend,
             ai_fixes,
             categories,

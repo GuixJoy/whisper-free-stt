@@ -193,6 +193,7 @@ mod tests {
             wpm: 120,
             wpm_trend: 10,
             total_words: 5000,
+            words_this_week: 495,
             words_trend: -5,
             ai_fixes: 42,
             categories: vec![InsightsCategory {
