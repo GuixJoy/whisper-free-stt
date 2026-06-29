@@ -58,7 +58,6 @@ $PYTHON_CMD -m PyInstaller \
   --hidden-import pywhispercpp \
   --hidden-import stt._cpp_worker \
   --exclude-module matplotlib \
-  --exclude-module scipy \
   --exclude-module tensorflow \
   --exclude-module torch \
   --exclude-module tkinter \
