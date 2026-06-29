@@ -26,6 +26,12 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
     setLocal({ ...settings });
   }, [settings]);
 
+  useEffect(() => {
+    if (visible) {
+      setHotkey(localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
+    }
+  }, [visible]);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (e.key === "Escape" && visible) {
       onClose();

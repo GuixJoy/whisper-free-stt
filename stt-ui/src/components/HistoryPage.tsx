@@ -72,16 +72,17 @@ export default function HistoryPage({ onBack }: Props) {
     return resp.json();
   }, []);
 
-  const loadHistory = useCallback(async () => {
+  const loadHistory = useCallback(async (search?: string) => {
     setLoading(true);
     setError("");
     try {
+      const limit = search ? 50000 : 2000;
       if (isTauri()) {
         const { invoke } = await import("@tauri-apps/api/core");
-        const result = await invoke<HistoryRow[]>("get_history", { limit: 2000 });
+        const result = await invoke<HistoryRow[]>("get_history", { limit });
         setAllRows(result);
       } else {
-        const data = await apiFetch("/history?limit=2000");
+        const data = await apiFetch(`/history?limit=${limit}`);
         setAllRows(data);
       }
     } catch (e) {
@@ -200,10 +201,22 @@ export default function HistoryPage({ onBack }: Props) {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === visibleRows.length) {
-      setSelectedIds(new Set());
+    const allVisibleSelected = visibleRows.every(r => selectedIds.has(r.id));
+    if (allVisibleSelected) {
+      // Deselect only visible rows, preserve hidden selections
+      const visibleIds = new Set(visibleRows.map(r => r.id));
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(visibleRows.map(r => r.id)));
+      // Add visible rows to selection
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        for (const r of visibleRows) next.add(r.id);
+        return next;
+      });
     }
   }, [selectedIds, visibleRows]);
 

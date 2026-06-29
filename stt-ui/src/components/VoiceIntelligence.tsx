@@ -91,7 +91,8 @@ export default function VoiceIntelligence({ data: propData }: Props = {}) {
             setLiveData({ ...defaultData(), ...result });
           }
         } else {
-          const resp = await fetch("http://127.0.0.1:8765/api/insights/voice-intelligence");
+          const port = localStorage.getItem("stt-ws-port") || "8765";
+          const resp = await fetch(`http://127.0.0.1:${port}/api/insights/voice-intelligence`);
           if (resp.ok) {
             const result = await resp.json();
             if (!cancelled) setLiveData({ ...defaultData(), ...result });

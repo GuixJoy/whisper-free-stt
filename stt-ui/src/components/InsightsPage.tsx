@@ -16,6 +16,7 @@ interface InsightsData {
   wpm: number;
   wpmTrend: number;
   totalWords: number;
+  wordsThisWeek: number;
   wordsTrend: number;
   aiFixes: number;
   categories: UsageCategory[];
@@ -61,6 +62,7 @@ export default function InsightsPage() {
   const [heatmap, setHeatmap] = useState<HeatmapDay[]>([]);
   const [streak, setStreak] = useState<StreakInfo>({ current: 0, longest: 0 });
   const [totalWords, setTotalWords] = useState(0);
+  const [weeklyWordsTotal, setWeeklyWordsTotal] = useState(0);
   const [wordsTrend, setWordsTrend] = useState(0);
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,6 +93,7 @@ export default function InsightsPage() {
 
   const applyData = (data: InsightsData) => {
     setTotalWords(data.totalWords || 0);
+    setWeeklyWordsTotal(data.wordsThisWeek || 0);
     setWordsTrend(data.wordsTrend || 0);
     setCategories(data.categories || []);
     setHeatmap(data.heatmap || []);
@@ -137,7 +140,7 @@ export default function InsightsPage() {
                 <h2 className="text-[18px] font-semibold text-text-primary mb-1">Voice Activity</h2>
                 <p className="text-[13px] text-text-muted">
                   This week you dictated{" "}
-                  <span className="font-semibold text-[#3B6B9E]">{formatWords(totalWords)} words</span>
+                  <span className="font-semibold text-[#3B6B9E]">{formatWords(weeklyWordsTotal)} words</span>
                   {wordsTrend > 0 && (
                     <span className="text-accent ml-1">
                       ↑ {wordsTrend}% more than last week
