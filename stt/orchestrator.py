@@ -567,6 +567,7 @@ def run(
         except (EOFError, OSError):
             pass
         _stdin_alive = False
+        _start_event.set()  # Unblock main thread if waiting on start
 
     stdin_thread = threading.Thread(target=_stdin_reader, daemon=True)
     stdin_thread.start()
@@ -578,103 +579,15 @@ def run(
 
     sr = config.audio.sample_rate
     block_size = config.audio.blocksize
-    ring = _RingBuffer(int(30 * sr))
-    detector = StreamingEndpointDetector(config.vad, sr, block_size)
-
-    # Apply fast-commit overrides on the detector directly
-    if config.vad.fast_commit:
-        detector.set_fast_commit(
-            silence_duration_sec=config.vad.fast_silence_duration_sec,
-            detrigger_ratio=config.vad.fast_detrigger_ratio,
-        )
 
     # Warm the selected ASR backend in parallel with calibration.
     warmup_thread = threading.Thread(target=warm_up_backend, args=(config.transcription,), daemon=True)
     warmup_thread.start()
 
-    # --- Noise floor calibration ---
-    _debug(config, "calibrating noise floor (1.5s)...")
-    calib_rms: list[float] = []
-    calib_centroid: list[float] = []
-    calib_flux: list[float] = []
-    calib_zcr: list[float] = []
-    calib_ber: list[float] = []
-    try:
-        # Store generator for both calibration and main loop; cleaned up in finally.
-        stream_iter = mic_stream(config.audio, debug=False)
-        deadline = time.monotonic() + 1.5
-        while time.monotonic() < deadline:
-            chunk = next(stream_iter)
-            ring.extend(chunk)
-            calib_rms.append(compute_rms(chunk))
-            if config.vad.use_spectral_vad:
-                calib_centroid.append(compute_spectral_centroid(chunk, sr))
-                calib_flux.append(compute_spectral_flux(chunk, sr))
-                calib_zcr.append(compute_zero_crossing_rate(chunk))
-                calib_ber.append(compute_band_energy_ratio(
-                    chunk, sr,
-                    config.vad.speech_band_low_hz,
-                    config.vad.speech_band_high_hz,
-                ))
-    except StopIteration:
-        pass
-    except Exception as exc:
-        if hooks and hooks.on_error:
-            hooks.on_error(f"Microphone stream failed: {exc}")
-        if hooks and hooks.on_state:
-            hooks.on_state("error")
-        return
-
-    if calib_rms:
-        sorted_r = sorted(calib_rms)
-        p10 = sorted_r[len(sorted_r) // 10]
-        detector.set_noise_floor(p10)
-        st, et = detector.thresholds()
-        _debug(config, f"calibration: p10={p10:.4f}, start_th={st:.4f}, end_th={et:.4f}")
-
-    if calib_centroid and config.vad.use_spectral_vad:
-        # Use robust percentile (p10) like RMS — not mean, which is sensitive
-        # to transient noise (mouse clicks, keyboard taps during calibration).
-        sorted_c = sorted(calib_centroid)
-        sorted_f = sorted(calib_flux)
-        sorted_z = sorted(calib_zcr)
-        sorted_b = sorted(calib_ber)
-        p10_idx = max(0, len(sorted_c) // 10)
-        avg_centroid = float(sorted_c[p10_idx])
-        avg_flux = float(sorted_f[p10_idx])
-        avg_zcr = float(sorted_z[p10_idx])
-        avg_ber = float(sorted_b[p10_idx])
-        detector.set_spectral_baselines(avg_centroid, avg_flux, avg_zcr, avg_ber)
-        _debug(config, f"calibration: centroid={avg_centroid:.0f}Hz, flux={avg_flux:.4f}, "
-               f"zcr={avg_zcr:.4f}, ber={avg_ber:.4f}")
-
-    # --- Speaker enrollment ---
+    # --- Speaker enrollment (deferred for non-TTY: done after start_recording) ---
     speaker_verifier: SpeakerVerifier | None = None
     speaker_profile: NDArray[np.float32] | None = None
-    if config.diarization.enabled:
-        from numpy import NDArray
-        speaker_verifier = SpeakerVerifier(method=config.diarization.method)
-        enrollment_embs: list[NDArray[np.float32]] = []
-        n_chunks = config.diarization.enrollment_chunks
-        _debug(config, f"speaker enrollment: collecting {n_chunks} chunks...")
-        try:
-            for _ in range(n_chunks):
-                chunk = next(stream_iter)
-                ring.extend(chunk)
-                emb = speaker_verifier.embed(chunk, sr)
-                enrollment_embs.append(emb)
-            if len(enrollment_embs) >= 2:
-                speaker_profile = speaker_verifier.enroll(enrollment_embs)
-                _debug(config, f"speaker profile created ({len(enrollment_embs)} chunks)")
-            else:
-                _debug(config, "speaker enrollment: insufficient audio, skipping")
-                speaker_profile = None
-        except StopIteration:
-            _debug(config, "speaker enrollment: stream ended early")
-            speaker_profile = None
-        except Exception as exc:
-            _debug(config, f"speaker enrollment failed: {exc}")
-            speaker_profile = None
+    stream_iter = None  # Will be opened after start_recording in non-TTY mode
 
     running = True
     def _stop(_sig, _frame):
@@ -702,13 +615,98 @@ def run(
             if not running:
                 break
 
+        # --- Open mic + calibrate (only after start_recording) ---
+        ring = _RingBuffer(int(30 * sr))
+        detector = StreamingEndpointDetector(config.vad, sr, block_size)
+        if config.vad.fast_commit:
+            detector.set_fast_commit(
+                silence_duration_sec=config.vad.fast_silence_duration_sec,
+                detrigger_ratio=config.vad.fast_detrigger_ratio,
+            )
+        _debug(config, "calibrating noise floor (1.5s)...")
+        calib_rms: list[float] = []
+        calib_centroid: list[float] = []
+        calib_flux: list[float] = []
+        calib_zcr: list[float] = []
+        calib_ber: list[float] = []
+        try:
+            stream_iter = mic_stream(config.audio, debug=False)
+            deadline = time.monotonic() + 1.5
+            while time.monotonic() < deadline:
+                chunk = next(stream_iter)
+                ring.extend(chunk)
+                calib_rms.append(compute_rms(chunk))
+                if config.vad.use_spectral_vad:
+                    calib_centroid.append(compute_spectral_centroid(chunk, sr))
+                    calib_flux.append(compute_spectral_flux(chunk, sr))
+                    calib_zcr.append(compute_zero_crossing_rate(chunk))
+                    calib_ber.append(compute_band_energy_ratio(
+                        chunk, sr,
+                        config.vad.speech_band_low_hz,
+                        config.vad.speech_band_high_hz,
+                    ))
+        except StopIteration:
+            pass
+        except Exception as exc:
+            if hooks and hooks.on_error:
+                hooks.on_error(f"Microphone stream failed: {exc}")
+            if hooks and hooks.on_state:
+                hooks.on_state("error")
+            continue
+
+        if calib_rms:
+            sorted_r = sorted(calib_rms)
+            p10 = sorted_r[len(sorted_r) // 10]
+            detector.set_noise_floor(p10)
+            st, et = detector.thresholds()
+            _debug(config, f"calibration: p10={p10:.4f}, start_th={st:.4f}, end_th={et:.4f}")
+
+        if calib_centroid and config.vad.use_spectral_vad:
+            sorted_c = sorted(calib_centroid)
+            sorted_f = sorted(calib_flux)
+            sorted_z = sorted(calib_zcr)
+            sorted_b = sorted(calib_ber)
+            p10_idx = max(0, len(sorted_c) // 10)
+            avg_centroid = float(sorted_c[p10_idx])
+            avg_flux = float(sorted_f[p10_idx])
+            avg_zcr = float(sorted_z[p10_idx])
+            avg_ber = float(sorted_b[p10_idx])
+            detector.set_spectral_baselines(avg_centroid, avg_flux, avg_zcr, avg_ber)
+            _debug(config, f"calibration: centroid={avg_centroid:.0f}Hz, flux={avg_flux:.4f}, "
+                   f"zcr={avg_zcr:.4f}, ber={avg_ber:.4f}")
+
+        # --- Speaker enrollment (on first start only) ---
+        if speaker_verifier is None and config.diarization.enabled:
+            from numpy import NDArray
+            speaker_verifier = SpeakerVerifier(method=config.diarization.method)
+            enrollment_embs: list[NDArray[np.float32]] = []
+            n_chunks = config.diarization.enrollment_chunks
+            _debug(config, f"speaker enrollment: collecting {n_chunks} chunks...")
+            try:
+                for _ in range(n_chunks):
+                    chunk = next(stream_iter)
+                    ring.extend(chunk)
+                    emb = speaker_verifier.embed(chunk, sr)
+                    enrollment_embs.append(emb)
+                if len(enrollment_embs) >= 2:
+                    speaker_profile = speaker_verifier.enroll(enrollment_embs)
+                    _debug(config, f"speaker profile created ({len(enrollment_embs)} chunks)")
+                else:
+                    _debug(config, "speaker enrollment: insufficient audio, skipping")
+                    speaker_profile = None
+            except StopIteration:
+                _debug(config, "speaker enrollment: stream ended early")
+                speaker_profile = None
+            except Exception as exc:
+                _debug(config, f"speaker enrollment failed: {exc}")
+                speaker_profile = None
+
         _echo("Recording started by frontend.")
         _json_emit(config, {"type": "state", "state": "listening"})
         if hooks and hooks.on_state:
             hooks.on_state("listening")
 
         chunk_count = 0
-        ring = _RingBuffer(int(30 * sr))
         utterance_id = 0
         try:
             for chunk in stream_iter:
@@ -1136,7 +1134,7 @@ def _transcribe_and_print(
         _echo(f"\n[raw] {raw}")
     _json_emit(config, {"type": "raw", "text": asr_text, "utterance_id": utterance_id})
     if hooks and hooks.on_raw:
-        hooks.on_raw(raw)
+        hooks.on_raw(asr_text)
 
     # --- LLM (no semaphore held — next utterance can start ASR in parallel) ---
     word_count = len(raw.split())
@@ -1298,7 +1296,7 @@ def _transcribe_with_partials(
 
             text = result.get("text", "")
             if text:
-                on_partial(text)
+                on_partial(text)  # NOTE: whisper.cpp fires one partial with complete text (no streaming partials)
 
             segments: list[TranscriptionSegment] = []
             for s in result.get("segments", []):
