@@ -963,7 +963,30 @@ mod win32 {
         fn lstrcpyW(lpString1: *mut u16, lpString2: *const u16) -> *mut u16;
     }
 
+    // SendInput structures
+    #[repr(C)]
+    struct KeyBDInput {
+        wVk: u16,
+        wScan: u16,
+        dwFlags: u32,
+        time: u32,
+        dwExtraInfo: usize,
+    }
+
+    #[repr(C)]
+    struct Input {
+        r#type: u32,
+        ki: KeyBDInput,
+        _pad: [u8; 8], // union padding
+    }
+
+    extern "system" {
+        fn SendInput(cInputs: u32, pInputs: *const Input, cbSize: i32) -> u32;
+    }
+
+    const INPUT_KEYBOARD: u32 = 1;
     const KEYEVENTF_KEYUP: u32 = 0x0002;
+    const KEYEVENTF_UNICODE: u32 = 0x0004;
     const VK_CONTROL: u8 = 0x11;
     const VK_V: u8 = 0x56;
     const CF_UNICODETEXT: u32 = 13;
@@ -1032,6 +1055,52 @@ mod win32 {
             keybd_event(VK_V, 0, 0, 0);
             keybd_event(VK_V, 0, KEYEVENTF_KEYUP, 0);
             keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0);
+        }
+    }
+
+    /// Type text character-by-character using SendInput with KEYEVENTF_UNICODE.
+    /// Works in apps that ignore clipboard+Ctrl+V ( terminals, Electron, some UWP apps).
+    pub fn send_text_unicode(text: &str) {
+        for ch in text.chars() {
+            let code = ch as u32;
+            let mut inputs = [
+                Input {
+                    r#type: INPUT_KEYBOARD,
+                    ki: KeyBDInput {
+                        wVk: 0,
+                        wScan: code as u16,
+                        dwFlags: KEYEVENTF_UNICODE,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                    _pad: [0; 8],
+                },
+                Input {
+                    r#type: INPUT_KEYBOARD,
+                    ki: KeyBDInput {
+                        wVk: 0,
+                        wScan: code as u16,
+                        dwFlags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+                        time: 0,
+                        dwExtraInfo: 0,
+                    },
+                    _pad: [0; 8],
+                },
+            ];
+            // Handle supplementary plane characters (surrogate pairs)
+            if code > 0xFFFF {
+                // Send as two UTF-16 surrogates
+                let hi = (0xD800 + ((code - 0x10000) >> 10)) as u16;
+                let lo = (0xDC00 + ((code - 0x10000) & 0x3FF)) as u16;
+                inputs[0].ki.wScan = hi;
+                inputs[1].ki.wScan = hi;
+                unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<Input>() as i32); }
+                inputs[0].ki.wScan = lo;
+                inputs[1].ki.wScan = lo;
+                unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<Input>() as i32); }
+            } else {
+                unsafe { SendInput(2, inputs.as_ptr(), std::mem::size_of::<Input>() as i32); }
+            }
         }
     }
 }
@@ -1147,14 +1216,14 @@ fn type_text(text: String, restore_hwnd: Option<u64>) -> Result<bool, String> {
             win32::set_foreground_hwnd(hwnd);
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        // Set clipboard via Win32 API (no PowerShell overhead)
-        if !win32::set_clipboard(&text) {
-            return Err("Failed to set clipboard".into());
+        // Try clipboard+Ctrl+V first (fast, preserves clipboard)
+        if win32::set_clipboard(&text) {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            win32::send_ctrl_v();
+            return Ok(true);
         }
-        // Small delay for clipboard to propagate
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        // Send Ctrl+V via keybd_event (runs in Tauri's GUI thread — has active message loop)
-        win32::send_ctrl_v();
+        // Fallback: SendInput Unicode (works in apps that ignore Ctrl+V)
+        win32::send_text_unicode(&text);
         return Ok(true);
     }
     // Linux — clipboard approach (works regardless of which window has focus)

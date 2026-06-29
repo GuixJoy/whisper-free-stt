@@ -254,7 +254,7 @@ export default function HistoryPage({ onBack }: Props) {
           <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors">
             <Download size={14} /> Text
           </button>
-          <button onClick={loadHistory} disabled={loading} className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-50">
+          <button onClick={() => loadHistory()} disabled={loading} className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-50">
             {loading ? "⟳" : "↻"}
           </button>
         </div>

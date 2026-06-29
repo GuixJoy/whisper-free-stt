@@ -279,6 +279,7 @@ class TestHotkeyFormat:
             "Alt+Space",
             "Super+Space",
             "CommandOrControl+Shift+K",
+            "Alt+K",
         ]
         for hotkey in valid_hotkeys:
             parts = hotkey.split("+")

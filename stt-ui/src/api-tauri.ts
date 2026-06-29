@@ -40,13 +40,17 @@ export function getWebAudioAnalyser(): AnalyserNode | null {
 export function createTauriApi(args: string[], sidecarName: string = "binaries/stt-engine"): STTApi {
   let listeners: Array<(e: STTEvent) => void> = [];
   let child: Child | null = null;
+  let lineBuffer = ""; // Buffer for partial JSON lines across chunk boundaries
 
   const notifyError = (msg: string) => {
     for (const cb of listeners) cb({ type: "error", message: msg });
   };
 
   const handleLine = (source: string, data: string) => {
-    const lines = data.split("\n");
+    lineBuffer += data;
+    const lines = lineBuffer.split("\n");
+    // Keep the last (potentially incomplete) chunk in the buffer
+    lineBuffer = lines.pop() ?? "";
     for (const raw of lines) {
       const trimmed = raw.trim();
       if (!trimmed) continue;
@@ -102,11 +106,9 @@ export function createTauriApi(args: string[], sidecarName: string = "binaries/s
 
     sendCommand(cmd: Record<string, unknown>) {
       if (child) {
-        try {
-          child.write(JSON.stringify(cmd) + "\n");
-        } catch (e) {
+        child.write(JSON.stringify(cmd) + "\n").catch((e) => {
           console.warn("[Engine] Failed to write command:", e);
-        }
+        });
       }
     },
   };

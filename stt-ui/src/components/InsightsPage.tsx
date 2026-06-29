@@ -61,7 +61,6 @@ export default function InsightsPage() {
   const [categories, setCategories] = useState<UsageCategory[]>([]);
   const [heatmap, setHeatmap] = useState<HeatmapDay[]>([]);
   const [streak, setStreak] = useState<StreakInfo>({ current: 0, longest: 0 });
-  const [totalWords, setTotalWords] = useState(0);
   const [weeklyWordsTotal, setWeeklyWordsTotal] = useState(0);
   const [wordsTrend, setWordsTrend] = useState(0);
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>([]);
@@ -92,7 +91,6 @@ export default function InsightsPage() {
   }, []);
 
   const applyData = (data: InsightsData) => {
-    setTotalWords(data.totalWords || 0);
     setWeeklyWordsTotal(data.wordsThisWeek || 0);
     setWordsTrend(data.wordsTrend || 0);
     setCategories(data.categories || []);

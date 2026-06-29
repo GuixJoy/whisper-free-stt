@@ -605,6 +605,9 @@ def run(
             _echo(msg)
 
     # --- PTT loop: wait for start → record → wait for stop → repeat ---
+    # Track transcription threads so we can wait for them before emitting idle.
+    _active_xcribe_threads: list[threading.Thread] = []
+
     while _stdin_alive or _is_tty:
         if not _is_tty:
             _start_event.wait()
@@ -771,12 +774,24 @@ def run(
                     args=(config, segment.copy(), sr, ring.total_samples() / sr, utterance_id, telemetry, hooks),
                     daemon=True,
                 )
+                _active_xcribe_threads.append(thread)
                 thread.start()
 
         except KeyboardInterrupt:
             break
         finally:
             pass  # Don't close stream_iter — reuse across PTT sessions
+
+        # --- Wait for pending transcription threads before going idle ---
+        # This ensures pttTextRef has the latest transcription when the
+        # frontend reads it after receiving state:idle.
+        if _active_xcribe_threads:
+            _echo(f"Waiting for {_active_xcribe_threads.__len__()} pending transcription(s)...")
+            _deadline = time.monotonic() + 15.0  # max 15 s wait
+            for t in _active_xcribe_threads:
+                remaining = max(0.1, _deadline - time.monotonic())
+                t.join(timeout=remaining)
+            _active_xcribe_threads.clear()
 
         # Recording session ended — wait for next start or exit
         _stop_event.clear()
@@ -1144,7 +1159,7 @@ def _transcribe_and_print(
         _json_emit(config, {"type": "processed", "text": raw, "utterance_id": utterance_id})
         if hooks and hooks.on_processed:
             hooks.on_processed(raw)
-        if not hooks:
+        if not hooks and not config.json_mode:
             _output_text(raw, config)
         total_elapsed = time.monotonic() - ts_total
         telemetry.record("total", total_elapsed)
@@ -1204,7 +1219,7 @@ def _transcribe_and_print(
 
     if hooks and hooks.on_processed:
         hooks.on_processed(processed)
-    if not hooks:
+    if not hooks and not config.json_mode:
         _output_text(processed, config)
     total_elapsed = time.monotonic() - ts_total
     telemetry.record("total", total_elapsed)

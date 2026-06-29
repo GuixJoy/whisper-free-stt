@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
 import { createWebAudioApi } from "./api-web-audio";
+import { playStartBeep, playStopBeep } from "./lib/audio";
 import { Mic, PlugZap, ShieldCheck, Mic2, Sparkles, Settings2, Activity, Terminal } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
@@ -252,7 +253,7 @@ function FeedView({
   hasMoreHistory: boolean;
   onFeedScroll: () => void;
   start: (overrideSettings?: RuntimeSettings, source?: string) => void;
-  stop: () => void;
+  stop: (source?: string) => void;
   copyLatest: () => void;
   copyLine: (line: TranscriptLine) => void;
   clearLines: () => void;
@@ -267,7 +268,7 @@ function FeedView({
 }) {
   const handleToggle = () => {
     if (connected) {
-      stop();
+      stop("MicButton");
     } else {
       const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
       if (isTauri) {
@@ -787,6 +788,7 @@ function App() {
   const [resolvedModel, setResolvedModel] = useState<{ profile: string; model: string; backend: string; device: string } | null>(null);
   const pttHwndRef = useRef<number | null>(null);  // Target HWND captured on PTT press
   const pttTextRef = useRef<string>("");            // Latest transcription text for PTT commit
+  const pttIdleResolveRef = useRef<(() => void) | null>(null); // Resolver for idle state after stop
   const [view, setView] = useState<AppView>(
     localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
   );
@@ -800,11 +802,13 @@ function App() {
 
   const runtimeRef = useRef<STTApi | null>(null);
   const nextLocalId = useRef(1);
+  const sessionCounter = useRef(0);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
   const isStartingRef = useRef(false);
+  const isCommittingRef = useRef(false);
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
-  const stopRef = useRef<() => void>(() => {});
+  const stopRef = useRef<(source?: string, commit?: boolean) => void>(() => {});
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
 
@@ -828,10 +832,12 @@ function App() {
       : createTauriApi(buildCliArgs(settings));
 
     api.onEvent(applyEvent);
-    runtimeRef.current = api;
 
     // Spawn backend — loads models, warms ASR, stays idle until PTT
+    // NOTE: runtimeRef is set ONLY after spawn resolves, so start() won't
+    // fire before the sidecar's stdin pipe is ready.
     api.spawn().then(() => {
+      runtimeRef.current = api;
       console.log("[Engine] Backend ready — waiting for PTT hotkey");
     }).catch((err) => {
       const msg = err instanceof Error ? err.message : "Failed to start engine";
@@ -961,8 +967,9 @@ function App() {
         (target as HTMLInputElement).isContentEditable === true;
       if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA" && !isInteractive) {
         e.preventDefault();
-        if (connectedRef.current) stopRef.current();
-        else startRef.current(undefined, "SpaceBar");
+        if (connectedRef.current || isCommittingRef.current) {
+          stopRef.current("SpaceBar");
+        } else startRef.current(undefined, "SpaceBar");
       }
     };
     window.addEventListener("keydown", handler);
@@ -987,6 +994,11 @@ function App() {
   const applyEvent = (event: STTEvent) => {
     if (event.type === "state") {
       setStatus(event.state);
+      // Resolve idle promise if waiting for PTT commit
+      if (event.state === "idle" && pttIdleResolveRef.current) {
+        pttIdleResolveRef.current();
+        pttIdleResolveRef.current = null;
+      }
       return;
     }
     if (event.type === "mic") {
@@ -1020,11 +1032,23 @@ function App() {
       return;
     }
     if (event.type === "raw") {
-      const id = event.utterance_id ?? nextLocalId.current++;
+      const rawId = event.utterance_id ?? nextLocalId.current++;
+      const id = sessionCounter.current * 100000 + rawId;
       setLines((prev) => [
         ...prev,
         { id, raw: event.text, processed: "", status: "transcribing", createdAt: new Date().toISOString() },
       ].slice(-500));
+      // Real-time: commit ASR text to focused window during recording
+      pttTextRef.current = event.text;
+      if (connectedRef.current && pttHwndRef.current && event.text.trim()) {
+        const hwnd = pttHwndRef.current;
+        const text = event.text;
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke<boolean>("type_text", { text, restoreHwnd: hwnd }).then((ok) => {
+            console.log(`[PTT] Real-time commit (raw):`, ok);
+          }).catch(() => {});
+        }).catch(() => {});
+      }
       return;
     }
     if (event.type === "processed") {
@@ -1034,6 +1058,16 @@ function App() {
         line.id === id ? { ...line, processed: event.text, status: "done" } : line
       ));
       pttTextRef.current = event.text;
+      // Real-time: commit LLM-rewritten text to focused window
+      if (connectedRef.current && pttHwndRef.current && event.text.trim()) {
+        const hwnd = pttHwndRef.current;
+        const text = event.text;
+        import("@tauri-apps/api/core").then(({ invoke }) => {
+          invoke<boolean>("type_text", { text, restoreHwnd: hwnd }).then((ok) => {
+            console.log(`[PTT] Real-time commit (processed):`, ok);
+          }).catch(() => {});
+        }).catch(() => {});
+      }
     }
     if (event.type === "llm_partial") {
       const id = event.utterance_id;
@@ -1051,8 +1085,8 @@ function App() {
 
   // --- PTT lifecycle: send commands to running backend ---
   const start = async (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
-    if (connected || isStartingRef.current) {
-      console.log(`[PTT] Start rejected — already recording, source=${source}`);
+    if (connected || isStartingRef.current || isCommittingRef.current) {
+      console.log(`[PTT] Start rejected — busy, source=${source}`);
       return;
     }
     isStartingRef.current = true;
@@ -1072,29 +1106,65 @@ function App() {
       pttHwndRef.current = null;
     }
     pttTextRef.current = "";
-    console.log(`[PTT] Start requested — source=${source}`);
+    sessionCounter.current++;
+    nextLocalId.current = 1;
+    setLines([]);
+    console.log(`[PTT] Start requested — source=${source}, session=${sessionCounter.current}`);
+    playStartBeep();
     runtimeRef.current.start(); // Sends start_recording to backend
     setConnected(true);
     setPttActive(true);
     dismissErrorsOfCategory("connection");
   };
 
-  const stop = async () => {
+  /** Atomic stop + wait-for-idle + type + cleanup. All callers use this. */
+  const stopAndCommit = async (source: string = "Unknown", commit = true) => {
     if (!runtimeRef.current) return;
+    if (!connectedRef.current && !isStartingRef.current) return;
     isStartingRef.current = false;
-    // Backend handles typing directly — no need for frontend type_text
-    pttHwndRef.current = null;
-    pttTextRef.current = "";
-    console.log("[PTT] Stop requested");
+    isCommittingRef.current = true;
+    console.log(`[PTT] Stop requested — source=${source}`);
+    playStopBeep();
     runtimeRef.current.stop(); // Sends stop_recording to backend
     setConnected(false);
-    setStatus("idle");
     setPttActive(false);
     micLevelEmitter.emit(0);
+
+    if (commit) {
+      // Wait for backend to finish transcriptions (state → idle) with timeout
+      await new Promise<void>((resolve) => {
+        pttIdleResolveRef.current = resolve;
+        setTimeout(() => { resolve(); }, 10000);
+      });
+      pttIdleResolveRef.current = null;
+
+      // Read accumulated text and type it
+      const text = pttTextRef.current.trim();
+      const hwnd = pttHwndRef.current;
+      if (text && hwnd) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const ok = await invoke<boolean>("type_text", { text, restoreHwnd: hwnd });
+          console.log(`[PTT] Committed text to HWND ${hwnd} (source=${source}):`, ok);
+          if (!ok) setToast("Failed to commit text");
+        } catch (e) {
+          console.error("[PTT] type_text failed:", e);
+          setToast("Failed to commit text");
+        }
+      } else {
+        console.log(`[PTT] Nothing to commit (source=${source}, text:`, !!text, "hwnd:", !!hwnd, ")");
+      }
+    }
+
+    // Clean up
+    pttTextRef.current = "";
+    pttHwndRef.current = null;
+    setStatus("idle");
+    isCommittingRef.current = false;
   };
 
   startRef.current = start;
-  stopRef.current = stop;
+  stopRef.current = stopAndCommit;
 
   // --- Widget: emit status to widget window ---
   useEffect(() => {
@@ -1114,8 +1184,9 @@ function App() {
       try {
         const { listen } = await import("@tauri-apps/api/event");
         unlistenToggle = await listen("widget-toggle", () => {
-          if (connectedRef.current) stopRef.current();
-          else startRef.current(undefined, "Widget");
+          if (connectedRef.current || isCommittingRef.current) {
+            stopRef.current("Widget");
+          } else startRef.current(undefined, "Widget");
         });
         unlistenShowMain = await listen("widget-show-main", async () => {
           try {
@@ -1133,16 +1204,15 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    let unlistenShortcut: (() => void) | undefined;
     let registeredShortcut: string | null = null;
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen<string>("tray-action", (event) => {
-          if (event.payload === "start" && !connectedRef.current) {
+          if (event.payload === "start" && !connectedRef.current && !isCommittingRef.current) {
             startRef.current(undefined, "Tray");
-          } else if (event.payload === "stop" && connectedRef.current) {
-            stopRef.current();
+          } else if (event.payload === "stop" && (connectedRef.current || isCommittingRef.current)) {
+            stopRef.current("Tray");
           }
         });
       } catch { /* not in Tauri */ }
@@ -1164,14 +1234,11 @@ function App() {
             startRef.current(settings, "Hotkey");
           } else if (event.state === "Released") {
             console.log("[PTT] Hotkey released — committing text");
-            if (!connectedRef.current) {
+            if (!connectedRef.current && !isCommittingRef.current) {
               console.log("[PTT] Not recording — nothing to commit");
               return;
             }
-            // Wait briefly for in-flight transcription to complete, then stop+commit
-            setTimeout(() => {
-              stopRef.current();
-            }, 300);
+            stopRef.current("Hotkey");
           }
         });
         registeredShortcut = savedHotkey;
@@ -1317,9 +1384,10 @@ function App() {
           setSettings(s);
           setSettingsVersion((v) => v + 1); // Trigger engine respawn with new CLI args
           if (connectedRef.current) {
-            stopRef.current();
+            stopRef.current("SettingsSave", false);
           }
         }}
+        onHotkeyChange={(hk) => setHotkey(hk)}
         onClose={() => {
           setShowSettings(false);
           setActiveItem("Home");

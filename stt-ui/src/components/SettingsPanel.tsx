@@ -5,6 +5,7 @@ import type { RuntimeSettings } from "../App";
 interface Props {
   settings: RuntimeSettings;
   onSave: (s: RuntimeSettings) => void;
+  onHotkeyChange?: (hotkey: string) => void;
   visible: boolean;
   onClose: () => void;
 }
@@ -13,11 +14,12 @@ const HOTKEY_OPTIONS = [
   { value: "CommandOrControl+Shift+Space", label: "Ctrl + Shift + Space" },
   { value: "CommandOrControl+Alt+Space", label: "Ctrl + Alt + Space" },
   { value: "Alt+Space", label: "Alt + Space" },
-  { value: "Super+Space", label: "Super + Space" },
+  { value: "Super+Space", label: "Win + Space" },
   { value: "CommandOrControl+Shift+K", label: "Ctrl + Shift + K" },
+  { value: "Alt+K", label: "Alt + K" },
 ];
 
-export default function SettingsPanel({ settings, onSave, visible, onClose }: Props) {
+export default function SettingsPanel({ settings, onSave, onHotkeyChange, visible, onClose }: Props) {
   const [local, setLocal] = useState<RuntimeSettings>({ ...settings });
   const [showKeys, setShowKeys] = useState(false);
   const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
@@ -215,7 +217,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
-            onClick={() => { localStorage.setItem("stt-hotkey", hotkey); onSave(local); onClose(); }}
+            onClick={() => { localStorage.setItem("stt-hotkey", hotkey); onHotkeyChange?.(hotkey); onSave(local); onClose(); }}
           >
             Save & Apply
           </button>
