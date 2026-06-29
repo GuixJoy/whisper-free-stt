@@ -802,6 +802,7 @@ function App() {
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
+  const isStartingRef = useRef(false);
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
   const [settingsVersion, setSettingsVersion] = useState(0);
@@ -1050,12 +1051,14 @@ function App() {
 
   // --- PTT lifecycle: send commands to running backend ---
   const start = async (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
-    if (connected) {
+    if (connected || isStartingRef.current) {
       console.log(`[PTT] Start rejected — already recording, source=${source}`);
       return;
     }
+    isStartingRef.current = true;
     if (!runtimeRef.current) {
       console.log(`[PTT] Start rejected — engine not ready, source=${source}`);
+      isStartingRef.current = false;
       setToast("Engine not ready — wait a moment and try again");
       return;
     }
@@ -1078,6 +1081,7 @@ function App() {
 
   const stop = async () => {
     if (!runtimeRef.current) return;
+    isStartingRef.current = false;
     // Backend handles typing directly — no need for frontend type_text
     pttHwndRef.current = null;
     pttTextRef.current = "";
@@ -1185,7 +1189,7 @@ function App() {
           .catch(() => {});
       }
     };
-  }, []);
+  }, [hotkey]);
 
   const clearLines = () => setLines([]);
 
