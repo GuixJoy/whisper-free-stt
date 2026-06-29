@@ -969,7 +969,7 @@ class HistoryStore:
         for entry in replacements:
             phrase = entry["phrase"]
             replacement = entry["replacement"]
-            pattern = re.compile(r'\b' + re.escape(phrase) + r'\b', flags=re.IGNORECASE)
+            pattern = re.compile(r'(?<!\w)' + re.escape(phrase) + r'(?!\w)', flags=re.IGNORECASE)
             if phrase != replacement:
                 text, count = pattern.subn(replacement, text)
                 if count > 0:
