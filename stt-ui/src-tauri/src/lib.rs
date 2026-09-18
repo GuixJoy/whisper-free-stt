@@ -904,11 +904,31 @@ fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
 }
 
 #[tauri::command]
-async fn download_model(id: String) -> Result<(), AppError> {
+async fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
     let config = AppConfig::load();
     let manager = ModelManager::new(config.model_dir);
     tauri::async_runtime::spawn(async move {
-        let _ = manager.download(&id, |_percent, _bytes| {}).await;
+        let emit_progress = |percent: usize, bytes: u64| {
+            let _ = app.emit(
+                "model_download_progress",
+                serde_json::json!({"id": id, "percent": percent, "bytes": bytes}),
+            );
+        };
+        match manager.download(&id, emit_progress).await {
+            Ok(()) => {
+                let _ = app.emit(
+                    "model_download_progress",
+                    serde_json::json!({"id": id, "percent": 100, "done": true}),
+                );
+            }
+            Err(e) => {
+                eprintln!("[models] download_model {} failed: {}", id, e);
+                let _ = app.emit(
+                    "model_download_error",
+                    serde_json::json!({"id": id, "error": e.to_string()}),
+                );
+            }
+        }
     });
     Ok(())
 }

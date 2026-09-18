@@ -1057,6 +1057,9 @@ function App() {
   const applyEvent = (event: STTEvent) => {
     if (event.type === "state") {
       setStatus(event.state);
+      if (event.state === "error" && event.message) {
+        addError("model", event.message);
+      }
       return;
     }
     if (event.type === "mic") {

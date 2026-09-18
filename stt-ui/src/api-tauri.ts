@@ -27,8 +27,10 @@ export function createTauriApi(_cliArgs?: string[]): STTApi {
 
   const fail = (message: string, e: unknown) => {
     currentStatus = "error";
-    console.error(message, e);
-    emit({ type: "state", state: currentStatus });
+    const detail = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e ?? "");
+    const fullMessage = detail ? `${message}: ${detail}` : message;
+    console.error(fullMessage, e);
+    emit({ type: "state", state: currentStatus, message: fullMessage });
   };
 
   const handleEvent = (name: string, payload: TauriPayload) => {
