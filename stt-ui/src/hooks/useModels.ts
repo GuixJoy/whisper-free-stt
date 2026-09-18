@@ -104,7 +104,7 @@ export function useModels() {
   // unavailable (e.g. browser dev mode).
   useEffect(() => {
     if (!isTauri()) return;
-    let unlistenFns: Array<() => void> = [];
+    const unlistenFns: Array<() => void> = [];
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
