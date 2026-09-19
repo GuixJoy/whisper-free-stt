@@ -3,7 +3,7 @@
 export type ASRBackend = "sherpa_onnx";
 export type ASRMODEL = "parakeet" | "whisper-turbo" | "whisper-base";
 
-export type LlmModelBackend = "llama_cpp" | "deepseek" | "openrouter";
+export type LlmModelBackend = "llama_cpp" | "openrouter";
 
 export interface LlmModelInfo {
   id: string;

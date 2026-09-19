@@ -87,10 +87,9 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                 id="settings-provider"
                 className={inputClass}
                 value={local.llmProvider}
-                onChange={(e) => update({ llmProvider: e.target.value as "local" | "deepseek" | "openrouter" })}
+                onChange={(e) => update({ llmProvider: e.target.value as "local" | "openrouter" })}
               >
                 <option value="local">Local</option>
-                <option value="deepseek">DeepSeek</option>
                 <option value="openrouter">OpenRouter</option>
               </select>
             </div>
@@ -116,7 +115,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                     className={inputClass}
                     value={local.llmModel}
                     onChange={(e) => update({ llmModel: e.target.value })}
-                    placeholder={local.llmProvider === "deepseek" ? "deepseek-chat" : "openai/gpt-4o-mini"}
+                    placeholder="openai/gpt-4o-mini"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -126,7 +125,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                     className={inputClass}
                     value={local.llmFallback}
                     onChange={(e) => update({ llmFallback: e.target.value })}
-                    placeholder={local.llmProvider === "openrouter" ? "anthropic/claude-3-5-haiku-latest" : ""}
+                    placeholder="anthropic/claude-3-5-haiku-latest"
                   />
                 </div>
               </>
@@ -137,18 +136,6 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
             <div className="flex flex-col gap-3">
               <h3 className="text-subheading text-text-primary flex items-center gap-2"><KeyRound size={15} className="text-text-secondary" />API Keys</h3>
               <p className="text-small text-text-muted">Keys stay in memory only and are never written to disk — re-enter them after a restart.</p>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="settings-deepseek-key" className="text-label text-text-secondary">DeepSeek API Key</label>
-                <input
-                  id="settings-deepseek-key"
-                  className={cn(inputClass, "font-mono")}
-                  type={showKeys ? "text" : "password"}
-                  value={local.deepseekApiKey}
-                  onChange={(e) => update({ deepseekApiKey: e.target.value })}
-                  placeholder={local.deepseekApiKey ? "••••••••" : "sk-..."}
-                  autoComplete="off"
-                />
-              </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="settings-openrouter-key" className="text-label text-text-secondary">OpenRouter API Key</label>
                 <input

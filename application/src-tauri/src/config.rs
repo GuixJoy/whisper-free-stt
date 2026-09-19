@@ -27,7 +27,6 @@ impl AsrProfile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LlmProvider {
     Local,
-    DeepSeek,
     OpenRouter,
 }
 

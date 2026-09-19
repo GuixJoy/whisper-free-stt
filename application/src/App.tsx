@@ -34,11 +34,10 @@ const SettingsSchema = z.object({
   backend: z.enum(["sherpa_onnx"]),
   model: z.string().max(100),
   llmMode: z.enum(["off", "cleanup", "bullet_list", "email", "commit_message"]),
-  llmProvider: z.enum(["local", "deepseek", "openrouter"]),
+  llmProvider: z.enum(["local", "openrouter"]),
   llmModel: z.string().max(100),
   llmFallback: z.string().max(100),
   // API keys are session-only: never persisted (see save effect below).
-  deepseekApiKey: z.string().max(200).default(""),
   openrouterApiKey: z.string().max(200).default(""),
   fastCommit: z.boolean(),
   typing: z.boolean(),
@@ -68,10 +67,9 @@ export interface RuntimeSettings {
   backend: "sherpa_onnx";
   model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
-  llmProvider: "local" | "deepseek" | "openrouter";
+  llmProvider: "local" | "openrouter";
   llmModel: string;
   llmFallback: string;
-  deepseekApiKey: string;
   openrouterApiKey: string;
   fastCommit: boolean;
   typing: boolean;
@@ -90,7 +88,6 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   llmProvider: "local",
   llmModel: "",
   llmFallback: "",
-  deepseekApiKey: "",
   openrouterApiKey: "",
   fastCommit: true,
   typing: true,
@@ -130,7 +127,6 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   if (settings.llmProvider !== "openrouter") args.push("--llm-provider", settings.llmProvider);
   if (settings.llmModel.trim()) args.push("--llm-model", settings.llmModel.trim());
   if (settings.llmFallback.trim()) args.push("--llm-fallback", settings.llmFallback.trim());
-  if (settings.deepseekApiKey.trim()) args.push("--deepseek-api-key", settings.deepseekApiKey.trim());
   if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
   if (settings.fastCommit) args.push("--fast-commit");
   if (settings.debug) args.push("--debug");
@@ -642,7 +638,7 @@ function ConfigView({
                 id="cfg-llm-provider"
                 value={settings.llmProvider}
                 onChange={(e) => {
-                  const provider = e.target.value as "local" | "deepseek" | "openrouter";
+                  const provider = e.target.value as "local" | "openrouter";
                   setSettings((s) => ({ ...s, llmProvider: provider }));
                   if (provider === "local") {
                     // Sync the selected local model to Rust config.
@@ -652,7 +648,6 @@ function ConfigView({
                 maxWidth="max-w-[120px]"
               >
                 <option value="local">Local</option>
-                <option value="deepseek">DeepSeek</option>
                 <option value="openrouter">OpenRouter</option>
               </FloureSelect>
             </SettingRow>
@@ -680,7 +675,7 @@ function ConfigView({
                     id="cfg-llm-model"
                     value={settings.llmModel}
                     onChange={(e) => setSettings((s) => ({ ...s, llmModel: e.target.value }))}
-                    placeholder={settings.llmProvider === "deepseek" ? "deepseek-chat" : "openai/gpt-4o-mini"}
+                    placeholder="openai/gpt-4o-mini"
                     maxWidth="max-w-[200px]"
                   />
                 </SettingRow>
@@ -689,7 +684,7 @@ function ConfigView({
                     id="cfg-llm-fallback"
                     value={settings.llmFallback}
                     onChange={(e) => setSettings((s) => ({ ...s, llmFallback: e.target.value }))}
-                    placeholder={settings.llmProvider === "openrouter" ? "anthropic/claude-3-5-haiku-latest" : ""}
+                    placeholder="anthropic/claude-3-5-haiku-latest"
                     maxWidth="max-w-[200px]"
                   />
                 </SettingRow>
@@ -700,17 +695,6 @@ function ConfigView({
               <>
                 <div className="h-px bg-border" />
 
-                <SettingRow label="DeepSeek Key" htmlFor="cfg-deepseek-key">
-                  <FloureInput
-                    id="cfg-deepseek-key"
-                    type="password"
-                    value={settings.deepseekApiKey}
-                    onChange={(e) => setSettings((s) => ({ ...s, deepseekApiKey: e.target.value }))}
-                    placeholder="sk-..."
-                    maxWidth="max-w-[200px]"
-                    className="font-mono text-[11px]"
-                  />
-                </SettingRow>
                 <SettingRow label="OpenRouter Key" htmlFor="cfg-openrouter-key">
                   <FloureInput
                     id="cfg-openrouter-key"
@@ -1086,10 +1070,9 @@ function App() {
     try {
       // API keys stay in memory only — strip them before persisting so
       // localStorage never holds secrets.
-      const { deepseekApiKey: _dk, openrouterApiKey: _ok, ...persisted } = settings;
-      void _dk;
+      const { openrouterApiKey: _ok, ...persisted } = settings;
       void _ok;
-      if (validateSettings({ ...persisted, deepseekApiKey: "", openrouterApiKey: "" })) {
+      if (validateSettings({ ...persisted, openrouterApiKey: "" })) {
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ ...persisted, __version: SETTINGS_VERSION }));
       } else {
         console.error("Invalid settings, not saving to localStorage");
@@ -1132,7 +1115,7 @@ function App() {
 
   // Flags whose following value is a secret: masked in displayed previews.
   const SECRET_FLAGS = useMemo(
-    () => new Set(["--deepseek-api-key", "--openrouter-api-key"]),
+    () => new Set(["--openrouter-api-key"]),
     []
   );
   const maskSecrets = useCallback(

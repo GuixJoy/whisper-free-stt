@@ -18,10 +18,9 @@ interface RuntimeSettings {
   backend: "auto" | "whisper_cpp" | "faster_whisper";
   model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
-  llmProvider: "deepseek" | "openrouter";
+  llmProvider: "openrouter" | "local";
   llmModel: string;
   llmFallback: string;
-  deepseekApiKey: string;
   openrouterApiKey: string;
   fastCommit: boolean;
   typing: boolean;
@@ -39,7 +38,6 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   if (settings.llmProvider !== "openrouter") args.push("--llm-provider", settings.llmProvider);
   if (settings.llmModel.trim()) args.push("--llm-model", settings.llmModel.trim());
   if (settings.llmFallback.trim()) args.push("--llm-fallback", settings.llmFallback.trim());
-  if (settings.deepseekApiKey.trim()) args.push("--deepseek-api-key", settings.deepseekApiKey.trim());
   if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
   if (settings.fastCommit) args.push("--fast-commit");
   if (!settings.typing) args.push("--no-type");
@@ -74,7 +72,6 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   llmProvider: "openrouter",
   llmModel: "",
   llmFallback: "",
-  deepseekApiKey: "",
   openrouterApiKey: "",
   fastCommit: true,
   typing: false,
@@ -226,10 +223,9 @@ describe("buildCliArgs", () => {
       ...DEFAULT_SETTINGS,
       backend: "faster_whisper" as const,
       model: "large-v3-turbo",
-      llmProvider: "deepseek" as const,
-      llmModel: "deepseek-chat",
+      llmProvider: "local" as const,
+      llmModel: "s1-mini-q4_k_m",
       llmFallback: "gpt-4o",
-      deepseekApiKey: "sk-deepseek",
       openrouterApiKey: "sk-openrouter",
       fastCommit: true,
       typing: true,
@@ -243,13 +239,11 @@ describe("buildCliArgs", () => {
     expect(args).toContain("--backend");
     expect(args).toContain("--model");
     expect(args).toContain("--llm-provider");
-    expect(args).toContain("deepseek");
+    expect(args).toContain("local");
     expect(args).toContain("--llm-model");
-    expect(args).toContain("deepseek-chat");
+    expect(args).toContain("s1-mini-q4_k_m");
     expect(args).toContain("--llm-fallback");
     expect(args).toContain("gpt-4o");
-    expect(args).toContain("--deepseek-api-key");
-    expect(args).toContain("sk-deepseek");
     expect(args).toContain("--openrouter-api-key");
     expect(args).toContain("sk-openrouter");
     expect(args).toContain("--fast-commit");
@@ -263,11 +257,11 @@ describe("buildCliArgs", () => {
     expect(args).not.toContain("--llm-provider");
   });
 
-  it("includes --llm-provider when provider is deepseek", () => {
-    const args = buildCliArgs({ ...DEFAULT_SETTINGS, llmProvider: "deepseek" });
+  it("includes --llm-provider when provider is local", () => {
+    const args = buildCliArgs({ ...DEFAULT_SETTINGS, llmProvider: "local" });
     const idx = args.indexOf("--llm-provider");
     expect(idx).toBeGreaterThanOrEqual(0);
-    expect(args[idx + 1]).toBe("deepseek");
+    expect(args[idx + 1]).toBe("local");
   });
 
   it("omits --llm-model when empty", () => {
@@ -292,18 +286,6 @@ describe("buildCliArgs", () => {
     const idx = args.indexOf("--llm-fallback");
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(args[idx + 1]).toBe("fallback");
-  });
-
-  it("omits --deepseek-api-key when empty", () => {
-    const args = buildCliArgs({ ...DEFAULT_SETTINGS, deepseekApiKey: "" });
-    expect(args).not.toContain("--deepseek-api-key");
-  });
-
-  it("includes --deepseek-api-key with trimmed value when provided", () => {
-    const args = buildCliArgs({ ...DEFAULT_SETTINGS, deepseekApiKey: "  sk-key  " });
-    const idx = args.indexOf("--deepseek-api-key");
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(args[idx + 1]).toBe("sk-key");
   });
 
   it("omits --openrouter-api-key when empty", () => {

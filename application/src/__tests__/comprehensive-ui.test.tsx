@@ -714,7 +714,6 @@ describe("SettingsPanel", () => {
     llmProvider: "openrouter",
     llmModel: "",
     llmFallback: "",
-    deepseekApiKey: "",
     openrouterApiKey: "",
     fastCommit: true,
     typing: true,
@@ -772,12 +771,12 @@ describe("SettingsPanel", () => {
     renderWithProviders(
       <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
     );
-    const deepseekInput = screen.getByLabelText("DeepSeek API Key");
-    expect(deepseekInput).toHaveAttribute("type", "password");
+    const openrouterInput = screen.getByLabelText("OpenRouter API Key");
+    expect(openrouterInput).toHaveAttribute("type", "password");
 
     const showToggle = screen.getByLabelText("Show API keys");
     await userEvent.click(showToggle);
-    expect(deepseekInput).toHaveAttribute("type", "text");
+    expect(openrouterInput).toHaveAttribute("type", "text");
   });
 
   it("has aria-modal and aria-label", () => {
@@ -1504,7 +1503,7 @@ describe("Accessibility: ARIA attributes", () => {
   it("SettingsPanel has role=dialog", () => {
     renderWithProviders(
       <SettingsPanel
-        settings={{ wsPort: 8765, asrProfile: "auto", backend: "sherpa_onnx", model: "", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", llmFallback: "", deepseekApiKey: "", openrouterApiKey: "", fastCommit: true, typing: true, clipboard: true, debug: false, hotwords: "", language: "" }}
+        settings={{ wsPort: 8765, asrProfile: "auto", backend: "sherpa_onnx", model: "", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", llmFallback: "", openrouterApiKey: "", fastCommit: true, typing: true, clipboard: true, debug: false, hotwords: "", language: "" }}
         onSave={() => {}}
         visible={true}
         onClose={() => {}}

@@ -28,7 +28,6 @@ impl LlmMode {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LlmBackend {
     Local,
-    DeepSeek,
     OpenRouter,
 }
 
@@ -166,7 +165,6 @@ impl LlmCleanup {
         };
 
         let api_key = match backend {
-            LlmBackend::DeepSeek => std::env::var("DEEPSEEK_API_KEY").ok(),
             LlmBackend::OpenRouter => std::env::var("OPENROUTER_API_KEY").ok(),
             LlmBackend::Local => None,
         };
@@ -181,7 +179,6 @@ impl LlmCleanup {
 
     fn endpoint_url(&self) -> Option<&'static str> {
         match self.backend {
-            LlmBackend::DeepSeek => Some("https://api.deepseek.com/v1/chat/completions"),
             LlmBackend::OpenRouter => Some("https://openrouter.ai/api/v1/chat/completions"),
             LlmBackend::Local => None,
         }
@@ -189,10 +186,6 @@ impl LlmCleanup {
 
     fn cloud_model(&self) -> String {
         match self.backend {
-            LlmBackend::DeepSeek => std::env::var("DEEPSEEK_MODEL")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| "deepseek-chat".to_string()),
             LlmBackend::OpenRouter => std::env::var("OPENROUTER_MODEL")
                 .ok()
                 .filter(|s| !s.trim().is_empty())
