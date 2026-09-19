@@ -12,6 +12,8 @@ mod whisper;
 mod widget;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod bench;
 
 use crate::config::AppConfig;
 use crate::models::ModelManager;
