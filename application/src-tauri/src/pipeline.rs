@@ -69,7 +69,7 @@ impl LlmProcessor {
             } else {
                 text
             };
-            let prompt = crate::llm::build_prompt(transcript, mode, "", "");
+            let prompt = crate::llm::build_prompt(transcript, mode);
             let _ = app.emit("llm_start", serde_json::json!({}));
 
             let collected = Arc::new(std::sync::Mutex::new(String::new()));
@@ -115,7 +115,8 @@ pub struct PipelineController {
     app: tauri::AppHandle,
     config: AppConfig,
     silero_path: PathBuf,
-    _model_dir: PathBuf,
+    #[allow(dead_code)]
+    model_dir: PathBuf,
 }
 
 impl PipelineController {
@@ -260,7 +261,7 @@ impl PipelineController {
             app,
             config,
             silero_path,
-            _model_dir: model_dir,
+            model_dir,
         })
     }
 

@@ -2,6 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { MODEL_CATALOG, LLM_MODEL_CATALOG } from "../store";
 import type { ASRBackend, ModelInfo, LlmModelInfo } from "../store";
+import { isTauri } from "../lib/utils";
 
 export interface ModelStatusEntry {
   name: string;
@@ -22,10 +23,6 @@ interface RustModelStatus {
   downloaded: boolean;
   path: string;
   size_bytes: number;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 function buildInitialModels(): ModelStatusEntry[] {

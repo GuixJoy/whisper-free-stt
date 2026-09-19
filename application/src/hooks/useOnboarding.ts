@@ -6,6 +6,7 @@ import {
   MODEL_CATALOG,
 } from "../store";
 import type { SystemCheck } from "../store";
+import { isTauri } from "../lib/utils";
 
 interface RustCheck {
   name: string;
@@ -18,10 +19,6 @@ interface RustModelStatus {
   id: string;
   name: string;
   downloaded: boolean;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export function useOnboarding(onComplete: () => void) {

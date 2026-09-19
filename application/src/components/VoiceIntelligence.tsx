@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Calendar, Clock, Timer, Globe } from "lucide-react";
+import { isTauri } from "@/lib/utils";
 
 interface InsightItem {
   icon: React.ElementType;
@@ -18,10 +19,6 @@ interface IntelligenceData {
   peakVoiceUsage: string;
   perUtterance: string;
   languagePercentage: number;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 }
 
 function defaultData(): IntelligenceData {

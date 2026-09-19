@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
 import { createWebAudioApi } from "./api-web-audio";
-import { Mic, PlugZap, ShieldCheck, Mic2, Sparkles, Settings2, Activity, Terminal } from "lucide-react";
+import { Mic } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
 import MicPermissionModal from "./components/MicPermissionModal";
@@ -15,23 +15,16 @@ import HistoryPage from "./components/HistoryPage";
 import SettingsPanel from "./components/SettingsPanel";
 import InsightsPage from "./components/InsightsPage";
 import DictionaryPage from "./components/DictionaryPage";
-import SnippetsPage from "./components/SnippetsPage";
-import { ConfigSection } from "./components/ConfigSection";
-import { SettingRow } from "./components/SettingRow";
-import { FloureSelect } from "./components/FloureSelect";
-import { FloureToggle } from "./components/FloureToggle";
-import { FloureInput } from "./components/FloureInput";
 import ModelsPage from "./components/ModelsPage";
 import { AppShell } from "./layouts/AppShell";
 import { type AppView } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
-import { usePermissions } from "./hooks/usePermissions";
+import { isTauri, formatTimestamp } from "./lib/utils";
 import Waveform from "./components/Waveform";
 
 const SettingsSchema = z.object({
   wsPort: z.number().int().min(1).max(65535),
-  asrProfile: z.enum(["auto", "parakeet", "whisper-turbo", "whisper-base"]),
-  backend: z.enum(["sherpa_onnx"]),
+  asrProfile: z.enum(["parakeet", "whisper-turbo", "whisper-base"]),
   model: z.string().max(100),
   llmMode: z.enum(["off", "cleanup", "bullet_list", "email", "commit_message"]),
   llmProvider: z.enum(["local", "openrouter"]),
@@ -51,7 +44,7 @@ function validateSettings(settings: unknown): settings is RuntimeSettings {
   return SettingsSchema.safeParse(settings).success;
 }
 
-type RunMode = "ws" | "tauri";
+export type RunMode = "ws" | "tauri";
 
 interface TranscriptLine {
   id: number;
@@ -63,8 +56,7 @@ interface TranscriptLine {
 
 export interface RuntimeSettings {
   wsPort: number;
-  asrProfile: "auto" | "parakeet" | "whisper-turbo" | "whisper-base";
-  backend: "sherpa_onnx";
+  asrProfile: "parakeet" | "whisper-turbo" | "whisper-base";
   model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
   llmProvider: "local" | "openrouter";
@@ -82,7 +74,6 @@ export interface RuntimeSettings {
 const DEFAULT_SETTINGS: RuntimeSettings = {
   wsPort: 8765,
   asrProfile: "parakeet",
-  backend: "sherpa_onnx",
   model: "",
   llmMode: "cleanup",
   llmProvider: "local",
@@ -135,68 +126,11 @@ function buildCliArgs(settings: RuntimeSettings): string[] {
   return args;
 }
 
-function buildWsCommand(settings: RuntimeSettings): string {
-  const args = [
-    "--ws-port", String(settings.wsPort),
-    "--asr-profile", settings.asrProfile,
-    "--llm-mode", settings.llmMode,
-  ];
-  if (settings.model.trim()) args.push("--model", settings.model.trim());
-  if (settings.fastCommit) args.push("--fast-commit");
-  if (settings.debug) args.push("--debug");
-  return `stt ${args.join(" ")}`;
-}
-
 function detectRunMode(): RunMode {
   if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
     return "tauri";
   }
   return "ws";
-}
-
-// Push the selected local LLM to the Rust backend config. Tauri-only:
-// the IPC bridge doesn't exist in ws/browser mode, and failures must
-// not surface as unhandled rejections.
-function syncLocalLlmToRust(mode: RunMode, settings: RuntimeSettings, llmModel: string) {
-  if (mode !== "tauri") return;
-  void (async () => {
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("set_floure_config", {
-        config: {
-          asr_profile: settings.asrProfile === "auto" ? "Parakeet" : settings.asrProfile === "parakeet" ? "Parakeet" : settings.asrProfile === "whisper-turbo" ? "WhisperTurbo" : "WhisperBase",
-          language: settings.language || "en",
-          llm_provider: "Local",
-          llm_mode: settings.llmMode === "off" ? "Off" : settings.llmMode === "cleanup" ? "Cleanup" : settings.llmMode === "bullet_list" ? "BulletList" : settings.llmMode === "email" ? "Email" : "CommitMessage",
-          llm_model: llmModel,
-          typing_enabled: settings.typing,
-          clipboard_enabled: settings.clipboard,
-          dictation_mode: false,
-          hotkey: "ctrl+shift+s",
-        },
-      });
-    } catch (e) {
-      console.warn("[config] set_floure_config failed", e);
-    }
-  })();
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (isToday) return time;
-    if (isYesterday) return `Yesterday ${time}`;
-    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
-  } catch {
-    return iso;
-  }
 }
 
 function LiveFeedMicMeter() {
@@ -291,8 +225,7 @@ function FeedView({
     if (connected) {
       stop();
     } else {
-      const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-      if (isTauri) {
+      if (isTauri()) {
         // Tauri handles mic natively via OS — skip browser Permissions API check
         // (WebKitGTK on Linux doesn't support navigator.permissions for microphone)
         start(undefined, "MicButton");
@@ -326,7 +259,7 @@ function FeedView({
   // A persistent pill under the model badge — the download outlives toasts.
   const [download, setDownload] = useState<{ id: string; percent: number } | null>(null);
   useEffect(() => {
-    let unlistenFns: Array<() => void> = [];
+    const unlistenFns: Array<() => void> = [];
     (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -555,353 +488,6 @@ function FeedView({
   );
 }
 
-function ConfigView({
-  mode,
-  setMode,
-  settings,
-  setSettings,
-  commandPreview,
-  permissions,
-  requestClipboard,
-  requestMic,
-  isCapturingMic,
-  stopMic,
-  highlightPermissions,
-  onHighlightDone,
-}: {
-  mode: RunMode;
-  setMode: (m: RunMode) => void;
-  settings: RuntimeSettings;
-  setSettings: React.Dispatch<React.SetStateAction<RuntimeSettings>>;
-  commandPreview: string;
-  permissions: { clipboard: string; microphone: string };
-  requestClipboard: () => Promise<boolean>;
-  requestMic: () => Promise<boolean>;
-  isCapturingMic: boolean;
-  stopMic: () => void;
-  highlightPermissions: boolean;
-  onHighlightDone: () => void;
-}) {
-  const [clipboardOn, setClipboardOn] = useState(permissions.clipboard === "granted");
-  const [micOn, setMicOn] = useState(permissions.microphone === "granted");
-  const permissionsRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (highlightPermissions && permissionsRef.current) {
-      permissionsRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      const timer = setTimeout(() => onHighlightDone(), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [highlightPermissions, onHighlightDone]);
-  return (
-    <div className="flex-1 flex flex-col overflow-auto">
-      <div className="flex-1 px-6 py-4 max-w-[960px] mx-auto w-full">
-        {/* Header */}
-        <div className="mb-4">
-          <h1 className="text-[20px] font-semibold text-text-primary mb-0.5">Config</h1>
-          <p className="text-[12px] text-text-muted">Fine-tune how Floure works for you.</p>
-        </div>
-
-        {/* Masonry Settings Layout */}
-        <div className="columns-2 gap-4">
-          {/* ── Left Column ── */}
-
-          {/* Connection */}
-          <ConfigSection icon={PlugZap} title="Connection" subtitle="How Floure connects to the engine">
-            <SettingRow label="Mode" htmlFor="cfg-mode">
-              <FloureSelect
-                id="cfg-mode"
-                value={mode}
-                onChange={(e) => setMode(e.target.value as RunMode)}
-              >
-                <option value="ws">WebSocket</option>
-                <option value="tauri">Local Process</option>
-              </FloureSelect>
-            </SettingRow>
-            {mode === "ws" && (
-              <SettingRow label="Port" htmlFor="cfg-port">
-                <FloureInput
-                  id="cfg-port"
-                  type="number"
-                  value={settings.wsPort}
-                  onChange={(e) => setSettings((s) => ({ ...s, wsPort: Number(e.target.value) || 8765 }))}
-                  maxWidth="max-w-[80px]"
-                />
-              </SettingRow>
-            )}
-          </ConfigSection>
-
-          {/* LLM Provider */}
-          <ConfigSection icon={Settings2} title="LLM Provider" subtitle="API keys and model selection for post-processing">
-            <SettingRow label="Provider" htmlFor="cfg-llm-provider">
-              <FloureSelect
-                id="cfg-llm-provider"
-                value={settings.llmProvider}
-                onChange={(e) => {
-                  const provider = e.target.value as "local" | "openrouter";
-                  setSettings((s) => ({ ...s, llmProvider: provider }));
-                  if (provider === "local") {
-                    // Sync the selected local model to Rust config.
-                    syncLocalLlmToRust(mode, settings, settings.llmModel || "s1-mini-q4_k_m");
-                  }
-                }}
-                maxWidth="max-w-[120px]"
-              >
-                <option value="local">Local</option>
-                <option value="openrouter">OpenRouter</option>
-              </FloureSelect>
-            </SettingRow>
-
-            {settings.llmProvider === "local" ? (
-              <SettingRow label="Model" htmlFor="cfg-local-model">
-                <FloureSelect
-                  id="cfg-local-model"
-                  value={settings.llmModel || "s1-mini-q4_k_m"}
-                  onChange={(e) => {
-                    const modelId = e.target.value;
-                    setSettings((s) => ({ ...s, llmModel: modelId }));
-                    syncLocalLlmToRust(mode, settings, modelId);
-                  }}
-                  maxWidth="max-w-[200px]"
-                >
-                  <option value="s1-mini-q4_k_m">S1-Mini (462 MB)</option>
-                  <option value="gemma-3-1b-it-q4_k_m">Gemma 3 1B (806 MB)</option>
-                </FloureSelect>
-              </SettingRow>
-            ) : (
-              <>
-                <SettingRow label="Model" htmlFor="cfg-llm-model">
-                  <FloureInput
-                    id="cfg-llm-model"
-                    value={settings.llmModel}
-                    onChange={(e) => setSettings((s) => ({ ...s, llmModel: e.target.value }))}
-                    placeholder="openai/gpt-4o-mini"
-                    maxWidth="max-w-[200px]"
-                  />
-                </SettingRow>
-                <SettingRow label="Fallback" htmlFor="cfg-llm-fallback">
-                  <FloureInput
-                    id="cfg-llm-fallback"
-                    value={settings.llmFallback}
-                    onChange={(e) => setSettings((s) => ({ ...s, llmFallback: e.target.value }))}
-                    placeholder="anthropic/claude-3-5-haiku-latest"
-                    maxWidth="max-w-[200px]"
-                  />
-                </SettingRow>
-              </>
-            )}
-
-            {settings.llmProvider !== "local" && (
-              <>
-                <div className="h-px bg-border" />
-
-                <SettingRow label="OpenRouter Key" htmlFor="cfg-openrouter-key">
-                  <FloureInput
-                    id="cfg-openrouter-key"
-                    type="password"
-                    value={settings.openrouterApiKey}
-                    onChange={(e) => setSettings((s) => ({ ...s, openrouterApiKey: e.target.value }))}
-                    placeholder="sk-or-..."
-                    maxWidth="max-w-[200px]"
-                    className="font-mono text-[11px]"
-                  />
-                </SettingRow>
-              </>
-            )}
-          </ConfigSection>
-
-          {/* Output */}
-          <ConfigSection icon={Sparkles} title="Output" subtitle="How transcribed text is delivered">
-            <SettingRow label="LLM Mode" htmlFor="cfg-llm-mode">
-              <FloureSelect
-                id="cfg-llm-mode"
-                value={settings.llmMode}
-                onChange={(e) => setSettings((s) => ({ ...s, llmMode: e.target.value as RuntimeSettings["llmMode"] }))}
-              >
-                <option value="off">Off</option>
-                <option value="cleanup">Cleanup</option>
-                <option value="bullet_list">Bullet List</option>
-                <option value="email">Email</option>
-                <option value="commit_message">Commit Message</option>
-              </FloureSelect>
-            </SettingRow>
-
-            <div className="h-px bg-border" />
-
-            <FloureToggle
-              checked={settings.fastCommit}
-              onChange={(v) => setSettings((s) => ({ ...s, fastCommit: v }))}
-              label="Fast Commit"
-              description="Skip LLM for short transcriptions"
-            />
-            <FloureToggle
-              checked={settings.typing}
-              onChange={(v) => setSettings((s) => ({ ...s, typing: v }))}
-              label="Type to Input"
-              description="Automatically type into focused field"
-            />
-            <FloureToggle
-              checked={settings.clipboard}
-              onChange={(v) => setSettings((s) => ({ ...s, clipboard: v }))}
-              label="Clipboard"
-              description="Copy transcript to clipboard"
-            />
-            <FloureToggle
-              checked={settings.debug}
-              onChange={(v) => setSettings((s) => ({ ...s, debug: v }))}
-              label="Debug Mode"
-              description="Show raw engine output"
-            />
-          </ConfigSection>
-
-          {/* ── Right Column ── */}
-
-          {/* Speech Recognition */}
-          <ConfigSection icon={Mic2} title="Speech Recognition" subtitle="ASR engine and model settings">
-            <SettingRow label="Profile" htmlFor="cfg-asr-profile">
-               <FloureSelect
-                id="cfg-asr-profile"
-                value={settings.asrProfile}
-                onChange={(e) => setSettings((s) => ({ ...s, asrProfile: e.target.value as RuntimeSettings["asrProfile"] }))}
-              >
-                <option value="parakeet">Parakeet TDT (English)</option>
-                <option value="whisper-turbo">Whisper large-v3-turbo (Multilingual)</option>
-                <option value="whisper-base">Whisper base (Lightweight)</option>
-              </FloureSelect>
-            </SettingRow>
-             <SettingRow label="Backend" htmlFor="cfg-backend">
-               <FloureSelect
-                 id="cfg-backend"
-                 value={settings.backend}
-                 onChange={(e) => setSettings((s) => ({ ...s, backend: e.target.value as RuntimeSettings["backend"] }))}
-               >
-                 <option value="sherpa_onnx">sherpa-onnx (Rust native)</option>
-               </FloureSelect>
-             </SettingRow>
-            <SettingRow label="Model" htmlFor="cfg-model">
-              <FloureInput
-                id="cfg-model"
-                value={settings.model}
-                onChange={(e) => setSettings((s) => ({ ...s, model: e.target.value }))}
-                placeholder="e.g. large-v3-turbo"
-                maxWidth="max-w-[180px]"
-              />
-            </SettingRow>
-            <SettingRow label="Language" htmlFor="cfg-language">
-              <FloureSelect
-                id="cfg-language"
-                value={settings.language}
-                onChange={(e) => setSettings((s) => ({ ...s, language: e.target.value }))}
-                maxWidth="max-w-[140px]"
-              >
-                <option value="">Auto-detect</option>
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="pt">Portuguese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="zh">Chinese</option>
-                <option value="ar">Arabic</option>
-                <option value="ru">Russian</option>
-              </FloureSelect>
-            </SettingRow>
-            <SettingRow label="Vocabulary" htmlFor="cfg-hotwords">
-              <FloureInput
-                id="cfg-hotwords"
-                value={settings.hotwords}
-                onChange={(e) => setSettings((s) => ({ ...s, hotwords: e.target.value }))}
-                placeholder="Comma-separated"
-                maxWidth="max-w-[200px]"
-              />
-            </SettingRow>
-          </ConfigSection>
-
-          {/* Permissions */}
-          <div
-            ref={permissionsRef}
-            className={`rounded-[12px] transition-all duration-200 ${
-              highlightPermissions
-                ? "bg-[#FFE3E5] ring-2 ring-accent/40"
-                : ""
-            }`}
-          >
-          <ConfigSection icon={ShieldCheck} title="Permissions" subtitle="System access for Floure">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[12px] font-medium text-text-primary leading-tight">Clipboard</span>
-                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Copy transcripts to clipboard</span>
-              </div>
-              <FloureToggle
-                checked={clipboardOn}
-                onChange={(v) => {
-                  setClipboardOn(v);
-                  if (v) void requestClipboard();
-                }}
-              />
-            </div>
-
-            <div className="h-px bg-border" />
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col min-w-0">
-                <span className="text-[12px] font-medium text-text-primary leading-tight">Microphone</span>
-                <span className="text-[11px] text-text-muted leading-tight mt-0.5">Capture audio for recognition</span>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <FloureToggle
-                  checked={micOn}
-                  onChange={(v) => {
-                    setMicOn(v);
-                    if (v) {
-                      void requestMic();
-                    } else if (isCapturingMic) {
-                      stopMic();
-                    }
-                  }}
-                />
-                {micOn && (
-                  <button
-                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
-                    className={`h-[26px] px-2.5 rounded-[6px] text-[11px] font-medium transition-colors ${
-                      isCapturingMic
-                        ? "bg-red-50 border border-red-200 text-red-600 hover:bg-red-100"
-                        : "bg-app-surface-secondary border border-border text-text-secondary hover:bg-app-hover"
-                    }`}
-                  >
-                    {isCapturingMic ? "Stop" : "Test"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </ConfigSection>
-          </div>
-
-          {/* Diagnostics */}
-          <ConfigSection icon={Activity} title="Diagnostics" subtitle="Engine command and runtime info">
-            <div className="rounded-[8px] bg-app-surface-secondary border border-border px-3 py-2">
-              <div className="flex items-center justify-between mb-1">
-                <span className="flex items-center gap-1.5 text-[11px] text-text-muted font-medium">
-                  <Terminal size={11} />
-                  Generated Command
-                </span>
-                <span className="text-[11px] text-text-muted">
-                  {mode === "ws" ? "restart backend to apply" : "applies on next start"}
-                </span>
-              </div>
-              <code className="block text-[11px] text-accent-active font-mono leading-relaxed break-all">
-                {commandPreview}
-              </code>
-            </div>
-          </ConfigSection>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
@@ -912,7 +498,6 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
-  const [highlightPermissions, setHighlightPermissions] = useState(false);
   const [pttActive, setPttActive] = useState(false);
   const [resolvedModel, setResolvedModel] = useState<{ profile: string; model: string; backend: string; device: string } | null>(null);
   const [view, setView] = useState<AppView>(
@@ -940,7 +525,6 @@ function App() {
 
   connectedRef.current = connected;
   statusRef.current = status;
-  const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
   useEffect(() => {
     if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
@@ -1112,21 +696,6 @@ function App() {
   const dismissError = useCallback((id: string) => {
     setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
   }, []);
-
-  // Flags whose following value is a secret: masked in displayed previews.
-  const SECRET_FLAGS = useMemo(
-    () => new Set(["--openrouter-api-key"]),
-    []
-  );
-  const maskSecrets = useCallback(
-    (args: string[]) => args.map((a, i) => (SECRET_FLAGS.has(args[i - 1] ?? "") ? "****" : a)),
-    [SECRET_FLAGS]
-  );
-
-  const commandPreview = useMemo(() => {
-    if (mode === "ws") return buildWsCommand(settings);
-    return `stt ${maskSecrets(buildCliArgs(settings)).join(" ")}`;
-  }, [mode, settings, maskSecrets]);
 
   const applyEvent = (event: STTEvent) => {
     if (event.type === "state") {
@@ -1397,7 +966,7 @@ function App() {
 
   const handleNavigate = (item: string) => {
     setActiveItem(item);
-    if (item === "Settings") {
+    if (item === "Settings" || item === "Config") {
       setShowSettings(true);
     }
   };
@@ -1405,34 +974,16 @@ function App() {
   const content = (() => {
     switch (activeItem) {
       case "Config":
-        return (
-          <ConfigView
-            mode={mode}
-            setMode={setMode}
-            settings={settings}
-            setSettings={setSettings}
-            commandPreview={commandPreview}
-            permissions={permissions}
-            requestClipboard={requestClipboard}
-            requestMic={requestMic}
-            isCapturingMic={isCapturingMic}
-            stopMic={stopMic}
-            highlightPermissions={highlightPermissions}
-            onHighlightDone={() => setHighlightPermissions(false)}
-          />
-        );
+      case "Settings":
+        return null;
       case "Insights":
         return <InsightsPage />;
       case "Dictionary":
         return <DictionaryPage />;
-      case "Snippets":
-        return <SnippetsPage />;
       case "History":
         return <HistoryPage onBack={() => setActiveItem("Home")} />;
       case "Models":
         return <ModelsPage />;
-      case "Settings":
-        return null;
       default:
         return (
           <FeedView
@@ -1475,6 +1026,8 @@ function App() {
       <SettingsPanel
         visible={showSettings}
         settings={settings}
+        mode={mode}
+        onModeChange={setMode}
         onSave={async (s) => {
           setSettings(s);
           setSettingsVersion((v) => v + 1); // Trigger engine respawn with new CLI args
@@ -1491,9 +1044,7 @@ function App() {
         visible={showMicModal}
         onOpenConfig={() => {
           setShowMicModal(false);
-          setActiveItem("Config");
-          setHighlightPermissions(true);
-          setTimeout(() => setHighlightPermissions(false), 3000);
+          setShowSettings(true);
         }}
         onClose={() => setShowMicModal(false)}
       />

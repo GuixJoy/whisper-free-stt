@@ -59,27 +59,13 @@ fn mode_instruction(mode: LlmMode) -> &'static str {
     }
 }
 
-pub fn build_prompt(
-    transcript: &str,
-    mode: LlmMode,
-    few_shot_context: &str,
-    dictionary_context: &str,
-) -> String {
+pub fn build_prompt(transcript: &str, mode: LlmMode) -> String {
     let instruction = mode_instruction(mode);
     if instruction.is_empty() {
         return transcript.to_string();
     }
 
-    let mut parts: Vec<String> = Vec::new();
-    if !few_shot_context.is_empty() {
-        parts.push(few_shot_context.to_string());
-    }
-    if !dictionary_context.is_empty() {
-        parts.push(dictionary_context.to_string());
-    }
-    parts.push(instruction.to_string());
-    parts.push(format!("Transcript:\n{}", transcript));
-    parts.join("\n\n")
+    format!("{}\n\nTranscript:\n{}", instruction, transcript)
 }
 
 pub fn clean_response(text: &str) -> String {

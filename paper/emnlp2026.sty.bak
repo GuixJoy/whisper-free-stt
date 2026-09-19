@@ -1,9 +1,0 @@
-% Minimal EMNLP 2026 style stub for compilation
-\ProvidesPackage{emnlp2026}[2026/01/01 EMNLP 2026 style stub]
-\DeclareOption{review}{}
-\DeclareOption*{}
-\ProcessOptions\relax
-\RequirePackage[margin=1in]{geometry}
-\RequirePackage{times}
-\RequirePackage{latexsym}
-\setlength{\columnsep}{0.5in}

@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import { isTauri } from "@/lib/utils";
 import { Maximize2, Mic, X } from "lucide-react";
 import { listen, emit } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
 type WidgetStatus = "idle" | "listening" | "transcribing" | "rewriting" | "error";
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 function prefersReducedMotion(): boolean {
   return (

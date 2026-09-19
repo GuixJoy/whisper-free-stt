@@ -43,8 +43,6 @@ pub struct AppConfig {
     pub selected_mic_index: Option<usize>,
     pub typing_enabled: bool,
     pub clipboard_enabled: bool,
-    pub dictation_mode: bool,
-    pub hotkey: Option<String>,
     pub model_dir: PathBuf,
 }
 
@@ -72,8 +70,6 @@ impl Default for AppConfig {
             selected_mic_index: None,
             typing_enabled: true,
             clipboard_enabled: true,
-            dictation_mode: false,
-            hotkey: Some("ctrl+shift+s".to_string()),
             model_dir,
         }
     }
@@ -175,8 +171,6 @@ mod tests {
             "selected_mic_index": null,
             "typing_enabled": true,
             "clipboard_enabled": true,
-            "dictation_mode": false,
-            "hotkey": "ctrl+shift+s",
             "model_dir": "/tmp/models"
         });
         let config: AppConfig = serde_json::from_value(old).unwrap();

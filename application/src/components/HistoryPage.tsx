@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Download, Trash2, ArrowLeft, CheckSquare, Square, Calendar, Filter, Star, RefreshCw, TriangleAlert } from "lucide-react";
+import { formatTimestamp, isTauri } from "@/lib/utils";
 
 interface HistoryRow {
   id: number;
@@ -13,28 +14,8 @@ interface HistoryRow {
   created_at: string;
 }
 
-const isTauri = (): boolean =>
-  typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
-
 const API_BASE = "http://127.0.0.1:8765/api";
 const PAGE_SIZE = 50;
-
-function formatTimestamp(iso: string): string {
-  try {
-    const d = new Date(iso + (iso.includes("Z") ? "" : "Z"));
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const isYesterday = d.toDateString() === yesterday.toDateString();
-    const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    if (isToday) return time;
-    if (isYesterday) return `Yesterday ${time}`;
-    return `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${time}`;
-  } catch {
-    return iso;
-  }
-}
 
 function getDateGroup(iso: string): string {
   try {

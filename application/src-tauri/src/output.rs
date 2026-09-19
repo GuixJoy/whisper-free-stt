@@ -26,9 +26,9 @@ pub fn type_text(text: &str) -> Result<bool> {
 
     match (platform, display_server) {
         ("windows", _) => type_windows_paste(text),
-        ("linux", "wayland") => type_via_command(text, "wtype", &[]),
+        ("linux", "wayland") => run_piped_command(text, "wtype", &[]),
         ("linux", "x11") | ("linux", "unknown") => {
-            type_via_command(text, "xdotool", &["type", "--clearmodifiers"])
+            run_piped_command(text, "xdotool", &["type", "--clearmodifiers"])
         }
         ("macos", _) => {
             let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
@@ -48,10 +48,10 @@ pub fn copy_to_clipboard(text: &str) -> Result<bool> {
     let (platform, display_server) = detect_platform();
 
     match (platform, display_server) {
-        ("windows", _) => copy_via_command(text, "clip.exe", &[]),
-        ("linux", "wayland") => copy_via_command(text, "wl-copy", &[]),
+        ("windows", _) => run_piped_command(text, "clip.exe", &[]),
+        ("linux", "wayland") => run_piped_command(text, "wl-copy", &[]),
         ("linux", "x11") | ("linux", "unknown") => {
-            copy_via_command(text, "xclip", &["-selection", "clipboard"])
+            run_piped_command(text, "xclip", &["-selection", "clipboard"])
         }
         ("macos", _) => {
             let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
@@ -95,7 +95,7 @@ pub fn type_windows_paste(text: &str) -> Result<bool> {
     Ok(output.status.success())
 }
 
-pub fn type_via_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<bool> {
+pub fn run_piped_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<bool> {
     let mut child = Command::new(tool)
         .args(prefix_args)
         .stdin(std::process::Stdio::piped())
@@ -112,19 +112,3 @@ pub fn type_via_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<
     Ok(status.success())
 }
 
-pub fn copy_via_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<bool> {
-    let mut child = Command::new(tool)
-        .args(prefix_args)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-
-    if let Some(ref mut stdin) = child.stdin {
-        use std::io::Write;
-        stdin.write_all(text.as_bytes())?;
-    }
-
-    let status = child.wait()?;
-    Ok(status.success())
-}

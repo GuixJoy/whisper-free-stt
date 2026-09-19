@@ -60,29 +60,4 @@ impl VoiceActivityDetector {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Pure RMS threshold-learning rule (kept as a tested helper for future
-    /// background-noise calibration work).
-    fn learned_threshold(current: f32, samples: &[f32]) -> f32 {
-        if samples.is_empty() {
-            return current;
-        }
-        const CALIBRATION_FACTOR: f32 = 3.0;
-        let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
-        let rms = (sum_sq / samples.len() as f32).sqrt();
-        current.max((rms * CALIBRATION_FACTOR).min(1.0))
-    }
-
-    #[test]
-    fn calibration_raises_threshold_on_loud_noise() {
-        // RMS of [0.1, -0.1, 0.1, -0.1] is ~0.1 -> ~0.1 * 3.0 = ~0.3.
-        let got = learned_threshold(0.05, &[0.1, -0.1, 0.1, -0.1]);
-        assert!((got - 0.3).abs() < 1e-6, "got {got}");
-    }
-
-    #[test]
-    fn calibration_never_lowers_threshold_and_ignores_empty() {
-        assert_eq!(learned_threshold(0.5, &[0.01, -0.01]), 0.5);
-        assert_eq!(learned_threshold(0.5, &[]), 0.5);
-    }
 }

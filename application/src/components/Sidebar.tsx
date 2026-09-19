@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState, useCallback } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isTauri } from "@/lib/utils";
 import {
   Home,
   BarChart3,
@@ -7,16 +7,10 @@ import {
   Clock,
   SlidersHorizontal,
   Settings,
-  HelpCircle,
   CircleDot,
   Cpu,
 } from "lucide-react";
 
-import { Divider } from "./Divider";
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 interface SidebarItemProps {
   icon: React.ReactNode;
@@ -51,19 +45,6 @@ function SidebarItem({ icon, label, active, badge, onClick }: SidebarItemProps) 
         </span>
       )}
     </button>
-  );
-}
-
-interface SidebarSectionProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-function SidebarSection({ children, className }: SidebarSectionProps) {
-  return (
-    <div className={cn("flex flex-col gap-1", className)}>
-      {children}
-    </div>
   );
 }
 
@@ -119,7 +100,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         </div>
 
         {/* Navigation */}
-        <SidebarSection className="flex-1">
+        <div className="flex flex-col gap-1 flex-1">
           <SidebarItem
             icon={<Home size={18} />}
             label="Home"
@@ -190,7 +171,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
               />
             </span>
           </button>
-        </SidebarSection>
+        </div>
 
         {/* Upgrade Card */}
         <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-border bg-app-surface-dark">
@@ -204,20 +185,15 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         </div>
 
         {/* Bottom Actions */}
-        <SidebarSection>
-          <Divider className="mb-2" />
+        <div className="flex flex-col gap-1">
+          <div className="h-px bg-border mb-2" />
           <SidebarItem
             icon={<Settings size={18} />}
             label="Settings"
             active={activeItem === "Settings"}
             onClick={() => onNavigate?.("Settings")}
           />
-          <SidebarItem
-            icon={<HelpCircle size={18} />}
-            label="Help"
-            onClick={() => onNavigate?.("Help")}
-          />
-        </SidebarSection>
+        </div>
       </div>
     );
   },

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { BookOpen, Plus, Star, Pencil, Trash2, Search, X, Upload, Download } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, isTauri } from "@/lib/utils";
 import { Button } from "@/components/Button";
 import TabSwitcher from "@/components/TabSwitcher";
 import {
@@ -9,9 +9,6 @@ import {
 } from "@/data/mockDictionaryData";
 
 const API_BASE = "http://127.0.0.1:8765/api";
-
-const isTauri = (): boolean =>
-  typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
 export interface DictionaryEntry {
   id: number;
@@ -466,7 +463,7 @@ export default function DictionaryPage() {
   }, [apiFetch]);
 
   const filtered = useMemo(() => {
-    let result = entries;
+    let result = Array.isArray(entries) ? entries : [];
 
     if (activeTab === "favorites") {
       result = result.filter((e) => e.is_favorite);

@@ -1,13 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
-import { Settings, X, Bot, KeyRound, Mic } from "lucide-react";
+import { Settings, X, Bot, KeyRound, Mic, PlugZap, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { RuntimeSettings } from "../App";
+import type { RunMode } from "../App";
 
 interface Props {
   settings: RuntimeSettings;
   onSave: (s: RuntimeSettings) => void;
   visible: boolean;
   onClose: () => void;
+  mode: RunMode;
+  onModeChange: (m: RunMode) => void;
 }
 
 const HOTKEY_OPTIONS = [
@@ -18,10 +22,18 @@ const HOTKEY_OPTIONS = [
   { value: "CommandOrControl+Shift+K", label: "Ctrl + Shift + K" },
 ];
 
-export default function SettingsPanel({ settings, onSave, visible, onClose }: Props) {
+const TOGGLES = [
+  { key: "fastCommit", label: "Fast Commit", hint: "Skip LLM for short transcriptions" },
+  { key: "typing", label: "Type to Input", hint: "Automatically type into focused field" },
+  { key: "clipboard", label: "Clipboard", hint: "Copy transcript to clipboard" },
+  { key: "debug", label: "Debug Mode", hint: "Show raw engine output" },
+] as const;
+
+export default function SettingsPanel({ settings, onSave, visible, onClose, mode, onModeChange }: Props) {
   const [local, setLocal] = useState<RuntimeSettings>({ ...settings });
   const [showKeys, setShowKeys] = useState(false);
   const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
+  const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
   useEffect(() => {
     setLocal({ ...settings });
@@ -55,6 +67,10 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
     "placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 transition-colors",
   );
 
+  const checkRow = "flex items-center justify-between gap-3";
+  const checkLabel = "text-body text-text-primary";
+  const checkHint = "text-small text-text-muted";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(44,37,32,0.4)] backdrop-blur-sm"
@@ -80,6 +96,118 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-6">
           <div className="flex flex-col gap-3">
+            <h3 className="text-subheading text-text-primary flex items-center gap-2"><PlugZap size={15} className="text-text-secondary" />Connection</h3>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-mode" className="text-label text-text-secondary">Mode</label>
+              <select
+                id="settings-mode"
+                className={inputClass}
+                value={mode}
+                onChange={(e) => onModeChange(e.target.value as RunMode)}
+              >
+                <option value="ws">WebSocket</option>
+                <option value="tauri">Local Process</option>
+              </select>
+            </div>
+            {mode === "ws" && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="settings-port" className="text-label text-text-secondary">Port</label>
+                <input
+                  id="settings-port"
+                  className={inputClass}
+                  type="number"
+                  value={local.wsPort}
+                  onChange={(e) => update({ wsPort: Number(e.target.value) || 8765 })}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-subheading text-text-primary flex items-center gap-2"><Mic size={15} className="text-text-secondary" />Speech Recognition</h3>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-asr-profile" className="text-label text-text-secondary">Profile</label>
+              <select
+                id="settings-asr-profile"
+                className={inputClass}
+                value={local.asrProfile}
+                onChange={(e) => update({ asrProfile: e.target.value as RuntimeSettings["asrProfile"] })}
+              >
+                <option value="parakeet">Parakeet TDT (English)</option>
+                <option value="whisper-turbo">Whisper large-v3-turbo (Multilingual)</option>
+                <option value="whisper-base">Whisper base (Lightweight)</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-language" className="text-label text-text-secondary">Language</label>
+              <select
+                id="settings-language"
+                className={inputClass}
+                value={local.language}
+                onChange={(e) => update({ language: e.target.value })}
+              >
+                <option value="">Auto-detect</option>
+                <option value="en">English</option>
+                <option value="hi">Hindi</option>
+                <option value="es">Spanish</option>
+                <option value="fr">French</option>
+                <option value="de">German</option>
+                <option value="pt">Portuguese</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh">Chinese</option>
+                <option value="ar">Arabic</option>
+                <option value="ru">Russian</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-hotwords" className="text-label text-text-secondary">Custom Vocabulary</label>
+              <input
+                id="settings-hotwords"
+                className={inputClass}
+                value={local.hotwords}
+                onChange={(e) => update({ hotwords: e.target.value })}
+                placeholder="e.g. WhisperFlow, Tauri, PyTorch"
+              />
+              <p className="text-small text-text-muted">Comma-separated words to boost recognition accuracy.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-subheading text-text-primary flex items-center gap-2"><SlidersHorizontal size={15} className="text-text-secondary" />Output</h3>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="settings-llm-mode" className="text-label text-text-secondary">LLM Mode</label>
+              <select
+                id="settings-llm-mode"
+                className={inputClass}
+                value={local.llmMode}
+                onChange={(e) => update({ llmMode: e.target.value as RuntimeSettings["llmMode"] })}
+              >
+                <option value="off">Off</option>
+                <option value="cleanup">Cleanup</option>
+                <option value="bullet_list">Bullet List</option>
+                <option value="email">Email</option>
+                <option value="commit_message">Commit Message</option>
+              </select>
+            </div>
+            {TOGGLES.map((t) => (
+              <label key={t.key} className={checkRow}>
+                <span>
+                  <span className={checkLabel}>{t.label}</span>
+                  <span className={checkHint}> — {t.hint}</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={local[t.key]}
+                  onChange={(e) => update({ [t.key]: e.target.checked })}
+                  aria-label={t.label}
+                  className="h-5 w-5 accent-[#FF3B56]"
+                />
+              </label>
+            ))}
+          </div>
+
+          <div className="flex flex-col gap-3">
             <h3 className="text-subheading text-text-primary flex items-center gap-2"><Bot size={15} className="text-text-secondary" />LLM Provider</h3>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="settings-provider" className="text-label text-text-secondary">Provider</label>
@@ -87,7 +215,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                 id="settings-provider"
                 className={inputClass}
                 value={local.llmProvider}
-                onChange={(e) => update({ llmProvider: e.target.value as "local" | "openrouter" })}
+                onChange={(e) => update({ llmProvider: e.target.value as RuntimeSettings["llmProvider"] })}
               >
                 <option value="local">Local</option>
                 <option value="openrouter">OpenRouter</option>
@@ -165,7 +293,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
           )}
 
           <div className="flex flex-col gap-3">
-            <h3 className="text-subheading text-text-primary flex items-center gap-2"><Mic size={15} className="text-text-secondary" />Speech Recognition</h3>
+            <h3 className="text-subheading text-text-primary flex items-center gap-2"><Mic size={15} className="text-text-secondary" />Push-to-Talk</h3>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="settings-hotkey" className="text-label text-text-secondary">Push-to-Talk Hotkey</label>
               <select
@@ -180,38 +308,48 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
               </select>
               <p className="text-small text-text-muted">Hold to record, release to commit text.</p>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="settings-language" className="text-label text-text-secondary">Language</label>
-              <select
-                id="settings-language"
-                className={inputClass}
-                value={local.language}
-                onChange={(e) => update({ language: e.target.value })}
-              >
-                <option value="">Auto-detect</option>
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
-                <option value="pt">Portuguese</option>
-                <option value="ja">Japanese</option>
-                <option value="ko">Korean</option>
-                <option value="zh">Chinese</option>
-                <option value="ar">Arabic</option>
-                <option value="ru">Russian</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="settings-hotwords" className="text-label text-text-secondary">Custom Vocabulary</label>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h3 className="text-subheading text-text-primary flex items-center gap-2"><ShieldCheck size={15} className="text-text-secondary" />Permissions</h3>
+            <label className={checkRow}>
+              <span>
+                <span className={checkLabel}>Clipboard</span>
+                <span className={checkHint}> — copy transcripts to clipboard</span>
+              </span>
               <input
-                id="settings-hotwords"
-                className={inputClass}
-                value={local.hotwords}
-                onChange={(e) => update({ hotwords: e.target.value })}
-                placeholder="e.g. WhisperFlow, Tauri, PyTorch"
+                type="checkbox"
+                checked={permissions.clipboard === "granted"}
+                onChange={(e) => { if (e.target.checked) void requestClipboard(); }}
+                aria-label="Clipboard permission"
+                className="h-5 w-5 accent-[#FF3B56]"
               />
-              <p className="text-small text-text-muted">Comma-separated words to boost recognition accuracy.</p>
+            </label>
+            <div className={checkRow}>
+              <span>
+                <span className={checkLabel}>Microphone</span>
+                <span className={checkHint}> — capture audio for recognition</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={permissions.microphone === "granted"}
+                  onChange={(e) => {
+                    if (e.target.checked) void requestMic();
+                    else if (isCapturingMic) stopMic();
+                  }}
+                  aria-label="Microphone permission"
+                  className="h-5 w-5 accent-[#FF3B56]"
+                />
+                {permissions.microphone === "granted" && (
+                  <button
+                    onClick={isCapturingMic ? stopMic : () => void requestMic()}
+                    className="h-[26px] px-2.5 rounded-[6px] text-[11px] font-medium bg-app-surface-secondary border border-border text-text-secondary hover:bg-app-hover transition-colors"
+                  >
+                    {isCapturingMic ? "Stop" : "Test"}
+                  </button>
+                )}
+              </span>
             </div>
           </div>
         </div>

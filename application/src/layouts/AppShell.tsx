@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, type MouseEvent as ReactMouseEvent } from "react";
-import { cn } from "@/lib/utils";
+import { cn, isTauri } from "@/lib/utils";
 import { Sidebar } from "@/components/Sidebar";
 import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -8,10 +8,6 @@ interface AppShellProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
   activeItem: string;
   onNavigate: (item: string) => void;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
 export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(

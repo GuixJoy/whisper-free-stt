@@ -6,6 +6,7 @@ import HeatmapCard from "./HeatmapCard";
 import StreakJourney from "./StreakJourney";
 import VoiceIntelligence from "./VoiceIntelligence";
 import type { UsageCategory, HeatmapDay, StreakInfo } from "@/data/mockInsightsData";
+import { isTauri } from "@/lib/utils";
 
 const TABS = [
   { id: "usage", label: "Your Usage" },
@@ -30,10 +31,6 @@ const REFRESH_INTERVAL_MS = 10_000;
 function formatWords(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 }
 
 /** Derive weekly bar chart data from heatmap (last 7 days) */

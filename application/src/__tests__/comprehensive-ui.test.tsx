@@ -191,12 +191,8 @@ vi.mock("@/store", async (importOriginal) => {
 });
 
 // ── Imports after mocks ──
-import { FloureSelect } from "@/components/FloureSelect";
-import { FloureToggle } from "@/components/FloureToggle";
-import { FloureInput } from "@/components/FloureInput";
 import { Button } from "@/components/Button";
 import { Badge } from "@/components/Badge";
-import { Divider } from "@/components/Divider";
 import MicButton from "@/components/MicButton";
 import PttOverlay from "@/components/PttOverlay";
 import ModelBadge from "@/components/ModelBadge";
@@ -205,11 +201,8 @@ import { Sidebar } from "@/components/Sidebar";
 import SettingsPanel from "@/components/SettingsPanel";
 import MicPermissionModal from "@/components/MicPermissionModal";
 import TabSwitcher from "@/components/TabSwitcher";
-import { ConfigSection } from "@/components/ConfigSection";
-import { SettingRow } from "@/components/SettingRow";
 import HeatmapCard from "@/components/HeatmapCard";
 import StreakJourney from "@/components/StreakJourney";
-import SnippetsPage from "@/components/SnippetsPage";
 import DictionaryPage from "@/components/DictionaryPage";
 import ModelsPage from "@/components/ModelsPage";
 import InsightsPage from "@/components/InsightsPage";
@@ -224,158 +217,6 @@ import type { RuntimeSettings } from "../App";
 function renderWithProviders(ui: React.ReactElement) {
   return render(ui);
 }
-
-// ══════════════════════════════════════════════════════════════════
-// 1. FloureSelect
-// ══════════════════════════════════════════════════════════════════
-describe("FloureSelect", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(
-      <FloureSelect value="a" onChange={() => {}}>
-        <option value="a">A</option>
-      </FloureSelect>
-    );
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
-  });
-
-  it("renders children options", () => {
-    renderWithProviders(
-      <FloureSelect value="a" onChange={() => {}}>
-        <option value="a">Alpha</option>
-        <option value="b">Beta</option>
-      </FloureSelect>
-    );
-    const select = screen.getByRole("combobox");
-    expect(select).toHaveTextContent("Alpha");
-    expect(select).toHaveTextContent("Beta");
-  });
-
-  it("calls onChange when value changes", async () => {
-    const onChange = vi.fn();
-    renderWithProviders(
-      <FloureSelect value="a" onChange={onChange}>
-        <option value="a">A</option>
-        <option value="b">B</option>
-      </FloureSelect>
-    );
-    await userEvent.selectOptions(screen.getByRole("combobox"), "b");
-    expect(onChange).toHaveBeenCalled();
-  });
-
-  it("applies custom maxWidth", () => {
-    const { container } = renderWithProviders(
-      <FloureSelect value="a" onChange={() => {}} maxWidth="max-w-[300px]">
-        <option value="a">A</option>
-      </FloureSelect>
-    );
-    expect(container.querySelector(".max-w-\\[300px\\]")).toBeInTheDocument();
-  });
-
-  it("forwards ref correctly", () => {
-    const ref = React.createRef<HTMLSelectElement>();
-    renderWithProviders(
-      <FloureSelect ref={ref} value="a" onChange={() => {}}>
-        <option value="a">A</option>
-      </FloureSelect>
-    );
-    expect(ref.current).toBeInstanceOf(HTMLSelectElement);
-  });
-
-  it("spreads additional HTML attributes", () => {
-    renderWithProviders(
-      <FloureSelect value="a" onChange={() => {}} data-testid="my-select" disabled>
-        <option value="a">A</option>
-      </FloureSelect>
-    );
-    const select = screen.getByTestId("my-select");
-    expect(select).toBeDisabled();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 2. FloureToggle
-// ══════════════════════════════════════════════════════════════════
-describe("FloureToggle", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(<FloureToggle checked={false} onChange={() => {}} />);
-    expect(screen.getByRole("switch")).toBeInTheDocument();
-  });
-
-  it("displays label and description", () => {
-    renderWithProviders(
-      <FloureToggle checked={false} onChange={() => {}} label="Enable Feature" description="Turns on the thing" />
-    );
-    expect(screen.getByText("Enable Feature")).toBeInTheDocument();
-    expect(screen.getByText("Turns on the thing")).toBeInTheDocument();
-  });
-
-  it("toggles on click", async () => {
-    const onChange = vi.fn();
-    renderWithProviders(<FloureToggle checked={false} onChange={onChange} />);
-    await userEvent.click(screen.getByRole("switch"));
-    expect(onChange).toHaveBeenCalledWith(true);
-  });
-
-  it("reflects checked state via aria-checked", () => {
-    const { rerender } = renderWithProviders(<FloureToggle checked={false} onChange={() => {}} />);
-    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "false");
-
-    rerender(<FloureToggle checked={true} onChange={() => {}} />);
-    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("renders without label/description when not provided", () => {
-    renderWithProviders(<FloureToggle checked={false} onChange={() => {}} />);
-    expect(screen.getByRole("switch")).toBeInTheDocument();
-    // No label text rendered
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 3. FloureInput
-// ══════════════════════════════════════════════════════════════════
-describe("FloureInput", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(<FloureInput />);
-    expect(screen.getByRole("textbox")).toBeInTheDocument();
-  });
-
-  it("handles value changes", async () => {
-    const onChange = vi.fn();
-    renderWithProviders(<FloureInput onChange={onChange} />);
-    await userEvent.type(screen.getByRole("textbox"), "hello");
-    expect(onChange).toHaveBeenCalled();
-  });
-
-  it("applies placeholder", () => {
-    renderWithProviders(<FloureInput placeholder="Enter text" />);
-    expect(screen.getByPlaceholderText("Enter text")).toBeInTheDocument();
-  });
-
-  it("applies custom maxWidth", () => {
-    const { container } = renderWithProviders(
-      <FloureInput maxWidth="max-w-[300px]" />
-    );
-    expect(container.querySelector(".max-w-\\[300px\\]")).toBeInTheDocument();
-  });
-
-  it("forwards ref correctly", () => {
-    const ref = React.createRef<HTMLInputElement>();
-    renderWithProviders(<FloureInput ref={ref} />);
-    expect(ref.current).toBeInstanceOf(HTMLInputElement);
-  });
-
-  it("supports password type", () => {
-    const { container } = renderWithProviders(<FloureInput type="password" />);
-    const input = container.querySelector('input[type="password"]');
-    expect(input).toBeInTheDocument();
-  });
-
-  it("supports number type", () => {
-    renderWithProviders(<FloureInput type="number" />);
-    expect(screen.getByRole("spinbutton")).toBeInTheDocument();
-  });
-});
 
 // ══════════════════════════════════════════════════════════════════
 // 4. Button
@@ -454,23 +295,6 @@ describe("Badge", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// 7. Divider
-// ══════════════════════════════════════════════════════════════════
-describe("Divider", () => {
-  it("renders without crashing", () => {
-    const { container } = renderWithProviders(<Divider />);
-    expect(container.firstChild).toBeInTheDocument();
-    expect((container.firstChild as HTMLElement).className).toContain("h-px");
-  });
-
-  it("forwards ref", () => {
-    const ref = React.createRef<HTMLDivElement>();
-    renderWithProviders(<Divider ref={ref} />);
-    expect(ref.current).toBeInstanceOf(HTMLDivElement);
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
 // 8. MicButton
 // ══════════════════════════════════════════════════════════════════
 describe("MicButton", () => {
@@ -533,19 +357,19 @@ describe("PttOverlay", () => {
 // ══════════════════════════════════════════════════════════════════
 describe("ModelBadge", () => {
   it("renders without crashing", () => {
-    renderWithProviders(<ModelBadge profile="speed" resolvedModel={null} />);
-    expect(screen.getByText("Speed")).toBeInTheDocument();
+    renderWithProviders(<ModelBadge profile="parakeet" resolvedModel={null} />);
+    expect(screen.getByText("Parakeet")).toBeInTheDocument();
   });
 
   it("shows resolved model info when available", () => {
     renderWithProviders(
       <ModelBadge
-        profile="speed"
-        resolvedModel={{ profile: "distil", model: "distil-large-v3", backend: "faster_whisper", device: "cuda" }}
+        profile="parakeet"
+        resolvedModel={{ profile: "whisper-turbo", model: "large-v3-turbo", backend: "sherpa_onnx", device: "cuda" }}
       />
     );
-    expect(screen.getByText("Distil")).toBeInTheDocument();
-    expect(screen.getByText("distil-large-v3")).toBeInTheDocument();
+    expect(screen.getByText("Turbo")).toBeInTheDocument();
+    expect(screen.getByText("large-v3-turbo")).toBeInTheDocument();
     expect(screen.getByText("GPU")).toBeInTheDocument();
   });
 
@@ -564,8 +388,8 @@ describe("ModelBadge", () => {
   it("shows CPU when device is not cuda", () => {
     renderWithProviders(
       <ModelBadge
-        profile="speed"
-        resolvedModel={{ profile: "speed", model: "tiny.en", backend: "whisper_cpp", device: "cpu" }}
+        profile="parakeet"
+        resolvedModel={{ profile: "whisper-base", model: "base", backend: "sherpa_onnx", device: "cpu" }}
       />
     );
     expect(screen.getByText("CPU")).toBeInTheDocument();
@@ -678,7 +502,6 @@ describe("Sidebar", () => {
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Widget")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
-    expect(screen.getByText("Help")).toBeInTheDocument();
   });
 
   it("calls onNavigate when nav item clicked", async () => {
@@ -707,8 +530,7 @@ describe("Sidebar", () => {
 describe("SettingsPanel", () => {
   const defaultSettings: RuntimeSettings = {
     wsPort: 8765,
-    asrProfile: "auto",
-    backend: "sherpa_onnx",
+    asrProfile: "parakeet",
     model: "",
     llmMode: "cleanup",
     llmProvider: "openrouter",
@@ -725,14 +547,14 @@ describe("SettingsPanel", () => {
 
   it("renders nothing when not visible", () => {
     const { container } = renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={false} onClose={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={false} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
     );
     expect(container.innerHTML).toBe("");
   });
 
   it("renders dialog when visible", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
@@ -741,7 +563,7 @@ describe("SettingsPanel", () => {
   it("closes on Escape key", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose}  mode="tauri" onModeChange={() => {}} />
     );
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
@@ -750,7 +572,7 @@ describe("SettingsPanel", () => {
   it("closes when clicking backdrop", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose}  mode="tauri" onModeChange={() => {}} />
     );
     const dialog = screen.getByRole("dialog");
     // Click on the backdrop (the dialog element itself, not the inner panel)
@@ -761,7 +583,7 @@ describe("SettingsPanel", () => {
   it("calls onSave with updated settings", async () => {
     const onSave = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={onSave} visible={true} onClose={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={onSave} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
     );
     await userEvent.click(screen.getByText("Save & Apply"));
     expect(onSave).toHaveBeenCalled();
@@ -769,7 +591,7 @@ describe("SettingsPanel", () => {
 
   it("shows/hides API keys", async () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
     );
     const openrouterInput = screen.getByLabelText("OpenRouter API Key");
     expect(openrouterInput).toHaveAttribute("type", "password");
@@ -781,7 +603,7 @@ describe("SettingsPanel", () => {
 
   it("has aria-modal and aria-label", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -874,75 +696,6 @@ describe("TabSwitcher", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// 16. ConfigSection
-// ══════════════════════════════════════════════════════════════════
-describe("ConfigSection", () => {
-  const MockIcon = (() => <svg data-testid="mock-icon" />) as unknown as import("lucide-react").LucideIcon;
-
-  it("renders without crashing", () => {
-    renderWithProviders(
-      <ConfigSection icon={MockIcon} title="My Section">
-        <div>Content</div>
-      </ConfigSection>
-    );
-    expect(screen.getByText("My Section")).toBeInTheDocument();
-    expect(screen.getByText("Content")).toBeInTheDocument();
-  });
-
-  it("renders subtitle when provided", () => {
-    renderWithProviders(
-      <ConfigSection icon={MockIcon} title="Section" subtitle="A subtitle">
-        <div>Content</div>
-      </ConfigSection>
-    );
-    expect(screen.getByText("A subtitle")).toBeInTheDocument();
-  });
-
-  it("does not render subtitle when not provided", () => {
-    const { container } = renderWithProviders(
-      <ConfigSection icon={MockIcon} title="Section">
-        <div>Content</div>
-      </ConfigSection>
-    );
-    const subtitle = container.querySelector(".text-\\[10px\\].text-text-muted");
-    expect(subtitle).toBeNull();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 17. SettingRow
-// ══════════════════════════════════════════════════════════════════
-describe("SettingRow", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(
-      <SettingRow label="Language">
-        <select><option>English</option></select>
-      </SettingRow>
-    );
-    expect(screen.getByText("Language")).toBeInTheDocument();
-    expect(screen.getByText("English")).toBeInTheDocument();
-  });
-
-  it("renders description when provided", () => {
-    renderWithProviders(
-      <SettingRow label="Port" description="WebSocket port number">
-        <input type="number" />
-      </SettingRow>
-    );
-    expect(screen.getByText("WebSocket port number")).toBeInTheDocument();
-  });
-
-  it("does not render description when not provided", () => {
-    renderWithProviders(
-      <SettingRow label="Label">
-        <input />
-      </SettingRow>
-    );
-    expect(screen.queryByText("description")).not.toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
 // 18. HeatmapCard
 // ══════════════════════════════════════════════════════════════════
 describe("HeatmapCard", () => {
@@ -992,49 +745,6 @@ describe("StreakJourney", () => {
     expect(screen.getByText("7")).toBeInTheDocument();
     expect(screen.getByText("14")).toBeInTheDocument();
     expect(screen.getByText("30")).toBeInTheDocument();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 21. SnippetsPage
-// ══════════════════════════════════════════════════════════════════
-describe("SnippetsPage", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(<SnippetsPage />);
-    expect(screen.getByText("Snippets")).toBeInTheDocument();
-    expect(screen.getByText("Save reusable text, prompts, links, and templates.")).toBeInTheDocument();
-  });
-
-  it("renders stats", () => {
-    renderWithProviders(<SnippetsPage />);
-    expect(screen.getByText("Total Snippets")).toBeInTheDocument();
-    expect(screen.getByText("Favorites")).toBeInTheDocument();
-    expect(screen.getByText("Total Uses")).toBeInTheDocument();
-  });
-
-  it("opens add snippet modal", async () => {
-    renderWithProviders(<SnippetsPage />);
-    // Click the button (not the modal header)
-    const addButtons = screen.getAllByText("Add Snippet");
-    await userEvent.click(addButtons[0]);
-    expect(screen.getByText("Create a reusable text block with a quick trigger.")).toBeInTheDocument();
-  });
-
-  it("search filters snippets", async () => {
-    renderWithProviders(<SnippetsPage />);
-    const searchInput = screen.getByPlaceholderText("Search snippets...");
-    await userEvent.type(searchInput, "nonexistent12345");
-    expect(screen.getByText("No snippets found")).toBeInTheDocument();
-  });
-
-  it("tab switching works", async () => {
-    renderWithProviders(<SnippetsPage />);
-    const tabs = screen.getAllByRole("button");
-    const favTab = tabs.find(el => el.textContent?.includes("Favorites ("));
-    if (favTab) await userEvent.click(favTab);
-    // "Favorites" appears in both stats and tab - use getAllByText
-    const favElements = screen.getAllByText(/Favorites/);
-    expect(favElements.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -1437,12 +1147,6 @@ describe("useAppState", () => {
 // 40. Edge Cases: Long text
 // ══════════════════════════════════════════════════════════════════
 describe("Edge cases: long text", () => {
-  it("FloureInput handles long text", async () => {
-    const longText = "A".repeat(1000);
-    renderWithProviders(<FloureInput value={longText} onChange={() => {}} />);
-    expect(screen.getByRole("textbox")).toHaveValue(longText);
-  });
-
   it("Badge handles long text", () => {
     const longText = "A".repeat(200);
     renderWithProviders(<Badge>{longText}</Badge>);
@@ -1460,21 +1164,6 @@ describe("Edge cases: long text", () => {
 // 41. Edge Cases: Empty props
 // ══════════════════════════════════════════════════════════════════
 describe("Edge cases: empty/null props", () => {
-  it("FloureToggle with empty label/description", () => {
-    renderWithProviders(<FloureToggle checked={false} onChange={() => {}} label="" description="" />);
-    expect(screen.getByRole("switch")).toBeInTheDocument();
-  });
-
-  it("ConfigSection without subtitle", () => {
-    const MockIcon = (() => <svg />) as unknown as import("lucide-react").LucideIcon;
-    renderWithProviders(
-      <ConfigSection icon={MockIcon} title="Test">
-        <div>child</div>
-      </ConfigSection>
-    );
-    expect(screen.getByText("Test")).toBeInTheDocument();
-  });
-
   it("HeatmapCard with empty data", () => {
     renderWithProviders(<HeatmapCard data={[]} />);
     expect(screen.getByText("Voice Activity Calendar")).toBeInTheDocument();
@@ -1490,11 +1179,6 @@ describe("Edge cases: empty/null props", () => {
 // 42. Accessibility: ARIA attributes
 // ══════════════════════════════════════════════════════════════════
 describe("Accessibility: ARIA attributes", () => {
-  it("FloureToggle has role=switch", () => {
-    renderWithProviders(<FloureToggle checked={false} onChange={() => {}} />);
-    expect(screen.getByRole("switch")).toBeInTheDocument();
-  });
-
   it("MicButton has aria-label", () => {
     renderWithProviders(<MicButton status="idle" connected={false} onToggle={() => {}} />);
     expect(screen.getByRole("button")).toHaveAttribute("aria-label");
@@ -1503,11 +1187,11 @@ describe("Accessibility: ARIA attributes", () => {
   it("SettingsPanel has role=dialog", () => {
     renderWithProviders(
       <SettingsPanel
-        settings={{ wsPort: 8765, asrProfile: "auto", backend: "sherpa_onnx", model: "", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", llmFallback: "", openrouterApiKey: "", fastCommit: true, typing: true, clipboard: true, debug: false, hotwords: "", language: "" }}
+        settings={{ wsPort: 8765, asrProfile: "parakeet", model: "", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", llmFallback: "", openrouterApiKey: "", fastCommit: true, typing: true, clipboard: true, debug: false, hotwords: "", language: "" }}
         onSave={() => {}}
         visible={true}
         onClose={() => {}}
-      />
+      mode="tauri" onModeChange={() => {}} />
     );
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
   });

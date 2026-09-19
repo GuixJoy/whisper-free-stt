@@ -1,14 +1,11 @@
 // ── Permissions hook: manages clipboard and microphone permissions ──
 import { useState, useCallback, useRef, useEffect } from "react";
 import { micLevelEmitter } from "../utils/mic-emitter";
+import { isTauri } from "../lib/utils";
 
 export interface PermissionState {
   clipboard: "granted" | "denied" | "prompt" | "unavailable";
   microphone: "granted" | "denied" | "prompt" | "unavailable";
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && !!(window as any).__TAURI_INTERNALS__;
 }
 
 export function usePermissions() {

@@ -1,16 +1,10 @@
-import { Cpu, Zap, Gauge, Target, Rocket, Sparkles } from "lucide-react";
+import { Zap, Gauge, Rocket, Sparkles } from "lucide-react";
 
 const PROFILE_INFO: Record<string, { label: string; model: string; icon: React.ReactNode; color: string }> = {
   auto:     { label: "Auto",      model: "Auto-select",       icon: <Sparkles size={12} />, color: "text-text-muted" },
   parakeet: { label: "Parakeet",  model: "Parakeet TDT",      icon: <Zap size={12} />,      color: "text-success" },
   "whisper-turbo": { label: "Turbo", model: "large-v3-turbo", icon: <Rocket size={12} />,   color: "text-orange-600" },
   "whisper-base":  { label: "Base",  model: "base",           icon: <Gauge size={12} />,    color: "text-blue-600" },
-  speed:    { label: "Speed",     model: "tiny.en",           icon: <Zap size={12} />,      color: "text-green-500" },
-  balanced: { label: "Balanced",  model: "base.en",           icon: <Gauge size={12} />,     color: "text-blue-500" },
-  accuracy: { label: "Accuracy",  model: "small.en",          icon: <Target size={12} />,    color: "text-purple-500" },
-  "small-cuda": { label: "Small", model: "small.en · CUDA",  icon: <Cpu size={12} />,       color: "text-cyan-500" },
-  distil:   { label: "Distil",    model: "distil-large-v3",   icon: <Rocket size={12} />,    color: "text-accent" },
-  turbo:    { label: "Turbo",     model: "large-v3-turbo",    icon: <Rocket size={12} />,    color: "text-orange-500" },
 };
 
 interface ModelBadgeProps {
