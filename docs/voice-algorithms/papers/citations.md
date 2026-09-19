@@ -121,3 +121,24 @@ All citations verified against actual papers and source code.
 | 61 | pyannote 4.0 (Community-1) | pyannote.ai | 2026 | https://docs.pyannote.ai/models |
 | 62 | Silero VAD v5 (6000+ languages) | snakers4 | 2024 | https://github.com/snakers4/silero-vad (MIT) |
 | 63 | CrispASR (Cohere Transcribe, Parakeet TDT) | CrispStrobe | 2026 | https://github.com/CrispStrobe/CrispASR (MIT) |
+
+### Transducers & Parakeet (2026 sweep)
+
+| # | Paper | Authors | Year | Verified Link |
+|---|-------|---------|------|---------------|
+| 64 | Efficient Sequence Transduction by Jointly Predicting Tokens and Durations (TDT) | Xu et al. (NVIDIA) | 2023 | https://proceedings.mlr.press/v202/xu23g/xu23g.pdf, PMLR v202 (ICML) |
+| 65 | Fast Conformer with Linearly Scalable Attention for Efficient Speech Recognition | Rekesh et al. (NVIDIA) | 2023 | IEEE ASRU 2023 |
+| 66 | Distil-Whisper: Robust Knowledge Distillation via Large-Scale Pseudo Labelling | Gandhi, von Platen, Rush (Hugging Face / Cornell) | 2023 | https://arxiv.org/abs/2311.00430 |
+| 67 | Canary-1B-v2 report (Parakeet-TDT-0.6B-v3, 25 languages; beats Whisper-large-v3 on English at 10x speed) | NVIDIA | 2025 | https://arxiv.org/abs/2509.14128 |
+| 68 | Parakeet-TDT-0.6B-v2 model card (RTFx 3380, HF Open ASR Leaderboard) | NVIDIA NeMo / Suno | 2024 | https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2 (Apache 2.0) |
+
+### LLM Error Correction — Cleanup Pass (2026 sweep)
+
+| # | Paper | Authors | Year | Verified Link |
+|---|-------|---------|------|---------------|
+| 69 | Can Generative Large Language Models Perform ASR Error Correction? (unconstrained vs N-best constrained, 0/1-shot; matches supervised T5 on transducer outputs) | Ma, Qian, Manakul, Gales, Knill (Cambridge) | 2023 | https://arxiv.org/abs/2307.04172 |
+| 70 | Generative Speech Recognition Error Correction with LLMs and Task-Activating Prompting (31–38% relative WER cut frozen; below N-best oracle with LoRA) | Yang, Gu, Liu, Ghosh, Bulyko, Stolcke | 2023 | Proc. IEEE ASRU 2023, https://arxiv.org/abs/2309.15649 |
+| 71 | Multi-stage Large Language Model Correction for Speech Recognition (uncertainty-gated, corrects only low-confidence utterances; 10–20% relative gains zero-shot) | Pu, Nguyen, Stüker (KIT) | 2023 | https://arxiv.org/abs/2310.11532 |
+| 72 | ASR Error Correction using Large Language Models (N-best constrained decoding, cross-system generalization, transducer + AED) | Ma, Qian, Gales, Knill (Cambridge) | 2024 | https://arxiv.org/abs/2409.09554 |
+| 73 | Listen Again and Choose the Right Answer / ClozeGER (cloze-test reformulation + speech input; breakthrough over vanilla GER on 9 datasets) | Hu, Chen, Qin, Zhu, Chng, Li | 2024 | 10.18653/v1/2024.findings-acl.37, Findings of ACL 2024 |
+| 74 | Fewer Hallucinations, More Verification / RLLM-CF (pre-detection + CoT subtasks + verification; no fine-tuning, no N-best; 9–21% relative cuts) | Fang et al. | 2025 | Accepted ASRU, https://arxiv.org/abs/2505.24347 |

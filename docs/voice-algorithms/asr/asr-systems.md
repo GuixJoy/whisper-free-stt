@@ -260,6 +260,16 @@ Human conversation threshold: **200-300ms** total pipeline
 ### Whisper Large-v3-Turbo (Oct 2024)
 Pruned version of large-v3: decoder layers reduced from 32→4. Same encoder (32 layers).
 ~5x faster inference, minor quality degradation. Parameters: 809M, d_model=1280.
+No paper — release discussion only. Translation explicitly degraded (fine-tuned on
+transcription data, no translation data).
+
+### Parakeet-TDT-0.6B-v3 + Canary-1B-v2 report (2025)
+Parakeet v3 extends TDT to 25 European languages (v2 was English-only).
+The Canary report (arXiv:2509.14128) claims v3-class models beat Whisper-large-v3
+on English at ~10x speed. Independent numbers: HF Open ASR Leaderboard avg ~6.3%
+Parakeet vs ~7.4% Whisper; AMI meetings 11.3% vs 16.0% (vendor cards via Speechmark).
+Caveat for us: no public benchmark covers our quantized builds (int8 Parakeet,
+Q5_1 turbo) on dictation audio — own run still required.
 
 ### whisper.cpp 1.8.3 (Jan 2026)
 12x performance boost on integrated AMD/Intel GPUs via Vulkan API.

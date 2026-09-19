@@ -24,7 +24,7 @@ voice-algorithms/
 │   ├── diarization-algorithms.md          # Speaker diarization survey
 │   └── implementation-plan-v0.2.md        # Phased implementation plan
 └── papers/
-    └── citations.md                       # 48 academic citations with DOIs
+    └── citations.md                       # 74 verified entries (surveys + 2026 sweep: transducers, LLM cleanup)
 ```
 
 ## Quick Reference
@@ -38,7 +38,8 @@ voice-algorithms/
 | Production Patterns | `production-systems/production-architecture.md` | AGC, Hysteresis VAD, Forced Splitting, Memory Mgmt |
 | Our VAD | `adaptive-vad/universal-algorithm.md` | IMCRA + Dual-EMA + Hysteresis (implemented) |
 | Speaker Diarization | `diarization/diarization-algorithms.md` | ECAPA-TDNN, pyannote, AHC, VBx, UIS-RNN |
-| Citations | `papers/citations.md` | 48 papers with DOIs |
+| LLM Cleanup | `papers/citations.md` §74 | ClozeGER, uncertainty gating, RLLM-CF |
+| Citations | `papers/citations.md` | 74 entries with verified links |
 
 ## Implemented vs Planned
 
@@ -67,6 +68,15 @@ voice-algorithms/
 - **Whisper large-v3-turbo**: 32→4 decoder layers, ~5x faster, minor quality loss
 - **NVIDIA Nemotron**: Cache-aware streaming, 3x efficiency over buffered inference
 - **Speech ReaLLM**: Decoder-only ASR with RNN-T for real-time streaming
+- **Parakeet-TDT-0.6B-v3 / Canary-1B-v2 report** (arXiv:2509.14128): 25 EU languages, beats Whisper-large-v3 on English at ~10x speed
+- **Whisper-turbo caveat**: no paper, release-discussion only; translation degraded
+
+### LLM Cleanup (generative error correction)
+
+- **ClozeGER** (Findings of ACL 2024): cloze-test over N-best disagreements beats full-sentence rewriting — don't regenerate, select
+- **Uncertainty-gated correction** (Pu et al. 2023): only correct low-confidence utterances; unconstrained rewriting over-corrects clean transcripts
+- **RLLM-CF** (accepted ASRU): pre-detection + verification without fine-tuning or N-best — closest to our 1-best setup
+- **Key gap for us**: every paper agrees N-best input beats 1-best; we pass 1-best only — check what sherpa-onnx exposes
 
 ### Diarization
 - **pyannote 4.0**: Community-1 model, self-hosted option
@@ -84,5 +94,7 @@ voice-algorithms/
 | Cohen, "IMCRA" | 10.1109/TSA.2003.811544 | 2003 | Core noise estimation |
 | Radford et al., "Whisper" | arXiv:2212.04356 | 2022 | ASR architecture |
 | Desplanques et al., "ECAPA-TDNN" | Interspeech 2020 | 2020 | Speaker embeddings |
+| Xu et al., "TDT" | PMLR v202 (ICML) | 2023 | Why Parakeet is fast |
+| Hu et al., "ClozeGER" | Findings of ACL 2024 | 2024 | How to prompt the cleanup pass |
 | Silero Team, "Silero VAD v5" | GitHub | 2024 | Streaming VAD |
 | Stylianou et al., "LibriVAD" | arXiv:2512.17281 | 2025 | VAD benchmarking |
