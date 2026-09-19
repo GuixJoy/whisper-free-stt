@@ -159,6 +159,7 @@ async fn stream_to_file(
         tokio::fs::File::create(dest).await?
     };
     let mut downloaded: u64 = 0;
+    let mut last_percent: usize = usize::MAX;
 
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
@@ -171,12 +172,39 @@ async fn stream_to_file(
         } else {
             100
         };
-        progress(percent, total_so_far);
+        // One guard here fixes every caller at once: without it each ~16KB
+        // chunk emits a Tauri event (~30k re-renders per model download).
+        if percent != last_percent {
+            last_percent = percent;
+            progress(percent, total_so_far);
+        }
     }
     file.flush().await?;
     drop(file);
 
     Ok(downloaded)
+}
+
+/// Target dirs with an in-flight fetch, keyed by path so the pipeline
+/// lazy-download and the Models-page button (or repeated PTT presses)
+/// serialize on the same payload instead of interleaving two writers.
+fn active_downloads() -> &'static std::sync::Mutex<std::collections::HashSet<PathBuf>> {
+    static ACTIVE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
+        std::sync::OnceLock::new();
+    ACTIVE.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+/// RAII release for the key above: covers every exit path, including `?`.
+struct DownloadGuard {
+    key: PathBuf,
+}
+
+impl Drop for DownloadGuard {
+    fn drop(&mut self) {
+        if let Ok(mut active) = active_downloads().lock() {
+            active.remove(&self.key);
+        }
+    }
 }
 
 /// Move the contents of a single top-level folder up into `model_dir`.
@@ -313,6 +341,18 @@ pub async fn download_model(
         return Ok(());
     }
     let _ = std::fs::remove_file(model_dir.join(".downloaded"));
+
+    // Second press while a fetch runs must fail fast, not append a second
+    // writer to the same resume file.
+    {
+        let mut active = active_downloads().lock().unwrap();
+        if !active.insert(model_dir.to_path_buf()) {
+            return Err(anyhow::anyhow!("{} download already in progress", model.id));
+        }
+    }
+    let _download_guard = DownloadGuard {
+        key: model_dir.to_path_buf(),
+    };
 
     eprintln!(
         "[models] downloading {} -> {} ({} bytes, archive={})",

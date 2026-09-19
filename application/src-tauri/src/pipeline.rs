@@ -198,38 +198,54 @@ impl PipelineController {
         if !verify_model(&model_dir, asr_manifest) {
             let asr_dir = config.asr_profile.model_dir(&model_dir);
             std::fs::create_dir_all(&asr_dir)?;
-            eprintln!("[pipeline] downloading ASR model {} to {}", asr_model_id, asr_dir.display());
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?;
+            eprintln!("[pipeline] ASR model {} missing, downloading in background to {}", asr_model_id, asr_dir.display());
+            // Never block the Tauri command on a ~500MB download (it hangs
+            // the backend until the last byte). Fetch on a worker thread and
+            // fail fast: the Models page shows live progress, retry start
+            // when it reports done.
             let app_dl = app.clone();
-            let result = runtime.block_on(async {
-                download_model(asr_manifest, &asr_dir, |percent, bytes| {
-                    let _ = app_dl.emit(
-                        "model_download_progress",
-                        serde_json::json!({"id": asr_manifest.id, "percent": percent, "bytes": bytes}),
-                    );
-                })
-                .await
+            std::thread::spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        let _ = app_dl.emit(
+                            "asr_error",
+                            serde_json::json!({"error": format!("Failed to download ASR model: {}", e)}),
+                        );
+                        return;
+                    }
+                };
+                let res = runtime.block_on(async {
+                    download_model(asr_manifest, &asr_dir, |percent, bytes| {
+                        let _ = app_dl.emit(
+                            "model_download_progress",
+                            serde_json::json!({"id": asr_manifest.id, "percent": percent, "bytes": bytes}),
+                        );
+                    })
+                    .await
+                });
+                match res {
+                    Ok(()) => {
+                        let _ = app_dl.emit(
+                            "model_download_progress",
+                            serde_json::json!({"id": asr_manifest.id, "percent": 100, "done": true}),
+                        );
+                        eprintln!("[pipeline] ASR model {} ready", asr_manifest.id);
+                    }
+                    Err(e) => {
+                        eprintln!("[pipeline] ASR model download FAILED: {}", e);
+                        let _ = app_dl.emit(
+                            "asr_error",
+                            serde_json::json!({"error": format!("Failed to download ASR model: {}", e)}),
+                        );
+                    }
+                }
             });
-            if let Err(e) = result {
-                eprintln!("[pipeline] ASR model download FAILED: {}", e);
-                let _ = app.emit(
-                    "asr_error",
-                    serde_json::json!({"error": format!("Failed to download ASR model: {}", e)}),
-                );
-                running.store(false, Ordering::SeqCst);
-                return Err(anyhow::anyhow!("ASR model download failed: {}", e));
-            }
-            if !verify_model(&model_dir, asr_manifest) {
-                let _ = app.emit(
-                    "asr_error",
-                    serde_json::json!({"error": "ASR model files not found after download attempt"}),
-                );
-                running.store(false, Ordering::SeqCst);
-                return Err(anyhow::anyhow!("ASR model not found"));
-            }
-            eprintln!("[pipeline] ASR model {} ready", asr_model_id);
+            running.store(false, Ordering::SeqCst);
+            return Err(anyhow::anyhow!("ASR model {} not downloaded yet — downloading in background, retry when the Models page shows 100%", asr_model_id));
         }
 
         Ok(Self {
