@@ -44,11 +44,16 @@ impl LlmProcessor {
         Self { llm, config }
     }
 
-    pub fn process(&mut self, text: &str, app: &tauri::AppHandle) {
+    pub fn process(&mut self, text: &str, timestamps: &[f32], durations: &[f32], app: &tauri::AppHandle) {
         let mode = self.config.llm_mode;
         let cleaned: String;
 
         if mode == LlmMode::Off {
+            cleaned = text.to_string();
+        } else if mode == LlmMode::Cleanup && !crate::llm::needs_cleanup(text, timestamps, durations) {
+            // Skip the LLM on transcripts that look clean: the pass costs
+            // seconds and unconstrained rewriting regresses good output.
+            eprintln!("[pipeline] cleanup gate: skipped (looks clean)");
             cleaned = text.to_string();
         } else if let Some(llm) = &mut self.llm {
             // The local context is 512 tokens with a 128-token completion
@@ -390,12 +395,19 @@ impl PipelineController {
 
                         if let Some(segment) = vad.try_get_segment() {
                             let start = Instant::now();
-                            let text = if let Some(ref rec) = parakeet {
-                                rec.transcribe(&segment)
+                            let (text, timestamps, durations) = if let Some(ref rec) = parakeet {
+                                match rec.transcribe_full(&segment) {
+                                    Some(r) => (
+                                        r.text.clone(),
+                                        r.timestamps.clone().unwrap_or_default(),
+                                        r.durations.clone().unwrap_or_default(),
+                                    ),
+                                    None => (String::new(), Vec::new(), Vec::new()),
+                                }
                             } else if let Some(ref ws) = whisper {
-                                ws.transcribe(&segment)
+                                (ws.transcribe(&segment), Vec::new(), Vec::new())
                             } else {
-                                String::new()
+                                (String::new(), Vec::new(), Vec::new())
                             };
                             let latency_ms = start.elapsed().as_millis() as u64;
 
@@ -407,7 +419,7 @@ impl PipelineController {
                                         "latency_ms": latency_ms,
                                     }),
                                 );
-                                llm_processor.process(&text, &app_clone);
+                                llm_processor.process(&text, &timestamps, &durations, &app_clone);
                             }
                             vad.reset_after_segment();
                         }

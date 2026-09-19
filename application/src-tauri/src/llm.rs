@@ -31,9 +31,11 @@ pub enum LlmBackend {
     OpenRouter,
 }
 
-pub const CLEANUP_PROMPT: &str = "Fix punctuation, capitalization, and remove filler words (um, uh). \
-Preserve technical terms. \
-IMPORTANT: Return ONLY the corrected transcript text. \
+pub const CLEANUP_PROMPT: &str = "Fix only clear errors in this transcript: remove filler words (um, uh), \
+fix obviously misheard words, add any missing punctuation and capitalization. \
+Preserve technical terms and all other wording. \
+If the transcript is already correct, return it unchanged. \
+IMPORTANT: Return ONLY the transcript text. \
 Do NOT add any labels, headers, commentary, safety ratings, or explanations.";
 
 pub const BULLET_PROMPT: &str = "Convert the following microphone transcript into a clean, \
@@ -66,6 +68,44 @@ pub fn build_prompt(transcript: &str, mode: LlmMode) -> String {
     }
 
     format!("{}\n\nTranscript:\n{}", instruction, transcript)
+}
+
+/// Conservative skip-gate for the Cleanup pass: rewriting already-clean
+/// transcripts hurts (Idiap 2024: Whisper-Large-v3 2.78% → 3.21% after
+/// unconstrained GPT correction), and our Parakeet output is already
+/// cased/punctuated. Only Cleanup mode is gated — Bullet/Email/Commit are
+/// explicit generative requests. Fires on filler words, repeated
+/// words/bigrams (disfluency/hallucination signature), or alignment
+/// anomalies (long gaps, stuck tokens); everything else passes through.
+pub fn needs_cleanup(text: &str, timestamps: &[f32], durations: &[f32]) -> bool {
+    const FILLERS: &[&str] = &["um", "uh", "uhh", "umm", "hmm", "ah", "er"];
+    let words: Vec<String> = text
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.len() <= 2 {
+        return false;
+    }
+    if words.iter().any(|w| FILLERS.contains(&w.as_str())) {
+        return true;
+    }
+    if words.windows(2).any(|w| w[0] == w[1]) {
+        return true;
+    }
+    if words.windows(4).any(|w| w[0..2] == w[2..4]) {
+        return true;
+    }
+    if timestamps.windows(2).any(|t| t[1] - t[0] > 1.5) {
+        return true;
+    }
+    if durations.iter().any(|&d| d > 1.0) {
+        return true;
+    }
+    false
 }
 
 pub fn clean_response(text: &str) -> String {
@@ -393,6 +433,45 @@ fn drain_sse_buffer(buffer: &mut String, chunk_text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gate_skips_clean_transcript() {
+        let ts: Vec<f32> = (0..10).map(|i| i as f32 * 0.3).collect();
+        let du = vec![0.2; 10];
+        assert!(!needs_cleanup("The metal forest is in the great domed cavern.", &ts, &du));
+    }
+
+    #[test]
+    fn gate_skips_short_and_empty() {
+        assert!(!needs_cleanup("", &[], &[]));
+        assert!(!needs_cleanup("Call John", &[], &[]));
+    }
+
+    #[test]
+    fn gate_fires_on_filler_and_repeats() {
+        assert!(needs_cleanup("Um call John on Friday please", &[], &[]));
+        assert!(needs_cleanup("Call the the doctor tomorrow", &[], &[]));
+        assert!(needs_cleanup("Go to the to the store now", &[], &[]));
+    }
+
+    #[test]
+    fn gate_fires_on_alignment_anomalies() {
+        assert!(needs_cleanup(
+            "The metal forest is in the cavern today here",
+            &[0.0, 0.3, 2.5, 2.8, 3.1, 3.4, 3.7, 4.0, 4.3],
+            &[0.2; 9]
+        ));
+        assert!(needs_cleanup(
+            "The metal forest is in the cavern today here",
+            &[0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4],
+            &[0.2, 0.2, 2.5, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+        ));
+    }
+
+    #[test]
+    fn cleanup_prompt_is_constrained() {
+        assert!(CLEANUP_PROMPT.contains("unchanged"));
+    }
 
     #[test]
     fn extracts_delta_content_from_data_line() {
