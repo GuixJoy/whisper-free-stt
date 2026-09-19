@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useReducer, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
@@ -23,7 +23,7 @@ import { FloureToggle } from "./components/FloureToggle";
 import { FloureInput } from "./components/FloureInput";
 import ModelsPage from "./components/ModelsPage";
 import { AppShell } from "./layouts/AppShell";
-import { AppStateContext, type AppView, DEFAULT_ONBOARDING, onboardingReducer } from "./store";
+import { type AppView } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
 import { usePermissions } from "./hooks/usePermissions";
 import Waveform from "./components/Waveform";
@@ -898,7 +898,6 @@ function App() {
     localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
   );
   const [errors, setErrors] = useState<AppError[]>([]);
-  const [onboarding, onboardingDispatch] = useReducer(onboardingReducer, DEFAULT_ONBOARDING);
   const [activeItem, setActiveItem] = useState("Home");
   const [historyItems, setHistoryItems] = useState<TranscriptLine[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1337,7 +1336,7 @@ function App() {
 
   if (view === "onboarding") {
     return (
-      <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
+      <>
         <ErrorBanner
           errors={errors}
           onDismiss={dismissError}
@@ -1346,7 +1345,7 @@ function App() {
           onClose={() => setShowErrors(false)}
         />
         <OnboardingWizard onFinished={handleOnboardingComplete} />
-      </AppStateContext.Provider>
+      </>
     );
   }
 
@@ -1417,7 +1416,7 @@ function App() {
   })();
 
   return (
-    <AppStateContext.Provider value={{ onboarding, onboardingDispatch, view, setView }}>
+    <>
       <AppShell activeItem={activeItem} onNavigate={handleNavigate}>
         {content}
       </AppShell>
@@ -1453,7 +1452,7 @@ function App() {
         onClose={() => setShowMicModal(false)}
       />
       <PttOverlay visible={pttActive} />
-    </AppStateContext.Provider>
+    </>
   );
 }
 

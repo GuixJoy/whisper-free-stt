@@ -1,5 +1,4 @@
-// ── Global state store (Zustand-lite pattern with React Context) ──
-import { createContext } from "react";
+// ── Global state store (reducer + catalogs; consumed directly, no context) ──
 
 export type ASRBackend = "sherpa_onnx";
 export type ASRMODEL = "parakeet" | "whisper-turbo" | "whisper-base";
@@ -184,10 +183,3 @@ export const DEFAULT_ONBOARDING: OnboardingState = {
 };
 
 export type AppView = "onboarding" | "main";
-
-export const AppStateContext = createContext<{
-  onboarding: OnboardingState;
-  onboardingDispatch: React.Dispatch<OnboardingAction>;
-  view: AppView;
-  setView: (v: AppView) => void;
-} | null>(null);
