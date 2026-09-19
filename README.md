@@ -4,7 +4,7 @@ Floure listens to your mic, transcribes your speech, cleans it up with an LLM, a
 
 ```
 mic (cpal) → Silero VAD → Parakeet / Whisper (sherpa-onnx)
-  → LLM cleanup (local S1-Mini via llama.cpp, or DeepSeek / OpenRouter)
+  → LLM cleanup (local S1-Mini via llama.cpp, or OpenRouter cloud)
   → type into focused window / clipboard
 ```
 
@@ -21,7 +21,7 @@ Downloaded on demand from the Models page (resumable, verified — see `docs/adr
 | S1-Mini Q4_K_M | llama.cpp | ~462 MB | Default local LLM for cleanup. Recommended. |
 | Gemma 3 1B IT Q4_K_M | llama.cpp | ~806 MB | Alternative local LLM |
 
-Cloud cleanup (optional): DeepSeek (`DEEPSEEK_API_KEY`, default model `deepseek-chat`) or OpenRouter (`OPENROUTER_API_KEY`, default `deepseek/deepseek-chat`).
+Cloud cleanup (optional): OpenRouter (`OPENROUTER_API_KEY`, default `deepseek/deepseek-chat`).
 
 ## Run from source
 

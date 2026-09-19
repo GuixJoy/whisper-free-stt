@@ -14,7 +14,7 @@ required for the local path.
   - Audio capture: `cpal` (`audio.rs`).
   - VAD: Silero (`vad.rs`).
   - ASR: Parakeet + Whisper via `sherpa-onnx` (`parakeet.rs`, `whisper.rs`, `models.rs`).
-  - LLM cleanup: local Gemma 3 via `llama.cpp`, or DeepSeek / OpenRouter cloud (`llm.rs`).
+  - LLM cleanup: local Gemma 3 via `llama.cpp`, or OpenRouter cloud (`llm.rs`).
   - Output: typing + clipboard (`output.rs`); end-to-end loop in `pipeline.rs`.
 
 ## Key paths

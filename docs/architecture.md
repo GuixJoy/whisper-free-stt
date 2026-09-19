@@ -21,9 +21,9 @@ I/O effects pushed to the edges.
 │  ┌──────────┐  ┌───────────┐  ┌────────┐  ┌──────────────┐  │
 │  │ audio    │  │transcript │  │  llm    │  │  clipboard   │  │
 │  │ capture  │  │           │  │         │  │  + typing     │  │
-│  │sounddevice│  │faster-    │  │DeepSeek │  │wl-copy/wtype │  │
-│  │→numpy arr│  │whisper /  │  │OpenRoutr│  │subprocess    │  │
-│  │          │  │whisper.cpp│  │Ollama   │  │              │  │
+│  │sounddevice│  │faster-    │  │OpenRouter│  │wl-copy/wtype │  │
+│  │→numpy arr│  │whisper /  │  │Ollama    │  │subprocess    │  │
+│  │          │  │whisper.cpp│  │          │  │              │  │
 │  └──────────┘  └───────────┘  └────────┘  └──────────────┘  │
 ├──────────────────────────────────────────────────────────────┤
 │                      WIRING                                   │
@@ -176,15 +176,12 @@ Fall back to CPU + int8
 
 ## LLM Providers
 
-Three LLM providers:
+Two LLM providers:
 
 | Provider | URL | Auth Env Var | Fallback |
 |---|---|---|---|
-| DeepSeek | `api.deepseek.com/chat/completions` | `DEEPSEEK_API_KEY` | None (paid) |
 | OpenRouter | `openrouter.ai/api/v1/chat/completions` | `OPENROUTER_API_KEY` | Primary → fallback model |
 | Ollama | `localhost:11434/api/chat` | None (local) | None |
-
-DeepSeek takes priority if both keys are set. Override with `--llm-provider`.
 
 ### LLM Modes
 
