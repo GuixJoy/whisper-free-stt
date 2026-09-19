@@ -219,7 +219,6 @@ import WidgetView from "@/components/WidgetView";
 import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "@/store";
 import type { STTEvent } from "@/api";
 import type { RuntimeSettings } from "../App";
-import { createWsApi } from "@/api-ws";
 
 // ── Helpers ──
 function renderWithProviders(ui: React.ReactElement) {
@@ -1347,35 +1346,6 @@ describe("STTEvent type contract", () => {
     for (const event of sampleEvents) {
       expect(eventTypes).toContain(event.type);
     }
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 36. API Layer: createWsApi
-// ══════════════════════════════════════════════════════════════════
-describe("createWsApi", () => {
-  it("creates an API instance with required methods", () => {
-    const api = createWsApi(8765);
-    expect(typeof api.spawn).toBe("function");
-    expect(typeof api.kill).toBe("function");
-    expect(typeof api.start).toBe("function");
-    expect(typeof api.stop).toBe("function");
-    expect(typeof api.sendCommand).toBe("function");
-    expect(typeof api.onEvent).toBe("function");
-  });
-
-  it("registers event listeners", () => {
-    const api = createWsApi(8765);
-    const listener = vi.fn();
-    // Should not throw
-    api.onEvent(listener);
-  });
-
-  it("kill clears listeners", () => {
-    const api = createWsApi(8765);
-    api.onEvent(vi.fn());
-    // kill should not throw
-    api.kill();
   });
 });
 

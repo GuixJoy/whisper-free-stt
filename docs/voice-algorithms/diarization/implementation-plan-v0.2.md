@@ -522,7 +522,7 @@ Each phase is independently shippable and adds value without breaking prior phas
 - `stt/speaker.py` — Current SpeakerVerifier implementation
 - `stt/history.py` — HistoryStore pattern for DB methods
 - `stt/routes/dictionary.py` — API route pattern to clone
-- `stt-ui/src/components/DictionaryPage.tsx` — UI pattern to clone
+- `application/src/components/DictionaryPage.tsx` — UI pattern to clone
 - `speechbrain/spkrec-ecapa-voxceleb` — Pre-trained ECAPA-TDNN on HuggingFace
 - `https://github.com/BUTSpeechFIT/VBx` — VBx clustering (future option)
 - `https://github.com/google/uis-rnn` — UIS-RNN online clustering (future option)

@@ -18,7 +18,7 @@ Competing with Wispr Flow — every button, every feature must work.
 ## Architecture
 
 ```
-stt-ui/
+application/
 ├── src-tauri/           # Rust backend
 │   ├── src/
 │   │   ├── lib.rs       # Commands (59+), system tray, window management, SQLite

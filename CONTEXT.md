@@ -9,8 +9,8 @@ required for the local path.
 
 ## Stack
 
-- **Frontend:** Tauri v2 + React 19 (`stt-ui/src`), TypeScript, Vite.
-- **Backend:** Rust inside `stt-ui/src-tauri/src` (Tauri commands in `lib.rs`).
+- **Frontend:** Tauri v2 + React 19 (`application/src`), TypeScript, Vite.
+- **Backend:** Rust inside `application/src-tauri/src` (Tauri commands in `lib.rs`).
   - Audio capture: `cpal` (`audio.rs`).
   - VAD: Silero (`vad.rs`).
   - ASR: Parakeet + Whisper via `sherpa-onnx` (`parakeet.rs`, `whisper.rs`, `models.rs`).
@@ -19,7 +19,7 @@ required for the local path.
 
 ## Key paths
 
-- UI: `stt-ui/src` · Rust backend: `stt-ui/src-tauri/src` · Tauri config: `stt-ui/src-tauri/tauri.conf.json`
+- UI: `application/src` · Rust backend: `application/src-tauri/src` · Tauri config: `application/src-tauri/tauri.conf.json`
 - History DB: `~/.local/share/floure/history.db` (`STT_DATA_DIR` overrides it;
   legacy `~/.local/share/stt/history.db` is migrated forward) — see `docs/adr/0002-history-db-path.md`.
 - Config: `~/.config/floure/config.json`.
@@ -28,11 +28,11 @@ required for the local path.
 ## Build / check / test
 
 ```bash
-cd stt-ui && pnpm install && pnpm dev     # frontend dev server
-cd stt-ui && pnpm build                   # frontend build
-cd stt-ui/src-tauri && cargo check        # Rust check
-cd stt-ui/src-tauri && cargo test         # Rust tests
-cd stt-ui && pnpm tauri build             # full desktop build
+cd application && pnpm install && pnpm dev     # frontend dev server
+cd application && pnpm build                   # frontend build
+cd application/src-tauri && cargo check        # Rust check
+cd application/src-tauri && cargo test         # Rust tests
+cd application && pnpm tauri build             # full desktop build
 ```
 
 ## Glossary

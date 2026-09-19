@@ -5,7 +5,7 @@
 //   PTT:    start() → (recording) → stop()   — mic capture per hotkey session
 
 export type STTEvent =
-  | { type: "state"; state: string; utterance_id?: number }
+  | { type: "state"; state: string; utterance_id?: number; message?: string }
   | { type: "asr_ready"; backend: string }
   | { type: "asr_partial"; text: string }
   | { type: "asr_final"; text: string; latency_ms: number }

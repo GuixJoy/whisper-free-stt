@@ -57,7 +57,7 @@ That's it. Speak — cleaned text appears wherever your cursor is.
 ./stt/build_sidecar.sh
 
 # Build the Tauri app
-cd stt-ui && npm run tauri build
+cd application && npm run tauri build
 ```
 
 ---
@@ -110,7 +110,7 @@ DeepSeek takes priority if both keys are set. OpenRouter supports a fallback mod
 
 ### Local GPU offload
 
-The Rust-native backend prefers GPUs automatically: discrete NVIDIA → AMD → CPU (`stt-ui/src-tauri/src/compute.rs`). The local LLM offloads all layers via the llama.cpp Vulkan backend; ASR stays on CPU (int8 + AVX-512/VNNI is already sub-second per utterance). Overrides: `FLOURE_COMPUTE=cpu|vulkan`, `FLOURE_MAIN_GPU=<index>`.
+The Rust-native backend prefers GPUs automatically: discrete NVIDIA → AMD → CPU (`application/src-tauri/src/compute.rs`). The local LLM offloads all layers via the llama.cpp Vulkan backend; ASR stays on CPU (int8 + AVX-512/VNNI is already sub-second per utterance). Overrides: `FLOURE_COMPUTE=cpu|vulkan`, `FLOURE_MAIN_GPU=<index>`.
 
 GPU build prerequisites (Linux only; Windows/macOS build CPU inference):
 - Vulkan loader + headers (`libvulkan-dev`), a GPU with a Vulkan ICD
@@ -152,7 +152,7 @@ The Tauri v2 + React 19 desktop app provides:
 
 ## Architecture (current)
 
-The pipeline is Rust-native inside the Tauri backend (`stt-ui/src-tauri/src`) —
+The pipeline is Rust-native inside the Tauri backend (`application/src-tauri/src`) —
 no Python sidecar (see `docs/adr/0001-rust-native-backend.md`):
 
 ```

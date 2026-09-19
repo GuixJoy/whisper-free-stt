@@ -95,17 +95,19 @@ impl ModelManager {
 
         for model in MODEL_MANIFEST {
             let model_dir = self.model_dir.join(model.id);
+            // Truth comes from verification, not directory existence: a
+            // partial or poisoned dir (e.g. an old 404 body) must never
+            // display as "Downloaded".
             let downloaded = self.verify(model.id);
-            let (downloaded_flag, size_bytes) = if model_dir.exists() {
-                let total = walk_dir_size(&model_dir).unwrap_or(0);
-                (true, total)
+            let size_bytes = if model_dir.exists() {
+                walk_dir_size(&model_dir).unwrap_or(0)
             } else {
-                (false, 0)
+                0
             };
             statuses.push(ModelStatus {
                 name: model.name.to_string(),
                 id: model.id.to_string(),
-                downloaded: downloaded || downloaded_flag,
+                downloaded,
                 path: model_dir.to_string_lossy().to_string(),
                 size_bytes,
                 url: model.url.to_string(),
@@ -445,17 +447,40 @@ pub async fn download_model(
     // already-on-disk paths.
     if model.is_archive {
         eprintln!("[models] {} archive saved, extracting...", model.id);
-        let tar_bytes = std::fs::read(&resume_file)?;
-        let decompressed = bzip2::read::BzDecoder::new(&tar_bytes[..]);
-        let mut archive = tar::Archive::new(decompressed);
-        archive.unpack(model_dir).map_err(|e| {
-            anyhow::anyhow!("Failed to extract {} archive: {}", model.id, e)
-        })?;
+        // Stream through the decoder (a full-RAM read OOMs on ~600MB
+        // archives). On failure the payload is deleted: a corrupt file
+        // (e.g. an error page saved by an old broken build, then resumed
+        // against the fixed URL) must not latch and fail forever.
+        let extract_ok = (|| -> Result<()> {
+            let file = std::fs::File::open(&resume_file)?;
+            let decompressed =
+                bzip2::read::BzDecoder::new(std::io::BufReader::new(file));
+            let mut archive = tar::Archive::new(decompressed);
+            archive.unpack(model_dir).map_err(|e| {
+                anyhow::anyhow!("Failed to extract {} archive: {}", model.id, e)
+            })?;
+            normalize_extracted(model.backend, model_dir)?;
+            Ok(())
+        })();
+        if extract_ok.is_err() {
+            let _ = std::fs::remove_file(&resume_file);
+        }
+        extract_ok?;
         std::fs::remove_file(&resume_file)?;
-
-        normalize_extracted(model.backend, model_dir)?;
     } else {
         eprintln!("[models] {} file saved -> {}", model.id, resume_file.display());
+    }
+
+    // Never latch success over broken files: the sentinel is written only
+    // if the payload verifies (both callers pass the per-model dir, so the
+    // parent join below resolves back to `model_dir`).
+    if !verify_model(model_dir.parent().unwrap_or(model_dir), model) {
+        let _ = std::fs::remove_file(model_dir.join(".downloaded"));
+        return Err(anyhow::anyhow!(
+            "{} files missing after download in {}",
+            model.id,
+            model_dir.display()
+        ));
     }
 
     std::fs::write(model_dir.join(".downloaded"), b"")?;

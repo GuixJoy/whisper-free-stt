@@ -2,7 +2,6 @@
 mod tests {
     use crate::*;
     use crate::models::walk_dir_size;
-    use crate::widget::{detect_window_manager, WidgetPosition, WindowManagerInfo};
     use rusqlite::Connection;
     use std::path::Path;
 
@@ -71,68 +70,20 @@ mod tests {
 
     #[test]
     fn test_type_text_empty_returns_false() {
-        let result = type_text("".to_string(), None);
+        let result = crate::output::type_text("");
         assert_eq!(result.unwrap(), false);
     }
 
     #[test]
     fn test_type_text_whitespace_returns_false() {
-        let result = type_text("   ".to_string(), None);
+        let result = crate::output::type_text("   ");
         assert_eq!(result.unwrap(), false);
     }
 
     #[test]
     fn test_type_text_tab_returns_false() {
-        let result = type_text("\t".to_string(), None);
+        let result = crate::output::type_text("\t");
         assert_eq!(result.unwrap(), false);
-    }
-
-    // -----------------------------------------------------------------------
-    // get_backend_path
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_get_backend_path_returns_string() {
-        let result = get_backend_path();
-        assert!(result.is_ok());
-        let path = result.unwrap();
-        assert!(!path.is_empty());
-    }
-
-    // -----------------------------------------------------------------------
-    // get_platform_info
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_get_platform_info_has_required_fields() {
-        let info = get_platform_info();
-        assert!(info.get("platform").is_some());
-        assert!(info.get("displayServer").is_some());
-        assert!(info.get("clipboardTool").is_some());
-        assert!(info.get("typingTool").is_some());
-    }
-
-    #[test]
-    fn test_get_platform_info_platform_is_string() {
-        let info = get_platform_info();
-        assert!(info["platform"].is_string());
-    }
-
-    // -----------------------------------------------------------------------
-    // detect_window_manager
-    // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_detect_window_manager_returns_info() {
-        let info = detect_window_manager();
-        assert!(!info.wm.is_empty());
-    }
-
-    #[test]
-    fn test_detect_window_manager_wayland_detection() {
-        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-        let info = detect_window_manager();
-        assert_eq!(info.wayland, is_wayland);
     }
 
     // -----------------------------------------------------------------------
@@ -289,22 +240,6 @@ mod tests {
         assert_eq!(json["name"], "AI Prompts");
     }
 
-    #[test]
-    fn test_widget_position_serializes() {
-        let pos = WidgetPosition { x: 100.0, y: 200.0 };
-        let json = serde_json::to_value(&pos).unwrap();
-        assert_eq!(json["x"], 100.0);
-        assert_eq!(json["y"], 200.0);
-    }
-
-    #[test]
-    fn test_window_manager_info_serializes() {
-        let info = WindowManagerInfo { wm: "sway".to_string(), wayland: true };
-        let json = serde_json::to_value(&info).unwrap();
-        assert_eq!(json["wm"], "sway");
-        assert_eq!(json["wayland"], true);
-    }
-
     // -----------------------------------------------------------------------
     // AppError
     // -----------------------------------------------------------------------
@@ -330,16 +265,6 @@ mod tests {
         let json = serde_json::to_value(&err).unwrap();
         assert!(json.is_string());
         assert!(json.as_str().unwrap().contains("Database error"));
-    }
-
-    // -----------------------------------------------------------------------
-    // win32 module (non-Windows)
-    // -----------------------------------------------------------------------
-
-    #[test]
-    #[cfg(not(target_os = "windows"))]
-    fn test_set_foreground_hwnd_zero_returns_false() {
-        assert!(!set_foreground_hwnd(0));
     }
 
     // -----------------------------------------------------------------------
@@ -729,11 +654,7 @@ mod tests {
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             .plugin(tauri_plugin_opener::init())
             .invoke_handler(tauri::generate_handler![
-                get_backend_path,
-                get_platform_info,
                 check_system_deps,
-                get_foreground_hwnd,
-                type_text,
             ])
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("failed to build mock app")
@@ -777,32 +698,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ipc_get_platform_info() {
-        let app = build_mock_app();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let res = tauri::test::get_ipc_response(&webview, make_invoke_request("get_platform_info"));
-        assert!(res.is_ok(), "get_platform_info failed: {:?}", res.err());
-        let value = parse_ipc_response(res.unwrap());
-        assert!(value.get("platform").is_some());
-        assert!(value.get("displayServer").is_some());
-    }
-
-    #[test]
-    fn test_ipc_get_backend_path() {
-        let app = build_mock_app();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let res = tauri::test::get_ipc_response(&webview, make_invoke_request("get_backend_path"));
-        assert!(res.is_ok(), "get_backend_path failed: {:?}", res.err());
-        let value = parse_ipc_response(res.unwrap());
-        assert!(value.is_string());
-        assert!(!value.as_str().unwrap().is_empty());
-    }
-
-    #[test]
     fn test_ipc_check_system_deps() {
         let app = build_mock_app();
         let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
@@ -818,18 +713,6 @@ mod tests {
             assert!(item.get("name").is_some());
             assert!(item.get("status").is_some());
         }
-    }
-
-    #[test]
-    fn test_ipc_get_foreground_hwnd() {
-        let app = build_mock_app();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let res = tauri::test::get_ipc_response(&webview, make_invoke_request("get_foreground_hwnd"));
-        assert!(res.is_ok(), "get_foreground_hwnd failed: {:?}", res.err());
-        let value = parse_ipc_response(res.unwrap());
-        assert!(value.is_number());
     }
 
     #[test]
@@ -855,33 +738,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_ipc_type_text_empty() {
-        let app = build_mock_app();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let res = tauri::test::get_ipc_response(
-            &webview,
-            make_invoke_request_with_body("type_text", serde_json::json!({"text": ""})),
-        );
-        assert!(res.is_ok(), "type_text empty should succeed: {:?}", res.err());
-        let value = parse_ipc_response(res.unwrap());
-        assert_eq!(value, false);
-    }
-
-    #[test]
-    fn test_ipc_type_text_whitespace() {
-        let app = build_mock_app();
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
-        let res = tauri::test::get_ipc_response(
-            &webview,
-            make_invoke_request_with_body("type_text", serde_json::json!({"text": "   "})),
-        );
-        assert!(res.is_ok(), "type_text whitespace should succeed: {:?}", res.err());
-        let value = parse_ipc_response(res.unwrap());
-        assert_eq!(value, false);
-    }
 }

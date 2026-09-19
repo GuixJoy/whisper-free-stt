@@ -99,6 +99,48 @@ export function useModels() {
     void refreshModels();
   }, [refreshModels]);
 
+  // Live backend download progress (lib.rs emits model_download_progress /
+  // model_download_error). Falls back to status polling when events are
+  // unavailable (e.g. browser dev mode).
+  useEffect(() => {
+    if (!isTauri()) return;
+    const unlistenFns: Array<() => void> = [];
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlistenFns.push(
+          await listen<{ id: string; percent: number; done?: boolean }>(
+            "model_download_progress",
+            (event) => {
+              const { id, percent, done } = event.payload;
+              setModels((prev) =>
+                prev.map((m) =>
+                  m.id === id
+                    ? { ...m, downloading: !done, progress: done ? 100 : percent, error: null }
+                    : m
+                )
+              );
+              if (done) void refreshModels();
+            }
+          ),
+          await listen<{ id: string; error: string }>("model_download_error", (event) => {
+            const { id, error } = event.payload;
+            setModels((prev) =>
+              prev.map((m) =>
+                m.id === id ? { ...m, downloading: false, error } : m
+              )
+            );
+          })
+        );
+      } catch {
+        /* not in Tauri; polling covers status */
+      }
+    })();
+    return () => {
+      unlistenFns.forEach((un) => un());
+    };
+  }, [refreshModels]);
+
   const downloadModel = useCallback(async (modelName: string) => {
     if (!isTauri()) {
       setGlobalError("Model download is only available in the desktop app");

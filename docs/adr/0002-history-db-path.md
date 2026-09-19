@@ -15,7 +15,7 @@ Tests and the legacy Python backend also need to point the DB elsewhere.
   `<data_dir>/history.db`.
 - `STT_DATA_DIR` env var overrides the data dir (shared with the Python
   backend convention).
-- `history_db_path()` in `stt-ui/src-tauri/src/config.rs` is the single
+- `history_db_path()` in `application/src-tauri/src/config.rs` is the single
   source of truth for the path.
 - One-time forward migration: if the canonical DB is missing, no override
   is set, and the legacy `~/.local/share/stt/history.db` exists, it is
