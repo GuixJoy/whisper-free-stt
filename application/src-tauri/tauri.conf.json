@@ -26,15 +26,16 @@
         "label": "widget",
         "title": "",
         "url": "/index.html?window=widget",
-        "width": 210,
-        "height": 56,
+        "width": 264,
+        "height": 64,
         "decorations": false,
         "resizable": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": false,
         "transparent": true,
-        "shadow": false
+        "shadow": false,
+        "focus": false
       }
     ],
     "security": {

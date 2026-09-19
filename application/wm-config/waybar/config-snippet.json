@@ -1,0 +1,11 @@
+{
+  "custom/floure": {
+    "exec": "$HOME/.config/waybar/scripts/floure-waybar.sh",
+    "interval": 2,
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "$HOME/.config/waybar/scripts/floure-waybar.sh toggle",
+    "on-click-right": "$HOME/.config/waybar/scripts/floure-waybar.sh show",
+    "tooltip": true
+  }
+}

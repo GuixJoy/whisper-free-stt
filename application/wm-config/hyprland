@@ -1,4 +1,4 @@
-# STT Widget — Hyprland Configuration
+# Floure widget — Hyprland Configuration
 # Add these lines to your ~/.config/hypr/hyprland.conf
 
 # Float, pin (always on top), and disable animation for the widget
@@ -6,4 +6,8 @@
 windowrulev2 = float, class:^(stt-ui)$
 windowrulev2 = pin, class:^(stt-ui)$
 windowrulev2 = noanim, class:^(stt-ui)$
-windowrulev2 = size 220 56, class:^(stt-ui)$
+windowrulev2 = size 264 64, class:^(stt-ui)$
+
+# Dictation hotkey (needs Floure running — see ../waybar/README.md).
+# Shares the toggle script with the Waybar module so click and key never desync.
+bind = $mainMod, SPACE, exec, ~/.config/waybar/scripts/floure-waybar.sh toggle

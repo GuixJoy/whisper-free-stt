@@ -1,0 +1,15 @@
+/* Floure Waybar module — paste into ~/.config/waybar/style.css */
+#custom-floure {
+  padding: 0 10px;
+  border-radius: 8px;
+}
+#custom-floure.idle {
+  color: #76716b;
+}
+#custom-floure.recording {
+  color: #ff3b56;
+  font-weight: bold;
+}
+#custom-floure.error {
+  color: #ef4444;
+}

@@ -29,6 +29,33 @@ export default function Waveform({
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const drawStatic = () => {
+      ctx.clearRect(0, 0, width, height);
+      const bars = barsRef.current;
+      const barWidth = width / bars.length - 2;
+      for (let i = 0; i < bars.length; i++) {
+        const barHeight = 3;
+        const x = i * (barWidth + 2);
+        const y = (height - barHeight) / 2;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.roundRect(x, y, barWidth, barHeight, 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    if (reducedMotion) {
+      drawStatic();
+      return;
+    }
+
     const unsubscribe = micLevelEmitter.subscribe((level: number) => {
       // Update bars with smoothing
       const bars = barsRef.current;
@@ -70,6 +97,7 @@ export default function Waveform({
       ref={canvasRef}
       style={{ width, height }}
       className="rounded"
+      aria-hidden="true"
     />
   );
 }

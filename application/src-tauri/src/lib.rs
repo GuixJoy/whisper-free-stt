@@ -1,6 +1,7 @@
 mod audio;
 mod compute;
 mod config;
+mod control;
 mod llm;
 mod models;
 mod output;
@@ -1160,6 +1161,10 @@ pub fn run() {
             widget::toggle_widget
         ])
         .setup(|app| {
+            // --- Local control channel (Waybar, compositor hotkeys) ---
+            // Loopback-only; bind failures are non-fatal (logged in control.rs).
+            control::start_control_server(app.handle().clone());
+
             // --- System tray with start/stop menu ---
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
@@ -1229,22 +1234,11 @@ pub fn run() {
                 });
             }
 
-            // --- Wayland: re-show widget when it loses focus (alwaysOnTop not supported) ---
-            let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-            if is_wayland {
-                if let Some(widget) = app.get_webview_window("widget") {
-                    let widget_clone = widget.clone();
-                    widget.on_window_event(move |event| {
-                        if let tauri::WindowEvent::Focused(focused) = event {
-                            if !focused {
-                                // Widget lost focus — re-show to keep it visible on Wayland
-                                // (compositors don't respect alwaysOnTop on Wayland)
-                                let _ = widget_clone.show();
-                            }
-                        }
-                    });
-                }
-            }
+            // NOTE (Wayland): compositors ignore alwaysOnTop. The previous
+            // re-show-on-blur workaround stole focus in a loop, so it was
+            // removed. On sway/hyprland, pin the widget with a WM rule, e.g.:
+            //   sway: for_window [app_id="floure"] floating enable, sticky enable
+            //   hypr: windowrulev2 = float, title:(floure)
 
             Ok(())
         })

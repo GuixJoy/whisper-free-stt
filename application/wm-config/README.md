@@ -26,8 +26,21 @@ Add to `~/.config/hypr/hyprland.conf`:
 windowrulev2 = float, class:^(stt-ui)$
 windowrulev2 = pin, class:^(stt-ui)$
 windowrulev2 = noanim, class:^(stt-ui)$
-windowrulev2 = size 220 56, class:^(stt-ui)$
+windowrulev2 = size 264 64, class:^(stt-ui)$
 ```
+
+### Hyprland hotkey + Waybar (dictation)
+
+The floating widget is optional on tiling WMs — the native path is a Waybar
+module plus a compositor hotkey sharing one toggle script. See
+[`waybar/README.md`](waybar/README.md) for install steps. Summary:
+
+```
+bind = $mainMod, SPACE, exec, ~/.config/waybar/scripts/floure-waybar.sh toggle
+```
+
+Waybar itself never sees keys; Hyprland owns `Super+Space`, and click and key
+hit the same local endpoint so they can't desync.
 
 ### i3 (X11)
 

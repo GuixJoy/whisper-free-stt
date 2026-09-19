@@ -351,6 +351,24 @@ function FeedView({
     };
   }, []);
 
+  // ponytail: O(n) memo + 100-row render cap instead of virtualized list;
+  // upgrade to react-window/virtualizer when feed routinely exceeds ~500 rows.
+  const reversedLines = useMemo(() => [...lines].reverse().slice(0, 100), [lines]);
+  const visibleHistory = useMemo(() => {
+    const liveTexts = new Set(lines.map((l) => l.processed || l.raw));
+    const liveTimes = lines.map((l) => new Date(l.createdAt).getTime());
+    return historyItems
+      .filter((item) => {
+        const text = item.processed || item.raw;
+        if (!liveTexts.has(text)) return true;
+        const t = new Date(
+          item.createdAt + (item.createdAt.includes("Z") ? "" : "Z"),
+        ).getTime();
+        return !liveTimes.some((lt) => Math.abs(lt - t) < 5000);
+      })
+      .slice(0, 100);
+  }, [lines, historyItems]);
+
   return (
     <div className="flex h-full">
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
@@ -361,7 +379,7 @@ function FeedView({
             connected={connected}
             onToggle={handleToggle}
           />
-          <p className="text-[13px] text-text-muted">
+          <p className="text-[13px] text-text-muted" role="status" aria-live="polite">
             {statusLabel} &middot; {lines.length} lines
           </p>
           <ModelBadge profile={asrProfile} resolvedModel={resolvedModel} />
@@ -384,14 +402,14 @@ function FeedView({
           )}
           <div className="flex items-center gap-2">
             <button
-              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               onClick={() => void copyLatest()}
               disabled={lines.length === 0}
             >
               Copy
             </button>
             <button
-              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
+              className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
               onClick={clearLines}
               disabled={lines.length === 0}
             >
@@ -399,7 +417,7 @@ function FeedView({
             </button>
             {errors.filter((e) => !e.dismissed).length > 0 && (
               <button
-                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors"
+                className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                 onClick={() => setShowErrors((s) => !s)}
               >
                 Errors ({errors.filter((e) => !e.dismissed).length})
@@ -418,8 +436,14 @@ function FeedView({
             <LiveFeedMicMeter />
             {connected && <Waveform width={120} height={24} barCount={16} />}
             <div className="flex items-center gap-2 text-[12px]">
-              <span className={connected ? "text-green-400" : "text-text-muted"}>
-                {connected ? "● Live" : "○ Idle"}
+              <span className="inline-flex items-center gap-1.5" role="status" aria-label={connected ? "Live" : "Idle"}>
+                <span
+                  aria-hidden="true"
+                  className={connected ? "h-2 w-2 rounded-full bg-success" : "h-2 w-2 rounded-full border border-text-muted bg-transparent"}
+                />
+                <span className={connected ? "text-success font-medium" : "text-text-muted"}>
+                  {connected ? "Live" : "Idle"}
+                </span>
               </span>
               <span className="text-text-muted">{lines.length + historyItems.length} lines</span>
             </div>
@@ -431,10 +455,17 @@ function FeedView({
           </div>
 
           {/* Transcript Lines */}
-          <div className="flex-1 overflow-auto" ref={feedRef} onScroll={onFeedScroll}>
+          <div
+            className="flex-1 overflow-auto"
+            ref={feedRef}
+            onScroll={onFeedScroll}
+            role="log"
+            aria-live="polite"
+            aria-label="Transcription feed"
+          >
             {lines.length === 0 && historyItems.length === 0 && !historyLoading ? (
               <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <Mic size={72} strokeWidth={1} className="text-accent/40 mb-4" />
+                <Mic size={72} strokeWidth={1} className="text-accent/40 mb-4" aria-hidden="true" />
                 <p className="text-text-primary text-[15px] mb-1">Start speaking to begin transcription</p>
                 <p className="text-text-muted text-[13px]">
                   Press <kbd className="px-1.5 py-0.5 bg-border border border-border-hover rounded text-text-muted text-[11px]">Space</kbd> to start or stop
@@ -442,50 +473,50 @@ function FeedView({
               </div>
             ) : (
               <>
-                {[...lines].reverse().map((line) => (
+                {reversedLines.map((line) => (
                   <div
                     key={`live-${line.id}`}
                     className="group flex items-center justify-between px-4 hover:bg-border transition-colors"
                     style={{ paddingTop: "16px", paddingBottom: "16px" }}
                   >
-                    <div className="flex items-baseline gap-3 min-w-0">
+                    <div className="flex items-baseline gap-3 min-w-0 flex-1">
                       <span className="text-[13px] text-text-muted shrink-0 w-[80px]">
                         {new Date(line.createdAt).toLocaleTimeString()}
                       </span>
-                      <span className="text-[16px] leading-[1.7] text-text-primary truncate">
+                      <span className="text-[16px] leading-[1.7] text-text-primary whitespace-pre-wrap break-words min-w-0 flex-1">
                         {line.processed || line.raw}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                       <button
-                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors rounded px-1 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                         onClick={() => void copyLine(line)}
+                        aria-label={`Copy line: ${(line.processed || line.raw).slice(0, 60)}`}
                       >
                         Copy
                       </button>
                     </div>
                   </div>
                 ))}
-                {historyItems
-                  .filter((item) => !lines.some((l) => (l.processed || l.raw) === (item.processed || item.raw) && Math.abs(new Date(l.createdAt).getTime() - new Date(item.createdAt + (item.createdAt.includes("Z") ? "" : "Z")).getTime()) < 5000))
-                  .map((item) => (
+                {visibleHistory.map((item) => (
                   <div
                     key={`hist-${item.id}`}
                     className="group flex items-center justify-between px-4 hover:bg-border transition-colors border-t border-border"
                     style={{ paddingTop: "16px", paddingBottom: "16px" }}
                   >
-                    <div className="flex items-baseline gap-3 min-w-0">
+                    <div className="flex items-baseline gap-3 min-w-0 flex-1">
                       <span className="text-[13px] text-text-muted shrink-0 w-[140px]">
                         {formatTimestamp(item.createdAt)}
                       </span>
-                      <span className="text-[16px] leading-[1.7] text-text-primary/70 whitespace-pre-wrap break-words">
+                      <span className="text-[16px] leading-[1.7] text-text-primary/70 whitespace-pre-wrap break-words min-w-0 flex-1">
                         {item.processed || item.raw}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-2 shrink-0 ml-3 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                       <button
-                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors"
+                        className="text-[14px] text-text-muted hover:text-text-primary transition-colors rounded px-1 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
                         onClick={() => void copyLine(item)}
+                        aria-label={`Copy line: ${(item.processed || item.raw).slice(0, 60)}`}
                       >
                         Copy
                       </button>
@@ -493,8 +524,14 @@ function FeedView({
                   </div>
                 ))}
                 {historyLoading && (
-                  <div className="flex items-center justify-center py-6 text-[13px] text-text-muted">
-                    Loading history...
+                  <div className="flex flex-col gap-2 px-4 py-4" role="status" aria-label="Loading history">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="flex items-baseline gap-3 animate-pulse" aria-hidden="true">
+                        <div className="h-3 w-[80px] rounded bg-app-surface-secondary shrink-0" />
+                        <div className="h-4 flex-1 rounded bg-app-surface-secondary" />
+                      </div>
+                    ))}
+                    <span className="sr-only">Loading history…</span>
                   </div>
                 )}
                 {!hasMoreHistory && historyItems.length > 0 && (
@@ -908,6 +945,8 @@ function App() {
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
+  const statusRef = useRef(status);
+  const lastWidgetMicEmit = useRef(0);
   const isStartingRef = useRef(false);
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
@@ -916,6 +955,7 @@ function App() {
 
 
   connectedRef.current = connected;
+  statusRef.current = status;
   const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
   useEffect(() => {
@@ -1090,10 +1130,20 @@ function App() {
     setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
   }, []);
 
+  // Flags whose following value is a secret: masked in displayed previews.
+  const SECRET_FLAGS = useMemo(
+    () => new Set(["--deepseek-api-key", "--openrouter-api-key"]),
+    []
+  );
+  const maskSecrets = useCallback(
+    (args: string[]) => args.map((a, i) => (SECRET_FLAGS.has(args[i - 1] ?? "") ? "****" : a)),
+    [SECRET_FLAGS]
+  );
+
   const commandPreview = useMemo(() => {
     if (mode === "ws") return buildWsCommand(settings);
-    return `stt ${buildCliArgs(settings).join(" ")}`;
-  }, [mode, settings]);
+    return `stt ${maskSecrets(buildCliArgs(settings)).join(" ")}`;
+  }, [mode, settings, maskSecrets]);
 
   const applyEvent = (event: STTEvent) => {
     if (event.type === "state") {
@@ -1105,12 +1155,18 @@ function App() {
     }
     if (event.type === "mic") {
       micLevelEmitter.emit(event.level);
-      (async () => {
-        try {
-          const { emit } = await import("@tauri-apps/api/event");
-          await emit("widget-mic-level", event.level);
-        } catch { /* not in Tauri */ }
-      })();
+      // ponytail: throttle Tauri bridge to ~15fps; full-rate stays local via micLevelEmitter.
+      const now = Date.now();
+      if (now - lastWidgetMicEmit.current >= 66) {
+        lastWidgetMicEmit.current = now;
+        const level = event.level;
+        (async () => {
+          try {
+            const { emit } = await import("@tauri-apps/api/event");
+            await emit("widget-mic-level", level);
+          } catch { /* not in Tauri */ }
+        })();
+      }
       return;
     }
     if (event.type === "asr_ready") {
@@ -1227,9 +1283,10 @@ function App() {
   useEffect(() => {
     let unlistenToggle: (() => void) | undefined;
     let unlistenShowMain: (() => void) | undefined;
+    let unlistenReady: (() => void) | undefined;
     (async () => {
       try {
-        const { listen } = await import("@tauri-apps/api/event");
+        const { listen, emit } = await import("@tauri-apps/api/event");
         unlistenToggle = await listen("widget-toggle", () => {
           if (connectedRef.current) stopRef.current();
           else startRef.current(undefined, "Widget");
@@ -1243,9 +1300,15 @@ function App() {
             await win.setFocus();
           } catch { /* not in Tauri */ }
         });
+        // Widget opened late misses earlier status broadcasts — resend on handshake.
+        unlistenReady = await listen("widget-ready", async () => {
+          try {
+            await emit("widget-status", statusRef.current);
+          } catch { /* not in Tauri */ }
+        });
       } catch { /* not in Tauri */ }
     })();
-    return () => { unlistenToggle?.(); unlistenShowMain?.(); };
+    return () => { unlistenToggle?.(); unlistenShowMain?.(); unlistenReady?.(); };
   }, []);
 
   useEffect(() => {
@@ -1422,7 +1485,7 @@ function App() {
       </AppShell>
 
       {toast && (
-        <div role="status" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-app-surface border border-border rounded-card text-[14px] text-text-primary shadow-lg animate-toast-in">
+        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-app-surface border border-border rounded-card text-[14px] text-text-primary shadow-lg animate-toast-in">
           {toast}
         </div>
       )}

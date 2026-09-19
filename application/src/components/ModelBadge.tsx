@@ -1,13 +1,16 @@
 import { Cpu, Zap, Gauge, Target, Rocket, Sparkles } from "lucide-react";
 
 const PROFILE_INFO: Record<string, { label: string; model: string; icon: React.ReactNode; color: string }> = {
-  auto:     { label: "Auto",      model: "Auto-select",       icon: <Sparkles size={10} />, color: "text-text-muted" },
-  speed:    { label: "Speed",     model: "tiny.en",           icon: <Zap size={10} />,      color: "text-green-500" },
-  balanced: { label: "Balanced",  model: "base.en",           icon: <Gauge size={10} />,     color: "text-blue-500" },
-  accuracy: { label: "Accuracy",  model: "small.en",          icon: <Target size={10} />,    color: "text-purple-500" },
-  "small-cuda": { label: "Small", model: "small.en · CUDA",  icon: <Cpu size={10} />,       color: "text-cyan-500" },
-  distil:   { label: "Distil",    model: "distil-large-v3",   icon: <Rocket size={10} />,    color: "text-accent" },
-  turbo:    { label: "Turbo",     model: "large-v3-turbo",    icon: <Rocket size={10} />,    color: "text-orange-500" },
+  auto:     { label: "Auto",      model: "Auto-select",       icon: <Sparkles size={12} />, color: "text-text-muted" },
+  parakeet: { label: "Parakeet",  model: "Parakeet TDT",      icon: <Zap size={12} />,      color: "text-success" },
+  "whisper-turbo": { label: "Turbo", model: "large-v3-turbo", icon: <Rocket size={12} />,   color: "text-orange-600" },
+  "whisper-base":  { label: "Base",  model: "base",           icon: <Gauge size={12} />,    color: "text-blue-600" },
+  speed:    { label: "Speed",     model: "tiny.en",           icon: <Zap size={12} />,      color: "text-green-500" },
+  balanced: { label: "Balanced",  model: "base.en",           icon: <Gauge size={12} />,     color: "text-blue-500" },
+  accuracy: { label: "Accuracy",  model: "small.en",          icon: <Target size={12} />,    color: "text-purple-500" },
+  "small-cuda": { label: "Small", model: "small.en · CUDA",  icon: <Cpu size={12} />,       color: "text-cyan-500" },
+  distil:   { label: "Distil",    model: "distil-large-v3",   icon: <Rocket size={12} />,    color: "text-accent" },
+  turbo:    { label: "Turbo",     model: "large-v3-turbo",    icon: <Rocket size={12} />,    color: "text-orange-500" },
 };
 
 interface ModelBadgeProps {
@@ -24,16 +27,16 @@ export default function ModelBadge({ profile, resolvedModel }: ModelBadgeProps) 
 
   return (
     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/60 border border-[rgba(44,37,32,0.06)] backdrop-blur-sm">
-      <span className={info.color}>{info.icon}</span>
-      <span className="text-[11px] font-semibold text-text-primary tracking-wide uppercase">
+      <span className={info.color} aria-hidden="true">{info.icon}</span>
+      <span className="text-[12px] font-semibold text-text-primary tracking-wide uppercase">
         {resolvedModel ? (PROFILE_INFO[resolvedProfile]?.label ?? resolvedProfile) : info.label}
       </span>
-      <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" />
-      <span className="text-[11px] text-text-muted font-medium">{displayName}</span>
+      <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
+      <span className="text-[12px] text-text-muted font-medium">{displayName}</span>
       {resolvedModel && (
         <>
-          <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" />
-          <span className="text-[11px] text-text-muted font-medium">{deviceLabel}</span>
+          <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
+          <span className="text-[12px] text-text-muted font-medium">{deviceLabel}</span>
         </>
       )}
     </div>
