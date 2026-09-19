@@ -199,6 +199,16 @@ struct DownloadGuard {
     key: PathBuf,
 }
 
+/// True while a fetch for this target dir runs in this process. Lets
+/// callers fail fast with "still downloading" instead of spawning a
+/// second writer that `download_model` would only reject.
+pub(crate) fn is_downloading(target_dir: &Path) -> bool {
+    active_downloads()
+        .lock()
+        .map(|active| active.contains(target_dir))
+        .unwrap_or(false)
+}
+
 impl Drop for DownloadGuard {
     fn drop(&mut self) {
         if let Ok(mut active) = active_downloads().lock() {

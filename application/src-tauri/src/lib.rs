@@ -906,6 +906,11 @@ fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
 #[tauri::command]
 async fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
     let config = AppConfig::load();
+    // Double-click while a fetch runs: the progress bar is already moving,
+    // stay silent instead of erroring.
+    if crate::models::is_downloading(&config.model_dir.join(&id)) {
+        return Ok(());
+    }
     let manager = ModelManager::new(config.model_dir);
     tauri::async_runtime::spawn(async move {
         let emit_progress = |percent: usize, bytes: u64| {

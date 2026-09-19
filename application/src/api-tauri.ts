@@ -25,10 +25,17 @@ export function createTauriApi(_cliArgs?: string[]): STTApi {
     for (const cb of listeners) cb(e);
   };
 
-  const fail = (message: string, e: unknown) => {
+  const fail = (message: string, e?: unknown) => {
     currentStatus = "error";
-    const detail = e instanceof Error ? e.message : typeof e === "string" ? e : JSON.stringify(e ?? "");
-    const fullMessage = detail ? `${message}: ${detail}` : message;
+    const detail =
+      e == null || e === ""
+        ? ""
+        : e instanceof Error
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : JSON.stringify(e);
+    const fullMessage = detail && detail !== message ? `${message}: ${detail}` : message;
     console.error(fullMessage, e);
     emit({ type: "state", state: currentStatus, message: fullMessage });
   };
@@ -83,8 +90,9 @@ export function createTauriApi(_cliArgs?: string[]): STTApi {
       for (const eventName of events) {
         const unlisten = await listen<TauriPayload>(eventName, (event) => {
           if (eventName === "asr_error") {
-            console.error("[asr_error]", event.payload?.error ?? event.payload);
-            fail(event.payload?.error ?? "Unknown ASR error", event.payload);
+            const msg = event.payload?.error ?? "Unknown ASR error";
+            console.error("[asr_error]", msg);
+            fail(msg);
             return;
           }
           handleEvent(eventName, event.payload ?? {});

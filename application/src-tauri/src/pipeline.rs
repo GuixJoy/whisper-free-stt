@@ -197,6 +197,13 @@ impl PipelineController {
         );
         if !verify_model(&model_dir, asr_manifest) {
             let asr_dir = config.asr_profile.model_dir(&model_dir);
+            // A fetch already running (earlier PTT press, Models-page
+            // button) owns the resume file — don't spawn a second writer
+            // that download_model would only reject.
+            if crate::models::is_downloading(&asr_dir) {
+                running.store(false, Ordering::SeqCst);
+                return Err(anyhow::anyhow!("ASR model {} still downloading in background — retry when the Models page shows 100%", asr_model_id));
+            }
             std::fs::create_dir_all(&asr_dir)?;
             eprintln!("[pipeline] ASR model {} missing, downloading in background to {}", asr_model_id, asr_dir.display());
             // Never block the Tauri command on a ~500MB download (it hangs

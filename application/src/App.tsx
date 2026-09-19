@@ -326,6 +326,31 @@ function FeedView({
     }
   })();
 
+  // Global model-download progress (pipeline lazy-downloads + Models page).
+  // A persistent pill under the model badge — the download outlives toasts.
+  const [download, setDownload] = useState<{ id: string; percent: number } | null>(null);
+  useEffect(() => {
+    let unlistenFns: Array<() => void> = [];
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlistenFns.push(
+          await listen<{ id: string; percent: number; done?: boolean }>(
+            "model_download_progress",
+            (event) => {
+              if (event.payload.done) setDownload(null);
+              else setDownload({ id: event.payload.id, percent: event.payload.percent });
+            }
+          ),
+          await listen("model_download_error", () => setDownload(null))
+        );
+      } catch { /* not in Tauri */ }
+    })();
+    return () => {
+      unlistenFns.forEach((un) => un());
+    };
+  }, []);
+
   return (
     <div className="flex h-full">
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
@@ -340,6 +365,23 @@ function FeedView({
             {statusLabel} &middot; {lines.length} lines
           </p>
           <ModelBadge profile={asrProfile} resolvedModel={resolvedModel} />
+          {download && (
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 border border-[rgba(44,37,32,0.06)]"
+              role="status"
+              aria-label={`Downloading ${download.id}`}
+            >
+              <span className="text-[11px] font-medium text-text-muted">
+                Downloading {download.id}… {download.percent}%
+              </span>
+              <div className="w-24 h-1.5 rounded-full bg-app-surface-secondary overflow-hidden">
+                <div
+                  className="h-full bg-accent rounded-full transition-[width] duration-150"
+                  style={{ width: `${Math.min(100, download.percent)}%` }}
+                />
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <button
               className="inline-flex items-center gap-2 h-[36px] px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-40"
