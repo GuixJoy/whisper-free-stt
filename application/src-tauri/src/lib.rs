@@ -946,10 +946,28 @@ async fn set_floure_config(config: AppConfig) -> Result<(), String> {
 #[tauri::command]
 fn delete_model_file(path: String) -> Result<(), AppError> {
     let p = std::path::Path::new(&path);
+    if !p.exists() {
+        return Ok(());
+    }
+    // Confine deletion to the models dir: the path arrives over IPC and
+    // must never resolve outside it (symlinks included — hence canonicalize).
+    let root = AppConfig::load()
+        .model_dir
+        .canonicalize()
+        .map_err(AppError::Io)?;
+    let p = std::path::Path::new(&path)
+        .canonicalize()
+        .map_err(AppError::Io)?;
+    if !p.starts_with(&root) {
+        return Err(AppError::Io(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "refusing to delete outside the models directory",
+        )));
+    }
     if p.is_dir() {
-        std::fs::remove_dir_all(p).map_err(AppError::Io)?;
+        std::fs::remove_dir_all(&p).map_err(AppError::Io)?;
     } else if p.is_file() {
-        std::fs::remove_file(p).map_err(AppError::Io)?;
+        std::fs::remove_file(&p).map_err(AppError::Io)?;
     }
     Ok(())
 }

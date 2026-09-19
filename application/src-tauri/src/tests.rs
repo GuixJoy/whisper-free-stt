@@ -548,6 +548,19 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn test_delete_model_file_refuses_outside_models_dir() {
+        // A file that exists but lives outside the models dir must be
+        // refused — never deleted. Uses the real temp dir, which is outside
+        // any models dir regardless of STT_DATA_DIR churn from other tests.
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim.txt");
+        std::fs::write(&victim, "do not delete").unwrap();
+        let result = delete_model_file(victim.to_string_lossy().to_string());
+        assert!(result.is_err());
+        assert!(victim.exists(), "outside file must survive");
+    }
+
     // -----------------------------------------------------------------------
     // Percentage calculations
     // -----------------------------------------------------------------------
