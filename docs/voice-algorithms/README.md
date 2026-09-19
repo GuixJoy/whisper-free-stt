@@ -24,7 +24,7 @@ voice-algorithms/
 │   ├── diarization-algorithms.md          # Speaker diarization survey
 │   └── implementation-plan-v0.2.md        # Phased implementation plan
 └── papers/
-    └── citations.md                       # 74 verified entries (surveys + 2026 sweep: transducers, LLM cleanup)
+    └── citations.md                       # 88 verified entries (surveys + 2026 sweeps: transducers, LLM cleanup, gating, biasing, beam cost)
 ```
 
 ## Quick Reference
@@ -39,7 +39,7 @@ voice-algorithms/
 | Our VAD | `adaptive-vad/universal-algorithm.md` | IMCRA + Dual-EMA + Hysteresis (implemented) |
 | Speaker Diarization | `diarization/diarization-algorithms.md` | ECAPA-TDNN, pyannote, AHC, VBx, UIS-RNN |
 | LLM Cleanup | `papers/citations.md` §74 | ClozeGER, uncertainty gating, RLLM-CF |
-| Citations | `papers/citations.md` | 74 entries with verified links |
+| Citations | `papers/citations.md` | 88 entries with verified links |
 
 ## Implemented vs Planned
 

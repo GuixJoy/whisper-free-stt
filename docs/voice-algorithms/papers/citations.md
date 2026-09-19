@@ -142,3 +142,32 @@ All citations verified against actual papers and source code.
 | 72 | ASR Error Correction using Large Language Models (N-best constrained decoding, cross-system generalization, transducer + AED) | Ma, Qian, Gales, Knill (Cambridge) | 2024 | https://arxiv.org/abs/2409.09554 |
 | 73 | Listen Again and Choose the Right Answer / ClozeGER (cloze-test reformulation + speech input; breakthrough over vanilla GER on 9 datasets) | Hu, Chen, Qin, Zhu, Chng, Li | 2024 | 10.18653/v1/2024.findings-acl.37, Findings of ACL 2024 |
 | 74 | Fewer Hallucinations, More Verification / RLLM-CF (pre-detection + CoT subtasks + verification; no fine-tuning, no N-best; 9–21% relative cuts) | Fang et al. | 2025 | Accepted ASRU, https://arxiv.org/abs/2505.24347 |
+
+### Confidence Gating — Selective Cleanup (spike evidence)
+
+| # | Paper | Authors | Year | Verified Link |
+|---|-------|---------|------|---------------|
+| 75 | Towards Interfacing LLMs with ASR Using Confidence Measures and Prompting (gated GPT correction on LibriSpeech: Tiny 8.13→5.65, Medium 4.27→3.42; Large-v3 2.78→3.21 — correction hurts strong models, gating required) | Naderi et al. (Idiap) | 2024 | https://publications.idiap.ch/attachments/papers/2024/Naderi_INTERSPEECH_2024.pdf, Interspeech 2024 |
+| 76 | An Evaluation of Word-Level Confidence Estimation for E2E ASR (logprob + sum aggregation is the strong baseline; sum/min beat average; temperature scaling helps) | Oneata, Caranica, Stan, Cucu | 2021 | https://arxiv.org/abs/2101.05525, SLT 2021 |
+| 77 | Learning Word-Level Confidence for Subword E2E ASR (confidence-gated model selection: 87% stays on-device at equal WER; rare-word set 17.9→9.6) | Qiu et al. (Google) | 2021 | https://arxiv.org/abs/2103.06716, ICASSP 2021 |
+| 78 | Multi-Task Learning for E2E ASR Word and Utterance Confidence with Deletion Prediction (utterance-confidence rescoring cuts WER 3–5% relative) | Qiu et al. (Google) | 2021 | https://arxiv.org/abs/2104.12870, Interspeech 2021 |
+| 79 | Leveraging Beam Search Information for Confidence Estimation in E2E ASR / SR-CEM (beam scores calibrate; greedy scores weaker — our gate signal is the weak kind, fine for skip/keep) | Jia, Van hamme (KU Leuven) | 2026 | https://arxiv.org/abs/2607.29299, IEEE OJSP / ICASSP 2026 |
+
+### Contextual Biasing — Hotword Phase (spike evidence)
+
+| # | Paper | Authors | Year | Verified Link |
+|---|-------|---------|------|---------------|
+| 80 | Contextualized Streaming E2E ASR with Trie-Based Deep Biasing and Shallow Fusion (34.5% WER gain over baseline; B-WER −38.5% combined; degrades with list size) | Le et al. (Meta) | 2021 | https://arxiv.org/abs/2104.02194, Interspeech 2021 |
+| 81 | Robust Acoustic and Semantic Contextual Biasing in Neural Transducers (tail utterances +36.8% / +23.4% relative on rare words) | Fu et al. | 2023 | https://arxiv.org/abs/2305.05271, ICASSP 2023 |
+| 82 | Contextualized E2E ASR with Contextual Phrase Prediction Network (12.1% overall WER gain; B-WER −40.5% at list 100 + filtering fixes large-list U-WER) | K. Huang et al. | 2023 | https://arxiv.org/abs/2305.12493, Interspeech 2023 |
+| 83 | Improving Large-Scale Deep Biasing with Phoneme + Text-only Data in Streaming Transducer (B-WER −38–41% relative; SOTA rare-word accuracy) | J. Qiu et al. | 2023 | https://arxiv.org/abs/2311.08966, ASRU 2023 |
+| 84 | Improving Neural Biasing by Early Context Injection and Text Perturbation (B-WER −60% vs none, −25% vs shallow fusion; shallow fusion alone ≈−50%) | R. Huang, Yarmohammadi, Khudanpur, Povey | 2024 | https://arxiv.org/abs/2407.10303, Interspeech 2024 |
+| 85 | Contextualized ASR with Attention-Based Bias Phrase Boosted Beam Search (BPB beam search lifts B-WER at minimal overall-WER cost) | Sudo et al. | 2024 | https://arxiv.org/abs/2401.10449, ICASSP 2024 |
+
+### Beam Search Cost — Prices the Decode Switch
+
+| # | Paper | Authors | Year | Verified Link |
+|---|-------|---------|------|---------------|
+| 86 | RNN-T for Latency Controlled ASR with Improved Beam Search (pruned beams +22% throughput at negligible WER cost; max_active_paths is the knob) | Jain et al. (Meta) | 2019 | https://arxiv.org/abs/1911.01629 |
+| 87 | A Token-Wise Beam Search Algorithm for RNN-T (20–96% speedups; +11% relative oracle WER) | Keren | 2023 | https://arxiv.org/abs/2302.14357, ASRU 2023 |
+| 88 | Pushing the Limits of Beam Search Decoding for Transducer ASR / ALSD++ (naive beam 5–10× slower than greedy; accelerated 10–20% gap with 14–30% WER gains; open in NeMo) | Grigoryan et al. (NVIDIA) | 2025 | https://arxiv.org/abs/2506.00185, Interspeech 2025 |
