@@ -30,7 +30,7 @@ interface RuntimeSettings {
 }
 
 // ── Mirror implementations from App.tsx ───────────────────────────────────
-// These must stay in sync with the definitions in stt-ui/src/App.tsx.
+// These must stay in sync with the definitions in application/src/App.tsx.
 
 function buildCliArgs(settings: RuntimeSettings): string[] {
   const args: string[] = ["--json-mode", "--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];

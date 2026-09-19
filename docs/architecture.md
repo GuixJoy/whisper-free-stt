@@ -301,7 +301,7 @@ Registered in `lib.rs`:
 
 | Layer | Framework | Command | Count |
 |---|---|---|---|
-| Rust unit/integration | `cargo test` | `cd stt-ui/src-tauri && cargo test -- --test-threads=1` | 59 |
+| Rust unit/integration | `cargo test` | `cd application/src-tauri && cargo test -- --test-threads=1` | 59 |
 | TypeScript unit | vitest | `npx vitest run` | 67 |
 | Python unit | pytest | `uv run python -m pytest` | TBD |
 | E2E | Playwright + tauri-driver | `scripts/e2e-test.sh` | TBD |

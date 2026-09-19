@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stt-ui
+        working-directory: application
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: stt-ui/pnpm-lock.yaml
+          cache-dependency-path: application/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
       - run: pnpm run format:check
@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stt-ui
+        working-directory: application
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -45,7 +45,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: stt-ui/pnpm-lock.yaml
+          cache-dependency-path: application/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test
 
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stt-ui
+        working-directory: application
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -64,7 +64,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: stt-ui/pnpm-lock.yaml
+          cache-dependency-path: application/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
@@ -73,13 +73,13 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: stt-ui/src-tauri
+        working-directory: application/src-tauri
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: stt-ui/src-tauri
+          workspaces: application/src-tauri
       - name: Install Vulkan build deps (Linux)
         run: |
           sudo apt-get update

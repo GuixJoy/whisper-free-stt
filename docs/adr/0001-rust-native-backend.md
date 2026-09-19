@@ -13,7 +13,7 @@ slow startup, and painful packaging (see `stt/build_sidecar.sh` era).
 ## Decision
 
 Move the whole pipeline into the Tauri Rust backend
-(`stt-ui/src-tauri/src`): `cpal` audio capture, Silero VAD, Parakeet /
+(`application/src-tauri/src`): `cpal` audio capture, Silero VAD, Parakeet /
 Whisper via `sherpa-onnx`, local Gemma 3 via `llama.cpp`, DeepSeek /
 OpenRouter for cloud cleanup. The JSON-over-stdout protocol is replaced
 by typed Tauri commands in `lib.rs`.

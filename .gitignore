@@ -15,7 +15,7 @@ __pycache__/
 *.py[cod]
 # Python
 # stt/
-stt-ui/src-tauri/binaries/
+application/src-tauri/binaries/
 Thumbs.db
 .venv/
 venv/
@@ -32,8 +32,8 @@ package-lock.json
 **/target/
 
 # Tauri
-stt-ui/src-tauri/gen/
-stt-ui/dist/
+application/src-tauri/gen/
+application/dist/
 
 # Agent tooling (not project code)
 .mimocode/

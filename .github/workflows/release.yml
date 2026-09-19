@@ -77,7 +77,7 @@ jobs:
           version: 11
 
       - name: Install frontend dependencies
-        working-directory: stt-ui
+        working-directory: application
         run: pnpm install --frozen-lockfile
 
       - name: Setup Rust
@@ -88,7 +88,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: stt-ui/src-tauri
+          workspaces: application/src-tauri
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -112,7 +112,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: stt-ui
+          projectPath: application
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
 
       - name: Upload artifacts
@@ -120,9 +120,9 @@ jobs:
         with:
           name: floure-${{ matrix.platform }}
           path: |
-            stt-ui/src-tauri/target/release/bundle/**/*.dmg
-            stt-ui/src-tauri/target/release/bundle/**/*.exe
-            stt-ui/src-tauri/target/release/bundle/**/*.AppImage
-            stt-ui/src-tauri/target/release/bundle/**/*.deb
-            stt-ui/src-tauri/target/release/bundle/**/*.rpm
+            application/src-tauri/target/release/bundle/**/*.dmg
+            application/src-tauri/target/release/bundle/**/*.exe
+            application/src-tauri/target/release/bundle/**/*.AppImage
+            application/src-tauri/target/release/bundle/**/*.deb
+            application/src-tauri/target/release/bundle/**/*.rpm
           if-no-files-found: warn

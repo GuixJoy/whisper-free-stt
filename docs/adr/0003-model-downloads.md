@@ -12,7 +12,7 @@ every PTT press failed with an unactionable error string.
 
 ## Decision
 
-- Manifest (`MODEL_MANIFEST` in `stt-ui/src-tauri/src/models.rs`) pins exact
+- Manifest (`MODEL_MANIFEST` in `application/src-tauri/src/models.rs`) pins exact
   asset URLs and byte sizes; all URLs are HEAD-checked when touched.
 - `download_model` is the single installer for both callers (pipeline lazy
   download, Models-page button via `ModelManager::download`, which targets
