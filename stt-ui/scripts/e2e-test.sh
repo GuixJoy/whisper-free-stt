@@ -96,23 +96,11 @@ run_test "App binary exists" "test -f '$TAURI_DIR/target/debug/stt-ui'"
 # Test 2: Frontend dev server starts
 run_test "Frontend dev server" "timeout 10 bash -c 'cd $PROJECT_ROOT/stt-ui && npx vite --port 5173 &>/tmp/vite_test.log & sleep 3 && curl -s http://localhost:5173 | grep -q html && kill %1 2>/dev/null'"
 
-# Test 3: Sidecar binary exists
-run_test "Sidecar binary exists" "test -f '$TAURI_DIR/binaries/stt-engine'"
-
-# Test 4: Sidecar binary is executable
-run_test "Sidecar binary is executable" "test -x '$TAURI_DIR/binaries/stt-engine'"
-
-# Test 5: Python backend starts
-run_test "Python backend starts" "cd $PROJECT_ROOT && timeout 5 .venv/bin/python -m stt.cli --help 2>&1 | grep -q 'usage'"
-
-# Test 6: Frontend tests pass
+# Test 3: Frontend tests pass
 run_test "Frontend tests pass" "cd $PROJECT_ROOT/stt-ui && npx vitest run --reporter=dot 2>&1 | grep -q 'passed'"
 
-# Test 7: Rust tests pass
+# Test 4: Rust tests pass
 run_test "Rust tests pass" "cd $TAURI_DIR && cargo test 2>&1 | grep -q 'test result: ok'"
-
-# Test 8: Python tests pass
-run_test "Python tests pass" "cd $PROJECT_ROOT && .venv/bin/python -m pytest tests/ -x -q --ignore=tests/integration/test_comprehensive.py 2>&1 | grep -q 'passed'"
 
 # Summary
 echo ""

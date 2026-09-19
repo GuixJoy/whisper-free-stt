@@ -1,21 +1,4 @@
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-#[derive(Debug, Serialize)]
-pub struct WidgetPosition {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct WindowManagerInfo {
-    pub wm: String,
-    pub wayland: bool,
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,7 +12,8 @@ fn is_wayland() -> bool {
 // Commands
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+// Internal helper: show + position the widget window. Called by
+// `toggle_widget` (the only IPC entry point for visibility).
 pub fn show_widget(app: AppHandle) -> Result<(), String> {
     eprintln!("[widget] show_widget called");
     let window = app
@@ -86,40 +70,6 @@ pub fn hide_widget(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_widget_visible(app: AppHandle) -> Result<bool, String> {
-    let window = app
-        .get_webview_window("widget")
-        .ok_or("Widget window not found")?;
-    Ok(window.is_visible().unwrap_or(false))
-}
-
-#[tauri::command]
-pub fn get_widget_position(app: AppHandle) -> Result<WidgetPosition, String> {
-    let window = app
-        .get_webview_window("widget")
-        .ok_or("Widget window not found")?;
-    let pos = window
-        .outer_position()
-        .map_err(|e| format!("Failed to get widget position: {e}"))?;
-    Ok(WidgetPosition {
-        x: pos.x as f64,
-        y: pos.y as f64,
-    })
-}
-
-#[tauri::command]
-pub fn set_widget_position(app: AppHandle, x: f64, y: f64) -> Result<(), String> {
-    let window = app
-        .get_webview_window("widget")
-        .ok_or("Widget window not found")?;
-    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-        x: x as i32,
-        y: y as i32,
-    }));
-    Ok(())
-}
-
-#[tauri::command]
 pub fn toggle_widget(app: AppHandle) -> Result<bool, String> {
     eprintln!("[widget] toggle_widget called");
     let window = app
@@ -141,34 +91,5 @@ pub fn toggle_widget(app: AppHandle) -> Result<bool, String> {
         true
     };
     let _ = app.emit("widget-visibility-changed", visible);
-    eprintln!("[widget] Emitted widget-visibility-changed={visible}");
     Ok(visible)
-}
-
-#[tauri::command]
-pub fn detect_window_manager() -> WindowManagerInfo {
-    let wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-
-    let wm = if std::env::var("SWAYSOCK").is_ok() {
-        "sway".to_string()
-    } else if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
-        "hyprland".to_string()
-    } else if std::env::var("I3SOCK").is_ok() {
-        "i3".to_string()
-    } else if let Ok(xdg) = std::env::var("XDG_CURRENT_DESKTOP") {
-        let lower = xdg.to_lowercase();
-        if lower.contains("gnome") {
-            "gnome".to_string()
-        } else if lower.contains("kde") {
-            "kde".to_string()
-        } else {
-            lower
-        }
-    } else if wayland {
-        "wayland-unknown".to_string()
-    } else {
-        "unknown".to_string()
-    };
-
-    WindowManagerInfo { wm, wayland }
 }

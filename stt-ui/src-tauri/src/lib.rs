@@ -934,18 +934,6 @@ async fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppErro
 }
 
 #[tauri::command]
-async fn get_available_mics() -> Result<Vec<(String, String)>, String> {
-    crate::audio::list_input_devices()
-        .map_err(|e| e.to_string())
-}
-
-
-#[tauri::command]
-async fn get_floure_config() -> Result<AppConfig, String> {
-    Ok(AppConfig::load())
-}
-
-#[tauri::command]
 async fn set_floure_config(config: AppConfig) -> Result<(), String> {
     config.save().map_err(|e| e.to_string())
 }
@@ -959,155 +947,6 @@ fn delete_model_file(path: String) -> Result<(), AppError> {
         std::fs::remove_file(p).map_err(AppError::Io)?;
     }
     Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Win32 focus helpers — save/restore the foreground window around SendKeys
-// ---------------------------------------------------------------------------
-
-#[cfg(target_os = "windows")]
-mod win32 {
-    type HWND = *mut core::ffi::c_void;
-    extern "system" {
-        fn GetForegroundWindow() -> HWND;
-        fn SetForegroundWindow(hWnd: HWND) -> i32;
-        fn GetWindowThreadProcessId(hWnd: HWND, lpdwProcessId: *mut u32) -> u32;
-        fn GetCurrentThreadId() -> u32;
-        fn AttachThreadInput(idAttach: u32, idAttachTo: u32, fAttach: i32) -> i32;
-    }
-
-    /// Get the current foreground window handle as a number.
-    pub fn get_foreground_hwnd() -> u64 {
-        unsafe { GetForegroundWindow() as u64 }
-    }
-
-    /// Restore focus to a previously-saved window handle.
-    pub fn set_foreground_hwnd(hwnd: u64) -> bool {
-        if hwnd == 0 {
-            return false;
-        }
-        unsafe {
-            let target = hwnd as HWND;
-            let current_hwnd = GetForegroundWindow();
-            if current_hwnd == target {
-                return true;
-            }
-            let target_tid = GetWindowThreadProcessId(target, std::ptr::null_mut());
-            let current_tid = GetCurrentThreadId();
-            if target_tid == 0 || current_tid == 0 {
-                return false;
-            }
-            AttachThreadInput(current_tid, target_tid, 1);
-            let ok = SetForegroundWindow(target) != 0;
-            AttachThreadInput(current_tid, target_tid, 0);
-            ok
-        }
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-mod win32 {
-    /// Get the active window ID on Linux (X11 via xdotool, or 0 on Wayland).
-    pub fn get_foreground_hwnd() -> u64 {
-        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-        if is_wayland {
-            // Wayland has no cross-app window ID concept — return 0
-            return 0;
-        }
-        // X11: get active window ID via xdotool
-        if let Ok(output) = std::process::Command::new("xdotool")
-            .arg("getactivewindow")
-            .output()
-        {
-            if output.status.success() {
-                let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Ok(id) = s.parse::<u64>() {
-                    return id;
-                }
-            }
-        }
-        0
-    }
-
-    /// Restore focus to a previously-captured window on Linux.
-    pub fn set_foreground_hwnd(hwnd: u64) -> bool {
-        if hwnd == 0 {
-            return false;
-        }
-        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
-        if is_wayland {
-            // Wayland cannot activate arbitrary windows
-            return false;
-        }
-        // X11: activate window via xdotool
-        std::process::Command::new("xdotool")
-            .args(["windowactivate", "--sync", &hwnd.to_string()])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }
-}
-
-#[tauri::command]
-fn get_foreground_hwnd() -> u64 {
-    win32::get_foreground_hwnd()
-}
-
-#[tauri::command]
-fn set_foreground_hwnd(hwnd: u64) -> bool {
-    win32::set_foreground_hwnd(hwnd)
-}
-
-/// Type text into the focused input using Win32 clipboard + Ctrl+V.
-/// Pure Win32 API — no PowerShell needed for the critical path.
-///
-/// Flow: restore previous window focus → set clipboard via Win32 → send Ctrl+V via keybd_event
-#[tauri::command]
-fn type_text(text: String, _restore_hwnd: Option<u64>) -> Result<bool, String> {
-    if text.trim().is_empty() {
-        return Ok(false);
-    }
-    // Use the centralized output module
-    if let Err(e) = crate::output::type_text(&text) {
-        return Err(e.to_string());
-    }
-    Ok(true)
-}
-
-#[tauri::command]
-fn get_backend_path() -> Result<String, AppError> {
-    Ok("builtin".to_string())
-}
-
-#[tauri::command]
-fn get_platform_info() -> serde_json::Value {
-    let platform = std::env::consts::OS;
-    let display_server = if platform == "linux" {
-        if std::env::var("WAYLAND_DISPLAY").is_ok() {
-            "wayland"
-        } else if std::env::var("DISPLAY").is_ok() {
-            "x11"
-        } else {
-            "unknown"
-        }
-    } else {
-        "native"
-    };
-
-    let (clipboard_tool, typing_tool) = match (platform, display_server) {
-        ("linux", "wayland") => ("wl-copy", "wtype"),
-        ("linux", "x11") => ("xclip", "xdotool"),
-        ("macos", _) => ("pbcopy", "osascript"),
-        ("windows", _) => ("clip.exe", "powershell"),
-        _ => ("unknown", "unknown"),
-    };
-
-    serde_json::json!({
-        "platform": platform,
-        "displayServer": display_server,
-        "clipboardTool": clipboard_tool,
-        "typingTool": typing_tool,
-    })
 }
 
 #[tauri::command]
@@ -1274,8 +1113,6 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            get_backend_path,
-            get_platform_info,
             check_system_deps,
             check_model_status,
             download_model,
@@ -1292,22 +1129,12 @@ pub fn run() {
             toggle_dictionary_favorite,
             import_dictionary_csv,
             export_dictionary_csv,
-            type_text,
-            get_foreground_hwnd,
-            set_foreground_hwnd,
-            get_available_mics,
             test_microphone,
-            get_floure_config,
             set_floure_config,
             start_listening,
             stop_listening,
-            widget::show_widget,
             widget::hide_widget,
-            widget::get_widget_visible,
-            widget::get_widget_position,
-            widget::set_widget_position,
-            widget::toggle_widget,
-            widget::detect_window_manager
+            widget::toggle_widget
         ])
         .setup(|app| {
             // --- System tray with start/stop menu ---
