@@ -215,7 +215,7 @@ impl LlmCleanup {
             LlmBackend::OpenRouter => std::env::var("OPENROUTER_MODEL")
                 .ok()
                 .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| "deepseek/deepseek-chat".to_string()),
+                .unwrap_or_else(|| "openai/gpt-4o-mini".to_string()),
             LlmBackend::Local => String::new(),
         }
     }
