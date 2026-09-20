@@ -42,12 +42,10 @@ llama-cpp-4 = "0.6"
 # Windows/macOS fall back to CPU inference.
 [target.'cfg(target_os = "linux")'.dependencies]
 llama-cpp-4 = { version = "0.6", features = ["vulkan"] }
-reqwest = { version = "0.12", features = ["json", "stream", "gzip", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "blocking"] }
 anyhow = "1"
-tokio = { version = "1", features = ["full"] }
 bzip2 = "0.4"
 tar = "0.4"
-futures-util = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

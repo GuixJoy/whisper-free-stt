@@ -907,7 +907,7 @@ fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
 }
 
 #[tauri::command]
-async fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
+fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
     let config = AppConfig::load();
     // Double-click while a fetch runs: the progress bar is already moving,
     // stay silent instead of erroring.
@@ -915,14 +915,16 @@ async fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppErro
         return Ok(());
     }
     let manager = ModelManager::new(config.model_dir);
-    tauri::async_runtime::spawn(async move {
+    // Blocking HTTP download — run it on a plain thread so the command
+    // returns immediately and no runtime is involved.
+    std::thread::spawn(move || {
         let emit_progress = |percent: usize, bytes: u64| {
             let _ = app.emit(
                 "model_download_progress",
                 serde_json::json!({"id": id, "percent": percent, "bytes": bytes}),
             );
         };
-        match manager.download(&id, emit_progress).await {
+        match manager.download(&id, emit_progress) {
             Ok(()) => {
                 let _ = app.emit(
                     "model_download_progress",

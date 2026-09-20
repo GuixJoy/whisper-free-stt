@@ -153,21 +153,15 @@ impl PipelineController {
             }
             std::fs::create_dir_all(model_dir.join("silero-vad"))?;
             let model_dir_dl = model_dir.join("silero-vad");
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()?;
             // Surface progress to the frontend: start_listening blocks on
             // this download, so a silent no-op callback leaves the UI hung
             // with no feedback on first run.
             let app_dl = app.clone();
-            let result = runtime.block_on(async {
-                download_model(vad_manifest, &model_dir_dl, |percent, bytes| {
-                    let _ = app_dl.emit(
-                        "model_download_progress",
-                        serde_json::json!({"id": vad_manifest.id, "percent": percent, "bytes": bytes}),
-                    );
-                })
-                .await
+            let result = download_model(vad_manifest, &model_dir_dl, |percent, bytes| {
+                let _ = app_dl.emit(
+                    "model_download_progress",
+                    serde_json::json!({"id": vad_manifest.id, "percent": percent, "bytes": bytes}),
+                );
             });
             if let Err(e) = result {
                 let _ = app.emit(
@@ -218,27 +212,11 @@ impl PipelineController {
             // when it reports done.
             let app_dl = app.clone();
             std::thread::spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(rt) => rt,
-                    Err(e) => {
-                        let _ = app_dl.emit(
-                            "asr_error",
-                            serde_json::json!({"error": format!("Failed to download ASR model: {}", e)}),
-                        );
-                        return;
-                    }
-                };
-                let res = runtime.block_on(async {
-                    download_model(asr_manifest, &asr_dir, |percent, bytes| {
-                        let _ = app_dl.emit(
-                            "model_download_progress",
-                            serde_json::json!({"id": asr_manifest.id, "percent": percent, "bytes": bytes}),
-                        );
-                    })
-                    .await
+                let res = download_model(asr_manifest, &asr_dir, |percent, bytes| {
+                    let _ = app_dl.emit(
+                        "model_download_progress",
+                        serde_json::json!({"id": asr_manifest.id, "percent": percent, "bytes": bytes}),
+                    );
                 });
                 match res {
                     Ok(()) => {

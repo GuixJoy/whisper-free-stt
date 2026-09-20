@@ -128,11 +128,11 @@ impl ModelManager {
         }
     }
 
-    pub async fn download(&self, id: &str, progress: impl FnMut(usize, u64)) -> Result<()> {
+    pub fn download(&self, id: &str, progress: impl FnMut(usize, u64)) -> Result<()> {
         let model_opt = find_model(id);
         if let Some(model) = model_opt {
             let target_dir = self.model_dir.join(model.id);
-            download_model(model, &target_dir, progress).await
+            download_model(model, &target_dir, progress)
         } else {
             Err(anyhow::anyhow!("Model not found: {}", id))
         }
@@ -143,29 +143,36 @@ impl ModelManager {
 /// `(percent, downloaded_bytes)`. Shared by the archive and single-file
 /// branches of [`download_model`]. When `resume_offset > 0` the file is
 /// opened in append mode so an interrupted download can be continued.
-async fn stream_to_file(
-    response: reqwest::Response,
+fn stream_to_file(
+    mut reader: impl std::io::Read,
     dest: &Path,
     expected_total: u64,
     resume_offset: u64,
     progress: &mut impl FnMut(usize, u64),
 ) -> Result<u64> {
-    use futures_util::StreamExt;
-    use tokio::io::AsyncWriteExt;
+    use std::io::Write;
 
     let mut file = if resume_offset > 0 {
-        tokio::fs::OpenOptions::new().append(true).create(true).open(dest).await?
+        std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(dest)?
     } else {
-        tokio::fs::File::create(dest).await?
+        std::fs::File::create(dest)?
     };
     let mut downloaded: u64 = 0;
     let mut last_percent: usize = usize::MAX;
+    let mut chunk = [0u8; 64 * 1024];
 
-    let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| anyhow::anyhow!("Stream error: {}", e))?;
-        file.write_all(&chunk).await?;
-        downloaded += chunk.len() as u64;
+    loop {
+        let n = reader
+            .read(&mut chunk)
+            .map_err(|e| anyhow::anyhow!("Stream error: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&chunk[..n])?;
+        downloaded += n as u64;
         let total_so_far = resume_offset + downloaded;
         let percent = if expected_total > 0 {
             (total_so_far as f64 / expected_total as f64 * 100.0) as usize
@@ -179,7 +186,7 @@ async fn stream_to_file(
             progress(percent, total_so_far);
         }
     }
-    file.flush().await?;
+    file.flush()?;
     drop(file);
 
     Ok(downloaded)
@@ -333,7 +340,7 @@ fn normalize_extracted(backend: &str, model_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-pub async fn download_model(
+pub fn download_model(
     model: &ModelManifest,
     target_dir: &Path,
     mut progress: impl FnMut(usize, u64),
@@ -402,7 +409,7 @@ pub async fn download_model(
             model.id, resume_offset
         );
     } else {
-        let mut request = reqwest::Client::new().get(url);
+        let mut request = reqwest::blocking::Client::new().get(url);
         if resume_offset > 0 {
             eprintln!(
                 "[models] {} partial file found ({} bytes), resuming download",
@@ -416,7 +423,6 @@ pub async fn download_model(
 
         let response = request
             .send()
-            .await
             .map_err(|e| anyhow::anyhow!("Failed to start download of {}: {}", url, e))?;
 
         // 416 Range Not Satisfiable means the requested range starts at or
@@ -478,8 +484,7 @@ pub async fn download_model(
                 total,
                 effective_offset,
                 &mut on_progress,
-            )
-            .await?;
+            )?;
 
             if effective_offset + downloaded != total {
                 return Err(anyhow::anyhow!(

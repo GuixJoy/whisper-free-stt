@@ -341,39 +341,65 @@ impl LlmCleanup {
             "messages": [{"role": "user", "content": prompt}]
         });
 
-        let api_key_owned = api_key.clone();
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()?;
+        let api_key = api_key.clone();
 
-        runtime.block_on(async {
-            let client = reqwest::Client::new();
-            let response = client
-                .post(url)
-                .header("Authorization", format!("Bearer {}", api_key_owned))
-                .header("Content-Type", "application/json")
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
+        let response = reqwest::blocking::Client::new()
+            .post(url)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .map_err(|e| anyhow::anyhow!("HTTP request failed: {}", e))?;
 
-            let mut stream = response.bytes_stream();
-            use futures_util::StreamExt;
-            let mut buffer = String::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| anyhow::anyhow!("Stream error: {}", e))?;
-                let text = String::from_utf8_lossy(&chunk);
-                for token in drain_sse_buffer(&mut buffer, &text) {
-                    callback(token);
-                }
+        use std::io::Read;
+
+        let mut reader = response;
+        let mut buffer = String::new();
+        let mut pending: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 8 * 1024];
+
+        loop {
+            let n = reader
+                .read(&mut chunk)
+                .map_err(|e| anyhow::anyhow!("Stream error: {}", e))?;
+            if n == 0 {
+                break;
             }
-            // Flush any trailing line without a newline terminator.
-            for token in drain_sse_buffer(&mut buffer, "\n") {
+            pending.extend_from_slice(&chunk[..n]);
+
+            let (text, remainder) = split_utf8(&pending);
+            pending = remainder;
+
+            for token in drain_sse_buffer(&mut buffer, &text) {
                 callback(token);
             }
+        }
+        // Flush any trailing line without a newline terminator.
+        for token in drain_sse_buffer(&mut buffer, "\n") {
+            callback(token);
+        }
 
-            Ok(())
-        })
+        Ok(())
+    }
+}
+
+/// Split `pending` at the last complete UTF-8 boundary, returning the
+/// decodable prefix and the trailing bytes to carry into the next read.
+///
+/// A multi-byte character straddling two network reads must not be decoded
+/// in halves — `String::from_utf8_lossy` would turn it into U+FFFD and
+/// corrupt non-ASCII transcripts.
+fn split_utf8(pending: &[u8]) -> (String, Vec<u8>) {
+    match std::str::from_utf8(pending) {
+        Ok(s) => (s.to_string(), Vec::new()),
+        Err(e) => {
+            let valid = e.valid_up_to();
+            // valid_up_to() is always a char boundary, so this cannot fail.
+            let text = std::str::from_utf8(&pending[..valid])
+                .unwrap_or_default()
+                .to_string();
+            (text, pending[valid..].to_vec())
+        }
     }
 }
 
@@ -505,5 +531,30 @@ mod tests {
         );
         assert_eq!(second, vec!["hello".to_string()]);
         assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn utf8_split_keeps_partial_multibyte_char() {
+        // "नमस्ते" — the first char is 3 bytes. Feed only 2 of them and the
+        // leftover byte must be carried, not decoded as U+FFFD.
+        let text = "नमस्ते";
+        let bytes = text.as_bytes();
+        let (head, tail) = split_utf8(&bytes[..2]);
+        assert_eq!(head, "");
+        assert_eq!(tail.len(), 2, "partial char must be carried over");
+
+        // Completing the character decodes the full string.
+        let mut joined = tail;
+        joined.extend_from_slice(&bytes[2..]);
+        let (full, rest) = split_utf8(&joined);
+        assert_eq!(full, text);
+        assert!(rest.is_empty());
+    }
+
+    #[test]
+    fn utf8_split_passes_through_ascii_and_complete_input() {
+        let (text, rest) = split_utf8(b"data: hello\n");
+        assert_eq!(text, "data: hello\n");
+        assert!(rest.is_empty());
     }
 }

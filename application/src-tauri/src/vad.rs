@@ -56,8 +56,3 @@ impl VoiceActivityDetector {
         self.offset = 0;
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}
