@@ -14,10 +14,7 @@ interface TauriPayload {
   error?: string;
 }
 
-// _cliArgs accepted for call-site compatibility (App/tests pass CLI args);
-// the native Tauri backend runs in-process so there is nothing to spawn with them.
-export function createTauriApi(_cliArgs?: string[]): STTApi {
-  void _cliArgs;
+export function createTauriApi(): STTApi {
   let listeners: Array<(e: STTEvent) => void> = [];
   let unlistenFns: Array<() => void> = [];
 

@@ -955,8 +955,15 @@ fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-async fn set_floure_config(config: AppConfig) -> Result<(), String> {
+async fn set_floure_config(update: crate::config::SettingsUpdate) -> Result<(), String> {
+    let mut config = AppConfig::load();
+    config.apply_update(update);
     config.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_openrouter_api_key(key: String) {
+    crate::llm::set_openrouter_api_key(key);
 }
 
 #[tauri::command]
@@ -1170,6 +1177,7 @@ pub fn run() {
             export_dictionary_csv,
             test_microphone,
             set_floure_config,
+            set_openrouter_api_key,
             start_listening,
             stop_listening,
             widget::hide_widget,

@@ -23,10 +23,8 @@ const HOTKEY_OPTIONS = [
 ];
 
 const TOGGLES = [
-  { key: "fastCommit", label: "Fast Commit", hint: "Skip LLM for short transcriptions" },
   { key: "typing", label: "Type to Input", hint: "Automatically type into focused field" },
   { key: "clipboard", label: "Clipboard", hint: "Copy transcript to clipboard" },
-  { key: "debug", label: "Debug Mode", hint: "Show raw engine output" },
 ] as const;
 
 export default function SettingsPanel({ settings, onSave, visible, onClose, mode, onModeChange }: Props) {
@@ -235,28 +233,16 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
                 </select>
               </div>
             ) : (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="settings-model" className="text-label text-text-secondary">Model</label>
-                  <input
-                    id="settings-model"
-                    className={inputClass}
-                    value={local.llmModel}
-                    onChange={(e) => update({ llmModel: e.target.value })}
-                    placeholder="openai/gpt-4o-mini"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor="settings-fallback" className="text-label text-text-secondary">Fallback Model</label>
-                  <input
-                    id="settings-fallback"
-                    className={inputClass}
-                    value={local.llmFallback}
-                    onChange={(e) => update({ llmFallback: e.target.value })}
-                    placeholder="anthropic/claude-3-5-haiku-latest"
-                  />
-                </div>
-              </>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="settings-model" className="text-label text-text-secondary">Model</label>
+                <input
+                  id="settings-model"
+                  className={inputClass}
+                  value={local.llmModel}
+                  onChange={(e) => update({ llmModel: e.target.value })}
+                  placeholder="openai/gpt-4o-mini"
+                />
+              </div>
             )}
           </div>
 

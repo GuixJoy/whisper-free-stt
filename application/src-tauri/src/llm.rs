@@ -4,11 +4,16 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LlmMode {
+    #[serde(rename = "off")]
     Off,
+    #[serde(rename = "cleanup")]
     #[default]
     Cleanup,
+    #[serde(rename = "bullet_list")]
     BulletList,
+    #[serde(rename = "email")]
     Email,
+    #[serde(rename = "commit_message")]
     CommitMessage,
 }
 
@@ -29,6 +34,29 @@ impl LlmMode {
 pub enum LlmBackend {
     Local,
     OpenRouter,
+}
+
+static OPENROUTER_API_KEY: std::sync::OnceLock<std::sync::Mutex<Option<String>>> =
+    std::sync::OnceLock::new();
+
+/// Session-only OpenRouter key, set from the UI via `set_openrouter_api_key`.
+/// Never written to disk; the `OPENROUTER_API_KEY` env var is the fallback.
+pub fn set_openrouter_api_key(key: String) {
+    let slot = OPENROUTER_API_KEY.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().unwrap() = if key.trim().is_empty() {
+        None
+    } else {
+        Some(key)
+    };
+}
+
+pub(crate) fn openrouter_api_key() -> Option<String> {
+    if let Some(slot) = OPENROUTER_API_KEY.get() {
+        if let Some(key) = slot.lock().unwrap().clone() {
+            return Some(key);
+        }
+    }
+    std::env::var("OPENROUTER_API_KEY").ok()
 }
 
 pub const CLEANUP_PROMPT: &str = "Fix only clear errors in this transcript: remove filler words (um, uh), \
@@ -191,7 +219,7 @@ impl LlmCleanup {
         };
 
         let api_key = match backend {
-            LlmBackend::OpenRouter => std::env::var("OPENROUTER_API_KEY").ok(),
+            LlmBackend::OpenRouter => openrouter_api_key(),
             LlmBackend::Local => None,
         };
 

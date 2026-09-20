@@ -5,8 +5,11 @@ use crate::llm::LlmMode;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AsrProfile {
+    #[serde(rename = "parakeet")]
     Parakeet,
+    #[serde(rename = "whisper-turbo")]
     WhisperTurbo,
+    #[serde(rename = "whisper-base")]
     WhisperBase,
 }
 
@@ -26,7 +29,9 @@ impl AsrProfile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LlmProvider {
+    #[serde(rename = "local")]
     Local,
+    #[serde(rename = "openrouter")]
     OpenRouter,
 }
 
@@ -73,6 +78,40 @@ impl Default for AppConfig {
             model_dir,
         }
     }
+}
+
+/// UI-owned subset of settings, sent by the frontend on every settings save
+/// (`set_floure_config`). `model_dir` is deliberately absent: the frontend
+/// never sees it and must not be able to clobber it. Every field has a
+/// serde default so older payloads keep parsing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsUpdate {
+    #[serde(default = "default_profile")]
+    pub asr_profile: AsrProfile,
+    #[serde(default = "default_language")]
+    pub language: String,
+    #[serde(default = "default_provider")]
+    pub llm_provider: LlmProvider,
+    #[serde(default)]
+    pub llm_mode: LlmMode,
+    #[serde(default = "default_llm_model")]
+    pub llm_model: String,
+    #[serde(default = "default_true")]
+    pub typing_enabled: bool,
+    #[serde(default = "default_true")]
+    pub clipboard_enabled: bool,
+}
+
+fn default_profile() -> AsrProfile {
+    AsrProfile::Parakeet
+}
+
+fn default_provider() -> LlmProvider {
+    LlmProvider::Local
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Config directory for `floure/config.json`
@@ -149,6 +188,17 @@ impl AppConfig {
         std::fs::write(&config_path, json)?;
         Ok(())
     }
+
+    /// Apply a frontend settings update, preserving fields the UI doesn't own.
+    pub fn apply_update(&mut self, update: SettingsUpdate) {
+        self.asr_profile = update.asr_profile;
+        self.language = update.language;
+        self.llm_provider = update.llm_provider;
+        self.llm_mode = update.llm_mode;
+        self.llm_model = update.llm_model;
+        self.typing_enabled = update.typing_enabled;
+        self.clipboard_enabled = update.clipboard_enabled;
+    }
 }
 
 #[cfg(test)]
@@ -165,9 +215,9 @@ mod tests {
         // Config files written before the `language` field existed must
         // still parse, defaulting to English.
         let old = serde_json::json!({
-            "asr_profile": "Parakeet",
-            "llm_provider": "Local",
-            "llm_mode": "Cleanup",
+            "asr_profile": "parakeet",
+            "llm_provider": "local",
+            "llm_mode": "cleanup",
             "selected_mic_index": null,
             "typing_enabled": true,
             "clipboard_enabled": true,
@@ -184,5 +234,45 @@ mod tests {
         let json = serde_json::to_string(&config).unwrap();
         let back: AppConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.language, "auto");
+    }
+
+    #[test]
+    fn frontend_wire_strings_deserialize() {
+        // The exact strings the UI sends (see App.tsx RuntimeSettings).
+        let update: super::SettingsUpdate = serde_json::from_value(serde_json::json!({
+            "asr_profile": "whisper-turbo",
+            "language": "de",
+            "llm_provider": "openrouter",
+            "llm_mode": "bullet_list",
+            "llm_model": "openai/gpt-4o-mini",
+            "typing_enabled": false,
+            "clipboard_enabled": false
+        }))
+        .unwrap();
+        assert!(matches!(update.asr_profile, super::AsrProfile::WhisperTurbo));
+        assert!(matches!(update.llm_provider, super::LlmProvider::OpenRouter));
+        assert!(matches!(
+            update.llm_mode,
+            crate::llm::LlmMode::BulletList
+        ));
+    }
+
+    #[test]
+    fn apply_update_preserves_model_dir() {
+        let mut config = AppConfig::default();
+        let update = super::SettingsUpdate {
+            asr_profile: super::AsrProfile::WhisperBase,
+            language: "fr".to_string(),
+            llm_provider: super::LlmProvider::OpenRouter,
+            llm_mode: crate::llm::LlmMode::Email,
+            llm_model: "x".to_string(),
+            typing_enabled: false,
+            clipboard_enabled: false,
+        };
+        let dir = config.model_dir.clone();
+        config.apply_update(update);
+        assert_eq!(config.model_dir, dir);
+        assert!(matches!(config.asr_profile, super::AsrProfile::WhisperBase));
+        assert!(!config.typing_enabled);
     }
 }

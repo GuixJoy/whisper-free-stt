@@ -211,7 +211,7 @@ import OnboardingWizard from "@/components/OnboardingWizard";
 import WidgetView from "@/components/WidgetView";
 import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "@/store";
 import type { STTEvent } from "@/api";
-import type { RuntimeSettings } from "../App";
+import { toBackendSettings, type RuntimeSettings } from "../App";
 
 // ── Helpers ──
 function renderWithProviders(ui: React.ReactElement) {
@@ -525,22 +525,66 @@ describe("Sidebar", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// 12b. Backend settings payload
+// ══════════════════════════════════════════════════════════════════
+describe("toBackendSettings", () => {
+  it("maps to the snake_case set_floure_config wire shape", () => {
+    expect(
+      toBackendSettings({
+        wsPort: 8765,
+        asrProfile: "whisper-turbo",
+        llmMode: "bullet_list",
+        llmProvider: "openrouter",
+        llmModel: "openai/gpt-4o-mini",
+        openrouterApiKey: "sk-or-xxx",
+        typing: false,
+        clipboard: true,
+        hotwords: "Floure",
+        language: "",
+      })
+    ).toEqual({
+      asr_profile: "whisper-turbo",
+      language: "en",
+      llm_provider: "openrouter",
+      llm_mode: "bullet_list",
+      llm_model: "openai/gpt-4o-mini",
+      typing_enabled: false,
+      clipboard_enabled: true,
+    });
+  });
+
+  it("passes explicit language through, never the API key", () => {
+    const payload = toBackendSettings({
+      wsPort: 8765,
+      asrProfile: "parakeet",
+      llmMode: "cleanup",
+      llmProvider: "local",
+      llmModel: "",
+      openrouterApiKey: "sk-or-xxx",
+      typing: true,
+      clipboard: true,
+      hotwords: "",
+      language: "auto",
+    });
+    expect(payload.language).toBe("auto");
+    expect(payload).not.toHaveProperty("openrouterApiKey");
+    expect(payload).not.toHaveProperty("hotwords");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
 // 13. SettingsPanel
 // ══════════════════════════════════════════════════════════════════
 describe("SettingsPanel", () => {
   const defaultSettings: RuntimeSettings = {
     wsPort: 8765,
     asrProfile: "parakeet",
-    model: "",
     llmMode: "cleanup",
     llmProvider: "openrouter",
     llmModel: "",
-    llmFallback: "",
     openrouterApiKey: "",
-    fastCommit: true,
     typing: true,
     clipboard: true,
-    debug: false,
     hotwords: "",
     language: "",
   };
@@ -1064,7 +1108,7 @@ describe("STTEvent type contract", () => {
 describe("createTauriApi", () => {
   it("creates an API instance with required methods", async () => {
     const { createTauriApi } = await import("@/api-tauri");
-    const api = createTauriApi(["--json-mode"]);
+    const api = createTauriApi();
     expect(typeof api.spawn).toBe("function");
     expect(typeof api.kill).toBe("function");
     expect(typeof api.start).toBe("function");
@@ -1075,7 +1119,7 @@ describe("createTauriApi", () => {
 
   it("registers event listeners", async () => {
     const { createTauriApi } = await import("@/api-tauri");
-    const api = createTauriApi(["--json-mode"]);
+    const api = createTauriApi();
     const listener = vi.fn();
     api.onEvent(listener);
     // No error should be thrown
@@ -1083,7 +1127,7 @@ describe("createTauriApi", () => {
 
   it("kill clears listeners and child", async () => {
     const { createTauriApi } = await import("@/api-tauri");
-    const api = createTauriApi(["--json-mode"]);
+    const api = createTauriApi();
     api.onEvent(vi.fn());
     api.kill();
     // No error should be thrown
@@ -1091,14 +1135,14 @@ describe("createTauriApi", () => {
 
   it("start sends start_recording command", async () => {
     const { createTauriApi } = await import("@/api-tauri");
-    const api = createTauriApi(["--json-mode"]);
+    const api = createTauriApi();
     // start() sends command via sendCommand, should not throw
     api.start();
   });
 
   it("stop sends stop_recording command", async () => {
     const { createTauriApi } = await import("@/api-tauri");
-    const api = createTauriApi(["--json-mode"]);
+    const api = createTauriApi();
     api.stop();
   });
 });
@@ -1187,7 +1231,7 @@ describe("Accessibility: ARIA attributes", () => {
   it("SettingsPanel has role=dialog", () => {
     renderWithProviders(
       <SettingsPanel
-        settings={{ wsPort: 8765, asrProfile: "parakeet", model: "", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", llmFallback: "", openrouterApiKey: "", fastCommit: true, typing: true, clipboard: true, debug: false, hotwords: "", language: "" }}
+        settings={{ wsPort: 8765, asrProfile: "parakeet", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", openrouterApiKey: "", typing: true, clipboard: true, hotwords: "", language: "" }}
         onSave={() => {}}
         visible={true}
         onClose={() => {}}

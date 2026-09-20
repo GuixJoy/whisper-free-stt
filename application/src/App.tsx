@@ -25,17 +25,13 @@ import Waveform from "./components/Waveform";
 const SettingsSchema = z.object({
   wsPort: z.number().int().min(1).max(65535),
   asrProfile: z.enum(["parakeet", "whisper-turbo", "whisper-base"]),
-  model: z.string().max(100),
   llmMode: z.enum(["off", "cleanup", "bullet_list", "email", "commit_message"]),
   llmProvider: z.enum(["local", "openrouter"]),
   llmModel: z.string().max(100),
-  llmFallback: z.string().max(100),
   // API keys are session-only: never persisted (see save effect below).
   openrouterApiKey: z.string().max(200).default(""),
-  fastCommit: z.boolean(),
   typing: z.boolean(),
   clipboard: z.boolean(),
-  debug: z.boolean(),
   hotwords: z.string().max(200),
   language: z.string().max(10),
 });
@@ -57,16 +53,12 @@ interface TranscriptLine {
 export interface RuntimeSettings {
   wsPort: number;
   asrProfile: "parakeet" | "whisper-turbo" | "whisper-base";
-  model: string;
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
   llmProvider: "local" | "openrouter";
   llmModel: string;
-  llmFallback: string;
   openrouterApiKey: string;
-  fastCommit: boolean;
   typing: boolean;
   clipboard: boolean;
-  debug: boolean;
   hotwords: string;
   language: string;
 }
@@ -74,16 +66,12 @@ export interface RuntimeSettings {
 const DEFAULT_SETTINGS: RuntimeSettings = {
   wsPort: 8765,
   asrProfile: "parakeet",
-  model: "",
   llmMode: "cleanup",
   llmProvider: "local",
   llmModel: "",
-  llmFallback: "",
   openrouterApiKey: "",
-  fastCommit: true,
   typing: true,
   clipboard: true,
-  debug: false,
   hotwords: "",
   language: "",
 };
@@ -112,18 +100,19 @@ function getInitialSettings(): RuntimeSettings {
   return DEFAULT_SETTINGS;
 }
 
-function buildCliArgs(settings: RuntimeSettings): string[] {
-  const args: string[] = ["--asr-profile", settings.asrProfile, "--llm-mode", settings.llmMode];
-  if (settings.model.trim()) args.push("--model", settings.model.trim());
-  if (settings.llmProvider !== "openrouter") args.push("--llm-provider", settings.llmProvider);
-  if (settings.llmModel.trim()) args.push("--llm-model", settings.llmModel.trim());
-  if (settings.llmFallback.trim()) args.push("--llm-fallback", settings.llmFallback.trim());
-  if (settings.openrouterApiKey.trim()) args.push("--openrouter-api-key", settings.openrouterApiKey.trim());
-  if (settings.fastCommit) args.push("--fast-commit");
-  if (settings.debug) args.push("--debug");
-  if (settings.hotwords.trim()) args.push("--hotwords", settings.hotwords.trim());
-  if (settings.language.trim()) args.push("--language", settings.language.trim());
-  return args;
+/** Backend wire shape for `set_floure_config` (snake_case, UI-owned fields only).
+ *  `hotwords` stays out until the P1 decode path exists. Empty language
+ *  means "never set" → backend default ("en"); explicit "auto" passes through. */
+export function toBackendSettings(s: RuntimeSettings) {
+  return {
+    asr_profile: s.asrProfile,
+    language: s.language.trim() || "en",
+    llm_provider: s.llmProvider,
+    llm_mode: s.llmMode,
+    llm_model: s.llmModel,
+    typing_enabled: s.typing,
+    clipboard_enabled: s.clipboard,
+  };
 }
 
 function detectRunMode(): RunMode {
@@ -539,7 +528,7 @@ function App() {
 
     const api: STTApi = mode === "ws"
       ? createWebAudioApi(settings.wsPort)
-      : createTauriApi(buildCliArgs(settings));
+      : createTauriApi();
 
     api.onEvent(applyEvent);
     runtimeRef.current = api;
@@ -651,6 +640,18 @@ function App() {
   }, [status]);
 
   useEffect(() => {
+    // Push settings to the native backend (no-op outside Tauri). The API key
+    // is session-only in memory; an empty key clears the backend slot.
+    const push = async () => {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("set_floure_config", { update: toBackendSettings(settings) });
+        await invoke("set_openrouter_api_key", { key: settings.openrouterApiKey.trim() });
+      } catch {
+        // Web mode: no Tauri backend to configure.
+      }
+    };
+    void push();
     try {
       // API keys stay in memory only — strip them before persisting so
       // localStorage never holds secrets.

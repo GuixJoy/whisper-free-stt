@@ -40,7 +40,11 @@ impl LlmProcessor {
         } else {
             config.model_dir.join(filename)
         };
-        let llm = LlmCleanup::new(LlmBackend::Local, Some(&llm_model_path)).ok();
+        let backend = match config.llm_provider {
+            crate::config::LlmProvider::OpenRouter => LlmBackend::OpenRouter,
+            crate::config::LlmProvider::Local => LlmBackend::Local,
+        };
+        let llm = LlmCleanup::new(backend, Some(&llm_model_path)).ok();
         Self { llm, config }
     }
 
