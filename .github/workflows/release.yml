@@ -70,6 +70,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
+          cache-dependency-path: application/pnpm-lock.yaml
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -94,7 +96,17 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libdbus-1-dev libvulkan-dev
+          # Tauri's Linux build deps (webkit2gtk 4.1, tray, rsvg) plus the
+          # app's own: ALSA for cpal, dbus, and Vulkan for llama.cpp.
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libdbus-1-dev \
+            libvulkan-dev
           # glslc + SPIRV-Headers for the llama.cpp Vulkan backend
           # (GPU offload is built on Linux only; Windows/macOS use CPU).
           curl -fsSL https://sdk.lunarg.com/sdk/download/1.4.321.0/linux/vulkan-sdk.tar.xz -o /tmp/vulkan-sdk.tar.xz
@@ -114,6 +126,7 @@ jobs:
         with:
           projectPath: application
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
+          args: ${{ matrix.args }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

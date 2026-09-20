@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget",
+  "description": "Widget window: status events only. No shell, clipboard, shortcut, or updater access — the widget only listens for state and calls app commands (which are not capability-gated).",
+  "windows": ["widget"],
+  "permissions": ["core:default"]
+}

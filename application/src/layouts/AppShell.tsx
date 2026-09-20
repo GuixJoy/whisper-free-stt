@@ -22,17 +22,14 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         const target = e.target as HTMLElement;
         if (target.closest("button") || target.closest("a") || target.closest("input")) return;
         e.preventDefault();
-        win.startDragging();
-      },
-      [win],
-    );
-
-    const onTitleBarDoubleClick = useCallback(
-      (_e: ReactMouseEvent<HTMLDivElement>) => {
-        if (!win) return;
-        const target = _e.target as HTMLElement;
-        if (target.closest("button") || target.closest("a") || target.closest("input")) return;
-        win.toggleMaximize();
+        // One handler for both gestures: the second click of a double-click
+        // reports detail === 2, so maximize instead of starting another drag.
+        // Splitting these across onMouseDown/onDoubleClick raced the drag.
+        if (e.detail === 2) {
+          win.toggleMaximize();
+        } else {
+          win.startDragging();
+        }
       },
       [win],
     );
@@ -59,7 +56,6 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
           <div
             className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-border select-none"
             onMouseDown={onTitleBarMouseDown}
-            onDoubleClick={onTitleBarDoubleClick}
           >
             <div className="flex-1" />
 
