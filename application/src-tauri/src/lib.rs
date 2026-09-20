@@ -883,10 +883,21 @@ async fn get_voice_intelligence() -> Result<VoiceIntelligenceData, AppError> {
 }
 
 #[tauri::command]
-fn start_listening(app: tauri::AppHandle) -> Result<(), String> {
+async fn start_listening(app: tauri::AppHandle) -> Result<(), String> {
     eprintln!("[backend] start_listening invoked");
-    let config = AppConfig::load();
-    let result = crate::pipeline::start_pipeline(app, config);
+    // Model loading and the lazy VAD download are blocking, and
+    // `reqwest::blocking` must never run on the async runtime: its internal
+    // tokio runtime panics on drop there ("Cannot drop a runtime in a context
+    // where blocking is not allowed"). Tauri runs non-async command bodies
+    // inside `async_runtime::spawn`, so this must be an async command that
+    // hands the work to the blocking pool.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let config = AppConfig::load();
+        crate::pipeline::start_pipeline(app, config)
+    })
+    .await
+    .map_err(|e| format!("pipeline task failed: {e}"))?;
+
     match &result {
         Ok(_) => eprintln!("[backend] start_listening OK"),
         Err(e) => eprintln!("[backend] start_listening FAILED: {}", e),

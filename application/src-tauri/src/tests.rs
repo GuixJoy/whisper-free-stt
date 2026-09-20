@@ -9,8 +9,16 @@ mod tests {
     // history_db_path
     // -----------------------------------------------------------------------
 
+    /// `STT_DATA_DIR` is process-global, so these two tests must not run
+    /// concurrently or they read each other's value.
+    fn env_lock() -> &'static std::sync::Mutex<()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+    }
+
     #[test]
     fn test_history_db_path_uses_env_var() {
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
         std::env::set_var("STT_DATA_DIR", "/tmp/test_stt");
         let path = history_db_path().unwrap();
         assert_eq!(path, Path::new("/tmp/test_stt/history.db"));
@@ -19,6 +27,7 @@ mod tests {
 
     #[test]
     fn test_history_db_path_fallback_home() {
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
         std::env::remove_var("STT_DATA_DIR");
         let path = history_db_path().unwrap();
         let home = dirs_next::home_dir().unwrap();
@@ -749,6 +758,141 @@ mod tests {
                     "Unexpected error: {}", s);
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Download probe: drive the real download_model against a stub server
+    // -----------------------------------------------------------------------
+
+    /// Serve `payload` over HTTP exactly once. `honor_range` decides whether a
+    /// `Range:` request is answered with 206 + the requested slice (true) or a
+    /// 200 with the full body (false, i.e. a server that ignores Range).
+    ///
+    /// Returns the URL to fetch. The listener closes after one request, so the
+    /// thread always terminates on its own.
+    fn spawn_stub_server(payload: Vec<u8>, honor_range: bool) -> String {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = match listener.accept() {
+                Ok(pair) => pair,
+                Err(_) => return,
+            };
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            let mut start = 0usize;
+            let mut status = "200 OK";
+            if honor_range {
+                if let Some(line) = req
+                    .lines()
+                    .find(|l| l.to_ascii_lowercase().starts_with("range:"))
+                {
+                    if let Some(v) = line.split("bytes=").nth(1) {
+                        if let Some(num) = v.split('-').next() {
+                            start = num.trim().parse().unwrap_or(0);
+                            status = "206 Partial Content";
+                        }
+                    }
+                }
+            }
+
+            let body = &payload[start.min(payload.len())..];
+            let header = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(header.as_bytes());
+            let _ = stream.write_all(body);
+            let _ = stream.flush();
+        });
+
+        format!("http://{addr}/model.bin")
+    }
+
+    /// A manifest whose `verify_model` only checks for `silero_vad.onnx` at
+    /// exactly `size_bytes` — the cheapest shape that exercises the full
+    /// download + verify + sentinel path without archive extraction.
+    fn probe_manifest(url: &'static str, size_bytes: u64) -> crate::models::ModelManifest {
+        crate::models::ModelManifest {
+            id: "probe-vad",
+            name: "Probe VAD",
+            url,
+            size_bytes,
+            backend: "vad",
+            recommended: false,
+            is_archive: false,
+            filename: Some("silero_vad.onnx"),
+        }
+    }
+
+    #[test]
+    fn probe_download_model_fetches_and_verifies() {
+        let payload: Vec<u8> = (0..12_000u32).map(|i| (i % 251) as u8).collect();
+        let url: &'static str = Box::leak(spawn_stub_server(payload.clone(), false).into_boxed_str());
+
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("probe-vad");
+        let model = probe_manifest(url, payload.len() as u64);
+
+        let mut percents: Vec<usize> = Vec::new();
+        crate::models::download_model(&model, &target, |p, _| percents.push(p))
+            .expect("download_model should succeed");
+
+        let got = std::fs::read(target.join("silero_vad.onnx")).unwrap();
+        assert_eq!(got, payload, "downloaded bytes must match the served payload");
+        assert_eq!(got.len() as u64, model.size_bytes);
+        assert!(target.join(".downloaded").exists(), "success sentinel not written");
+        assert_eq!(percents.last().copied(), Some(100), "progress must reach 100%, got {percents:?}");
+    }
+
+    #[test]
+    fn probe_download_model_resumes_from_partial_file() {
+        let payload: Vec<u8> = (0..12_000u32).map(|i| (i % 251) as u8).collect();
+        let url: &'static str = Box::leak(spawn_stub_server(payload.clone(), true).into_boxed_str());
+
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join("probe-vad");
+        std::fs::create_dir_all(&target).unwrap();
+
+        // Pre-seed a truncated payload: the resume path must fetch only the tail.
+        let already = 5_000usize;
+        std::fs::write(target.join("silero_vad.onnx"), &payload[..already]).unwrap();
+
+        let model = probe_manifest(url, payload.len() as u64);
+        crate::models::download_model(&model, &target, |_, _| {})
+            .expect("resumed download_model should succeed");
+
+        let got = std::fs::read(target.join("silero_vad.onnx")).unwrap();
+        assert_eq!(got, payload, "resumed file must be the complete payload");
+    }
+
+    #[test]
+    fn probe_blocking_client_off_async_runtime_is_the_supported_pattern() {
+        // The constraint that caused this bug: reqwest::blocking's internal
+        // tokio runtime panics if it is dropped on an async-runtime thread.
+        let on_async_thread = tauri::async_runtime::block_on(tauri::async_runtime::spawn(async {
+            drop(reqwest::blocking::Client::new());
+        }));
+        assert!(
+            on_async_thread.is_err(),
+            "if this no longer panics, reqwest/tokio changed and start_listening \
+             no longer needs the spawn_blocking wrapper"
+        );
+
+        // The supported pattern: the same work on the blocking pool.
+        let on_blocking_pool = tauri::async_runtime::block_on(tauri::async_runtime::spawn(async {
+            tauri::async_runtime::spawn_blocking(|| drop(reqwest::blocking::Client::new()))
+                .await
+        }));
+        assert!(
+            on_blocking_pool.is_ok(),
+            "blocking pool must be safe for reqwest::blocking: {on_blocking_pool:?}"
+        );
     }
 
 }
