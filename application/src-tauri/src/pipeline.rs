@@ -108,10 +108,14 @@ impl LlmProcessor {
         }
 
         if self.config.typing_enabled {
-            let _ = type_text(&cleaned);
+            if let Err(e) = type_text(&cleaned) {
+                eprintln!("[pipeline] type_text failed: {}", e);
+            }
         }
         if self.config.clipboard_enabled {
-            let _ = copy_to_clipboard(&cleaned);
+            if let Err(e) = copy_to_clipboard(&cleaned) {
+                eprintln!("[pipeline] copy_to_clipboard failed: {}", e);
+            }
         }
 
         let db_path = history_db_path();

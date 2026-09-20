@@ -4,7 +4,9 @@ use std::process::Command;
 pub fn detect_platform() -> (&'static str, &'static str) {
     let platform = std::env::consts::OS;
     let display_server = if platform == "linux" {
-        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        if std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
+        {
             "wayland"
         } else if std::env::var("DISPLAY").is_ok() {
             "x11"
@@ -26,7 +28,7 @@ pub fn type_text(text: &str) -> Result<bool> {
 
     match (platform, display_server) {
         ("windows", _) => type_windows_paste(text),
-        ("linux", "wayland") => run_piped_command(text, "wtype", &[]),
+        ("linux", "wayland") => run_piped_command(text, "wtype", &["-"]),
         ("linux", "x11") | ("linux", "unknown") => {
             run_piped_command(text, "xdotool", &["type", "--clearmodifiers"])
         }
