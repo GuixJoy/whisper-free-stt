@@ -45,6 +45,9 @@
     "bundle": {
     "active": true,
     "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Local-first dictation: speech is transcribed on your machine and typed into the focused window.",
+    "longDescription": "Floure listens to your mic, transcribes speech locally (Parakeet / Whisper via sherpa-onnx), cleans it up with a local or cloud LLM, and types the result into whatever window has focus. No account required for the local path.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -54,12 +57,34 @@
     ],
     "linux": {
       "deb": {
+        "section": "utils",
+        "priority": "optional",
         "depends": [
-          "libwebkit2gtk-4.1-0",
-          "libgtk-3-0",
-          "libayatana-appindicator3-1",
           "librsvg2-2",
-          "libssl3"
+          "libssl3",
+          "libasound2"
+        ],
+        "recommends": [
+          "xdotool",
+          "xclip",
+          "wl-clipboard",
+          "wtype"
+        ]
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "gtk3",
+          "libappindicator-gtk3",
+          "librsvg2",
+          "openssl",
+          "alsa-lib"
+        ],
+        "recommends": [
+          "xdotool",
+          "xclip",
+          "wl-clipboard",
+          "wtype"
         ]
       }
     }

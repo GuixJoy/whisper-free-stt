@@ -1,8 +1,8 @@
 [package]
 name = "stt-ui"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Local-first dictation: transcribes speech on your machine and types it into the focused window."
+authors = ["Akshat Kotpalliwar"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
