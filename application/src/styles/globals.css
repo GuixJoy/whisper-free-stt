@@ -85,7 +85,7 @@ body {
 }
 
 /* Progress bar */
-.progress-fill { background: linear-gradient(90deg, var(--accent), var(--sunset)); }
+.progress-fill { background: var(--accent); }
 
 /* Mic pulse */
 @keyframes mic-pulse {

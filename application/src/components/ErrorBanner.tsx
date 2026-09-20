@@ -27,21 +27,13 @@ const CATEGORY_LABELS: Record<string, string> = {
   general: "error",
 };
 
-const CATEGORY_DOT: Record<string, string> = {
-  connection: "bg-blue-500",
-  model: "bg-purple-500",
-  mic: "bg-accent",
-  permission: "bg-yellow-500",
-  general: "bg-red-500",
-};
-
 export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, onClose }: Props) {
   const activeErrors = errors.filter((e) => !e.dismissed);
 
   return (
     <aside
       className={cn(
-        "fixed top-4 right-4 z-50 flex flex-col w-80 max-h-[70vh] rounded-card border border-border overflow-hidden transition-all duration-300",
+        "fixed top-4 right-4 z-50 flex flex-col w-80 max-h-[70vh] rounded-card border border-border overflow-hidden transition duration-300",
         visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full pointer-events-none",
         "bg-app-surface shadow-lg",
       )}
@@ -52,7 +44,7 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
         <h2 className="text-subheading text-text-primary">Errors ({activeErrors.length})</h2>
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+            "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
             "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
@@ -78,7 +70,7 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
                 role="alert"
               >
                 <div className="flex items-start gap-3 px-3 py-2.5">
-                  <span className={cn("mt-0.5 h-2 w-2 rounded-full shrink-0", CATEGORY_DOT[err.category] || "bg-red-500")} aria-hidden="true" />
+                  <span className={cn("mt-0.5 h-2 w-2 rounded-full shrink-0 bg-accent")} aria-hidden="true" />
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted px-1.5 py-0.5 rounded bg-app-surface border border-border" aria-hidden="true">
                     {CATEGORY_LABELS[err.category] || "error"}
                   </span>
@@ -102,7 +94,7 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
                   <div className="px-3 pb-2.5 pl-8">
                     <button
                       className={cn(
-                        "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+                        "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
                         "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
                         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
                       )}

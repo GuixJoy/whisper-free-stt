@@ -25,7 +25,7 @@ function SidebarItem({ icon, label, active, badge, onClick }: SidebarItemProps) 
     <button
       onClick={onClick}
       className={cn(
-        "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200 overflow-hidden",
+        "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-colors duration-200 overflow-hidden",
         active
           ? "text-accent font-semibold"
           : "text-text-secondary hover:bg-accent-hover-surface",
@@ -143,7 +143,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
           <button
             onClick={toggleWidget}
             className={cn(
-              "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-all duration-200",
+              "relative flex items-center gap-3 w-full h-10 px-3 rounded-badge text-left transition-colors duration-200",
               "text-text-secondary hover:bg-accent-hover-surface",
             )}
           >

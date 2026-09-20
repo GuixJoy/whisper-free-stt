@@ -19,7 +19,7 @@ function ModelCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-card border p-5 transition-all duration-200",
+        "flex flex-col gap-3 rounded-card border p-5 transition-colors duration-200",
         model.downloaded
           ? "bg-[rgba(255,227,229,0.25)] border-[rgba(255,59,86,0.15)]"
           : model.downloading
@@ -217,7 +217,7 @@ export default function ModelsPage() {
           <button
             key={key}
             className={cn(
-              "h-8 px-4 rounded-badge text-[13px] font-medium transition-all duration-200",
+              "h-8 px-4 rounded-badge text-[13px] font-medium transition-colors duration-200",
               filter === key
                 ? "bg-accent-surface border border-[rgba(255,59,86,0.15)] text-accent"
                 : "text-text-muted hover:text-text-secondary hover:bg-accent-hover-surface",

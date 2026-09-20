@@ -78,7 +78,7 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
             return (
               <div key={m} className="flex flex-col items-center gap-1.5">
                 <div
-                  className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-[11px] font-semibold transition-all duration-500 ${
+                  className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors duration-500 ${
                     achieved
                       ? "bg-accent text-white"
                       : "bg-border-hover text-text-muted"

@@ -67,7 +67,7 @@ function EntryCard({
 
   return (
     <div
-      className="group flex items-center gap-4 px-5 py-4 rounded-[14px] bg-app-surface-secondary border border-border transition-all duration-200 hover:translate-y-[-1px] hover:border-border-hover"
+      className="group flex items-center gap-4 px-5 py-4 rounded-[14px] bg-app-surface-secondary border border-border transition duration-200 hover:translate-y-[-1px] hover:border-border-hover"
     >
       {/* Left: phrase & replacement */}
       <div className="flex-1 min-w-0">
@@ -206,7 +206,7 @@ function EntryModal({
                   key={opt.value}
                   onClick={() => setCategory(opt.value)}
                   className={cn(
-                    "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-all duration-150",
+                    "px-3 py-1.5 rounded-[8px] text-[12px] font-medium transition-colors duration-150",
                     category === opt.value
                       ? "bg-accent-surface text-accent-active border border-[rgba(255,59,86,0.15)]"
                       : "bg-app-surface-secondary text-text-muted border border-border hover:border-border-hover"

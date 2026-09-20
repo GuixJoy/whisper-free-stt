@@ -52,7 +52,7 @@ export default function HeatmapCard({ data }: HeatmapCardProps) {
             {week.map((day, di) => (
               <div
                 key={di}
-                className="w-[13px] h-[13px] rounded-[3px] transition-all duration-150 hover:ring-1 hover:ring-accent/30 hover:scale-110"
+                className="w-[13px] h-[13px] rounded-[3px] transition duration-150 hover:ring-1 hover:ring-accent/30 hover:scale-110"
                 style={{
                   background: LEVEL_COLORS[day.level] ?? LEVEL_COLORS[0],
                   opacity: isVisible ? 1 : 0,

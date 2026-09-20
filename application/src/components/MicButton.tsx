@@ -21,7 +21,7 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
         onClick={onToggle}
         aria-pressed={connected}
         className={cn(
-          "relative flex items-center justify-center rounded-full transition-all duration-200",
+          "relative flex items-center justify-center rounded-full transition duration-200",
           "w-[80px] h-[80px]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg",
           isError && [
@@ -46,7 +46,7 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
       >
         <div
           className={cn(
-            "transition-all duration-200",
+            "transition-colors duration-200",
             isPulsing ? "text-white" : isRewriting ? "text-accent" : isError ? "text-white" : "text-text-muted",
           )}
         >

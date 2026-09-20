@@ -82,7 +82,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
           <h2 className="text-heading text-text-primary flex items-center gap-2"><Settings size={18} className="text-text-secondary" />Settings</h2>
           <button
             className={cn(
-              "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-all duration-200",
+              "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
               "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             )}
@@ -342,7 +342,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
         <div className="flex items-center justify-end px-6 py-4 border-t border-border">
           <button
             className={cn(
-              "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-all duration-200",
+              "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
               "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
