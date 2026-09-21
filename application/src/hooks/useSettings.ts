@@ -18,31 +18,48 @@ import {
   validateSettings,
   type RuntimeSettings,
 } from "../lib/settings";
+import { isTauri } from "../lib/utils";
 
 export interface UseSettings {
   settings: RuntimeSettings;
   setSettings: React.Dispatch<React.SetStateAction<RuntimeSettings>>;
   /** Shallow-merge a patch — the common case, and it keeps the invariant. */
   updateSettings: (patch: Partial<RuntimeSettings>) => void;
+  /**
+   * Set when the last backend push failed. The backend keeps running with the
+   * previous config in that case, so the caller should surface it rather than
+   * let the settings silently not apply.
+   */
+  syncError: string | null;
 }
 
 export function useSettings(): UseSettings {
   const [settings, setSettings] = useState<RuntimeSettings>(getInitialSettings);
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   const updateSettings = useCallback((patch: Partial<RuntimeSettings>) => {
     setSettings((s) => ({ ...s, ...patch }));
   }, []);
 
   useEffect(() => {
-    // Push to the native backend (no-op outside Tauri). The API key is
-    // session-only in memory; an empty key clears the backend slot.
+    // Push to the native backend. The API key is session-only in memory; an
+    // empty key clears the backend slot.
     const push = async () => {
+      // Not Tauri (browser dev): there is no backend to configure. This is the
+      // only case where doing nothing is correct.
+      if (!isTauri()) return;
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("set_floure_config", { update: toBackendSettings(settings) });
         await invoke("set_openrouter_api_key", { key: settings.openrouterApiKey.trim() });
-      } catch {
-        // Web mode: no Tauri backend to configure.
+        setSyncError(null);
+      } catch (e) {
+        // A real failure leaves the backend on a stale config. Previously this
+        // was swallowed identically to web mode, so settings could silently
+        // fail to apply.
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[settings] backend sync failed", e);
+        setSyncError(msg);
       }
     };
     void push();
@@ -59,5 +76,5 @@ export function useSettings(): UseSettings {
     }
   }, [settings]);
 
-  return { settings, setSettings, updateSettings };
+  return { settings, setSettings, updateSettings, syncError };
 }

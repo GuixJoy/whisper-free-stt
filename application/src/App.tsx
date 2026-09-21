@@ -396,7 +396,7 @@ function FeedView({
 function App() {
   const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
-  const { settings, setSettings } = useSettings();
+  const { settings, setSettings, syncError } = useSettings();
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
@@ -416,6 +416,10 @@ function App() {
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
   const runtimeRef = useRef<STTApi | null>(null);
+  // Bumped on every (re)spawn. Async callbacks from a previous generation must
+  // not touch the current engine: a stale spawn().catch() used to set
+  // runtimeRef to null and clobber the live handle.
+  const engineGenerationRef = useRef(0);
   const nextLocalId = useRef(1);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const connectedRef = useRef(connected);
@@ -442,6 +446,7 @@ function App() {
     // StrictMode guard: prevent double-spawn in development
     if (runtimeRef.current) return;
 
+    const generation = ++engineGenerationRef.current;
     const api: STTApi = mode === "ws"
       ? createWebAudioApi(settings.wsPort)
       : createTauriApi();
@@ -451,18 +456,24 @@ function App() {
 
     // Spawn backend — loads models, warms ASR, stays idle until PTT
     api.spawn().then(() => {
+      if (engineGenerationRef.current !== generation) return;
       console.log("[Engine] Backend ready — waiting for PTT hotkey");
     }).catch((err) => {
+      // Ignore failures from a superseded engine: a settings change respawns,
+      // and this callback must not clear the newer handle.
+      if (engineGenerationRef.current !== generation) return;
       const msg = err instanceof Error ? err.message : "Failed to start engine";
       setToast(msg);
       addError("connection", msg, true, "Check if stt-engine is installed");
       runtimeRef.current = null;
     });
 
-    // Cleanup: kill backend on app unmount
+    // Cleanup: kill backend on app unmount or respawn
     return () => {
       api.kill();
-      runtimeRef.current = null;
+      // Only clear if we still own the ref — a newer generation may have
+      // already replaced it.
+      if (runtimeRef.current === api) runtimeRef.current = null;
     };
   }, [mode, settingsVersion]); // Re-spawn when mode changes OR settings saved
 
@@ -585,6 +596,14 @@ function App() {
   const dismissError = useCallback((id: string) => {
     setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
   }, []);
+
+  // A failed settings push leaves the engine on the previous config; surface
+  // it instead of letting the change silently not apply.
+  useEffect(() => {
+    if (syncError) {
+      addError("general", `Settings did not reach the engine: ${syncError}`);
+    }
+  }, [syncError, addError]);
 
   const applyEvent = (event: STTEvent) => {
     if (event.type === "error") {
