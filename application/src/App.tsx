@@ -22,6 +22,7 @@ import { isTauri, formatTimestamp } from "./lib/utils";
 import Waveform from "./components/Waveform";
 import { useSettings } from "./hooks/useSettings";
 import { type RunMode, type RuntimeSettings } from "./lib/settings";
+import { categoryForKind } from "./lib/errors";
 
 interface TranscriptLine {
   id: number;
@@ -598,10 +599,14 @@ function App() {
   }, []);
 
   // A failed settings push leaves the engine on the previous config; surface
-  // it instead of letting the change silently not apply.
+  // it instead of letting the change silently not apply. The banner category
+  // comes from the Rust error variant, not from a hardcoded guess.
   useEffect(() => {
     if (syncError) {
-      addError("general", `Settings did not reach the engine: ${syncError}`);
+      addError(
+        categoryForKind(syncError.kind),
+        `Settings did not reach the engine: ${syncError.message}`,
+      );
     }
   }, [syncError, addError]);
 

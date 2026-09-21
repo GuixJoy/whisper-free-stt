@@ -37,6 +37,33 @@ enum AppError {
 
     #[error("Tauri error: {0}")]
     Tauri(#[from] tauri::Error),
+
+    #[error("Config error: {0}")]
+    Config(String),
+}
+
+impl AppError {
+    /// Stable, machine-readable discriminant. The frontend branches on this
+    /// instead of pattern-matching human-readable message text.
+    fn kind(&self) -> &'static str {
+        match self {
+            Self::Database(_) => "database",
+            Self::Io(_) => "io",
+            Self::Tauri(_) => "tauri",
+            Self::Config(_) => "config",
+        }
+    }
+}
+
+/// Wire shape for a command error: `{ kind, message }`.
+///
+/// This used to serialize as a bare string (`serialize_str`), so the frontend
+/// could only display an error, never branch on it — every failure looked the
+/// same regardless of cause.
+#[derive(serde::Serialize)]
+struct ErrorPayload {
+    kind: &'static str,
+    message: String,
 }
 
 impl serde::Serialize for AppError {
@@ -44,7 +71,11 @@ impl serde::Serialize for AppError {
     where
         S: serde::ser::Serializer,
     {
-        serializer.serialize_str(self.to_string().as_ref())
+        ErrorPayload {
+            kind: self.kind(),
+            message: self.to_string(),
+        }
+        .serialize(serializer)
     }
 }
 
@@ -980,10 +1011,12 @@ fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
-async fn set_floure_config(update: crate::config::SettingsUpdate) -> Result<(), String> {
+async fn set_floure_config(update: crate::config::SettingsUpdate) -> Result<(), AppError> {
     let mut config = AppConfig::load();
     config.apply_update(update);
-    config.save().map_err(|e| e.to_string())
+    config
+        .save()
+        .map_err(|e| AppError::Config(e.to_string()))
 }
 
 #[tauri::command]

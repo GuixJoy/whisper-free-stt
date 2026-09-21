@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { BookOpen, Plus, Star, Pencil, Trash2, Search, X, Upload, Download } from "lucide-react";
 import { cn, isTauri } from "@/lib/utils";
+import { parseAppError } from "@/lib/errors";
 import { Button } from "@/components/Button";
 import TabSwitcher from "@/components/TabSwitcher";
 import Dialog from "@/components/Dialog";
@@ -326,7 +327,7 @@ export default function DictionaryPage() {
         setEntries(data);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseAppError(e).message);
       setEntries([]);
     } finally {
       setLoading(false);
@@ -349,7 +350,7 @@ export default function DictionaryPage() {
         prev.map((e) => (e.id === id ? { ...e, is_favorite: !e.is_favorite } : e))
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseAppError(e).message);
     }
   }, [apiFetch]);
 
@@ -364,7 +365,7 @@ export default function DictionaryPage() {
       setEntries((prev) => prev.filter((e) => e.id !== id));
       setDeletingEntry(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseAppError(e).message);
     }
   }, [apiFetch]);
 
@@ -403,7 +404,7 @@ export default function DictionaryPage() {
         setModalOpen(false);
         setEditingEntry(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(parseAppError(e).message);
       }
     },
     [editingEntry, apiFetch, loadEntries],
@@ -434,7 +435,7 @@ export default function DictionaryPage() {
         }
         await loadEntries();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(parseAppError(e).message);
       } finally {
         setImporting(false);
       }
@@ -461,7 +462,7 @@ export default function DictionaryPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseAppError(e).message);
     }
   }, [apiFetch]);
 

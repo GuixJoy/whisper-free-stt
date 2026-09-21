@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { MODEL_CATALOG, LLM_MODEL_CATALOG } from "../store";
 import type { ASRBackend, ModelInfo, LlmModelInfo } from "../store";
 import { isTauri } from "../lib/utils";
+import { parseAppError } from "../lib/errors";
 
 export interface ModelStatusEntry {
   name: string;
@@ -86,7 +87,7 @@ export function useModels() {
         })
       );
     } catch (err) {
-      setGlobalError(err instanceof Error ? err.message : "Failed to check model status");
+      setGlobalError(parseAppError(err).message);
     } finally {
       setLoading(false);
     }
@@ -191,7 +192,7 @@ export function useModels() {
       setModels((prev) =>
         prev.map((m) =>
           m.name === modelName
-            ? { ...m, downloading: false, progress: 0, error: err instanceof Error ? err.message : "Download failed" }
+            ? { ...m, downloading: false, progress: 0, error: parseAppError(err).message }
             : m
         )
       );

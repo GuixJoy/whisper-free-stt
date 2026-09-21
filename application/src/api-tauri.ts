@@ -1,5 +1,6 @@
 // ── Tauri native backend: uses Rust commands + Tauri events ──
 import { type STTApi, type STTEvent } from "./api";
+import { parseAppError } from "./lib/errors";
 
 type EngineStatus = "idle" | "listening" | "transcribing" | "rewriting" | "done" | "error";
 
@@ -24,14 +25,10 @@ export function createTauriApi(): STTApi {
 
   const fail = (message: string, e?: unknown) => {
     currentStatus = "error";
-    const detail =
-      e == null || e === ""
-        ? ""
-        : e instanceof Error
-          ? e.message
-          : typeof e === "string"
-            ? e
-            : JSON.stringify(e);
+    // Errors now arrive in three shapes: the structural `{kind, message}` from
+    // Rust's AppError, a JS Error, or a bare string. parseAppError normalises
+    // all three so nothing renders as "[object Object]".
+    const detail = e == null || e === "" ? "" : parseAppError(e).message;
     const fullMessage = detail && detail !== message ? `${message}: ${detail}` : message;
     console.error(fullMessage, e);
     emit({ type: "state", state: currentStatus, message: fullMessage });

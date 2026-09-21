@@ -19,6 +19,7 @@ import {
   type RuntimeSettings,
 } from "../lib/settings";
 import { isTauri } from "../lib/utils";
+import { parseAppError, type TauriAppError } from "../lib/errors";
 
 export interface UseSettings {
   settings: RuntimeSettings;
@@ -26,16 +27,17 @@ export interface UseSettings {
   /** Shallow-merge a patch — the common case, and it keeps the invariant. */
   updateSettings: (patch: Partial<RuntimeSettings>) => void;
   /**
-   * Set when the last backend push failed. The backend keeps running with the
-   * previous config in that case, so the caller should surface it rather than
-   * let the settings silently not apply.
+   * Set when the last backend push failed, carrying the Rust error's `kind`
+   * and message. The backend keeps running with the previous config in that
+   * case, so the caller should surface it rather than let the settings
+   * silently not apply.
    */
-  syncError: string | null;
+  syncError: TauriAppError | null;
 }
 
 export function useSettings(): UseSettings {
   const [settings, setSettings] = useState<RuntimeSettings>(getInitialSettings);
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<TauriAppError | null>(null);
 
   const updateSettings = useCallback((patch: Partial<RuntimeSettings>) => {
     setSettings((s) => ({ ...s, ...patch }));
@@ -57,9 +59,8 @@ export function useSettings(): UseSettings {
         // A real failure leaves the backend on a stale config. Previously this
         // was swallowed identically to web mode, so settings could silently
         // fail to apply.
-        const msg = e instanceof Error ? e.message : String(e);
         console.error("[settings] backend sync failed", e);
-        setSyncError(msg);
+        setSyncError(parseAppError(e));
       }
     };
     void push();

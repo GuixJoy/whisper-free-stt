@@ -272,8 +272,27 @@ mod tests {
     fn test_app_error_serialize() {
         let err = AppError::Database(rusqlite::Error::QueryReturnedNoRows);
         let json = serde_json::to_value(&err).unwrap();
-        assert!(json.is_string());
-        assert!(json.as_str().unwrap().contains("Database error"));
+        // Structural wire shape: the frontend branches on `kind`, so it must
+        // not be a bare string.
+        assert!(json.is_object(), "expected an object, got {json}");
+        assert_eq!(json["kind"], "database");
+        assert!(
+            json["message"].as_str().unwrap().contains("Database error"),
+            "got {json}"
+        );
+    }
+
+    #[test]
+    fn test_app_error_kinds_are_distinct() {
+        let io = serde_json::to_value(AppError::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "missing",
+        )))
+        .unwrap();
+        let cfg = serde_json::to_value(AppError::Config("bad".into())).unwrap();
+        assert_eq!(io["kind"], "io");
+        assert_eq!(cfg["kind"], "config");
+        assert_ne!(io["kind"], cfg["kind"]);
     }
 
     // -----------------------------------------------------------------------

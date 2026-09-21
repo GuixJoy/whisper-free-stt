@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Download, Trash2, ArrowLeft, CheckSquare, Square, Calendar, Filter, Star, RefreshCw, TriangleAlert } from "lucide-react";
 import { formatTimestamp, isTauri } from "@/lib/utils";
+import { parseAppError } from "@/lib/errors";
 
 interface HistoryRow {
   id: number;
@@ -67,7 +68,7 @@ export default function HistoryPage({ onBack }: Props) {
         setAllRows(data);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(parseAppError(e).message);
     } finally {
       setLoading(false);
     }
@@ -124,7 +125,9 @@ export default function HistoryPage({ onBack }: Props) {
       a.download = `stt-history-${new Date().toISOString().split("T")[0]}.${format === "csv" ? "csv" : "txt"}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { }
+    } catch (e) {
+      console.error("[history] export failed", e);
+    }
   }, []);
 
   const deleteEntry = useCallback(async (id: number) => {
@@ -137,7 +140,9 @@ export default function HistoryPage({ onBack }: Props) {
       }
       setAllRows((prev) => prev.filter((r) => r.id !== id));
       setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    } catch { }
+    } catch (e) {
+      console.error("[history] delete failed", e);
+    }
   }, [apiFetch]);
 
   const deleteSelected = useCallback(async () => {
@@ -156,7 +161,9 @@ export default function HistoryPage({ onBack }: Props) {
       }
       setAllRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
       setSelectedIds(new Set());
-    } catch { }
+    } catch (e) {
+      console.error("[history] bulk delete failed", e);
+    }
   }, [selectedIds, apiFetch]);
 
   const toggleFavorite = useCallback(async (id: number) => {
@@ -169,7 +176,9 @@ export default function HistoryPage({ onBack }: Props) {
         const result = await apiFetch(`/history/${id}/favorite`, { method: "POST" });
         setAllRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
       }
-    } catch { }
+    } catch (e) {
+      console.error("[history] favorite toggle failed", e);
+    }
   }, [apiFetch]);
 
   const toggleSelect = useCallback((id: number) => {

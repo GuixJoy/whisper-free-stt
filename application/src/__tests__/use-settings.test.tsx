@@ -78,7 +78,33 @@ describe("useSettings", () => {
   it("exposes syncError when the backend push fails", async () => {
     invoke.mockImplementation(() => Promise.reject(new Error("ipc exploded")));
     const { result } = renderHook(() => useSettings());
-    await waitFor(() => expect(result.current.syncError).toBe("ipc exploded"));
+    await waitFor(() => expect(result.current.syncError?.message).toBe("ipc exploded"));
+  });
+
+  // The structural wire shape: Rust's AppError serializes as { kind, message },
+  // so the UI can branch on the variant instead of matching message text.
+  it("preserves the Rust error kind from a structural payload", async () => {
+    invoke.mockImplementation(() =>
+      Promise.reject({ kind: "config", message: "Config error: permission denied" }),
+    );
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => expect(result.current.syncError).not.toBeNull());
+    expect(result.current.syncError).toEqual({
+      kind: "config",
+      message: "Config error: permission denied",
+    });
+  });
+
+  // Regression guard for the old shape: commands that still reject with a bare
+  // string must not crash the parser.
+  it("handles a legacy bare-string rejection", async () => {
+    invoke.mockImplementation(() => Promise.reject("plain string failure"));
+    const { result } = renderHook(() => useSettings());
+    await waitFor(() => expect(result.current.syncError).not.toBeNull());
+    expect(result.current.syncError).toEqual({
+      kind: "unknown",
+      message: "plain string failure",
+    });
   });
 
   it("does not report an error in web mode (no Tauri)", async () => {

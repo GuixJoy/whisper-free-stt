@@ -7,6 +7,7 @@ import {
 } from "../store";
 import type { SystemCheck } from "../store";
 import { isTauri } from "../lib/utils";
+import { parseAppError } from "../lib/errors";
 
 interface RustCheck {
   name: string;
@@ -44,7 +45,7 @@ export function useOnboarding(onComplete: () => void) {
         ];
       }
     } catch (err) {
-      dispatch({ type: "SET_ERROR", error: err instanceof Error ? err.message : "System check failed" });
+      dispatch({ type: "SET_ERROR", error: parseAppError(err).message });
     }
 
     checks.push({
@@ -120,7 +121,7 @@ export function useOnboarding(onComplete: () => void) {
           bytesTotal: 0,
           status: "error",
         });
-        dispatch({ type: "SET_ERROR", error: `${name}: ${err instanceof Error ? err.message : "Download failed"}` });
+        dispatch({ type: "SET_ERROR", error: `${name}: ${parseAppError(err).message}` });
       }
     }
 
