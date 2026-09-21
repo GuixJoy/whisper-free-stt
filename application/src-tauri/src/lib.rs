@@ -1072,6 +1072,40 @@ fn check_system_deps() -> serde_json::Value {
             "message": if has_clipboard { "wl-copy or xclip available" } else { "No clipboard tool found" },
             "fixHint": if has_clipboard { None::<&str> } else { Some("Install: sudo apt install wl-clipboard xclip") }
         }));
+
+        // Typing is the app's whole point: without the tool for this display
+        // server the transcript is never typed. Check it explicitly — this
+        // was previously unverified, so a machine missing it passed the
+        // checks and then silently failed at output time.
+        let (_, display_server) = crate::output::detect_platform();
+        let typing_tool = if display_server == "wayland" {
+            "wtype"
+        } else {
+            "xdotool"
+        };
+        let has_typing = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("command -v {typing_tool}"))
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        checks.push(serde_json::json!({
+            "name": "Typing Tool",
+            "status": if has_typing { "pass" } else { "fail" },
+            "message": if has_typing {
+                format!("{typing_tool} available ({display_server})")
+            } else {
+                format!("{typing_tool} not found ({display_server}) — transcripts will not be typed")
+            },
+            "fixHint": if has_typing { None::<&str> } else {
+                Some(if display_server == "wayland" {
+                    "Install: sudo apt install wtype"
+                } else {
+                    "Install: sudo apt install xdotool"
+                })
+            }
+        }));
     } else if platform == "macos" {
         checks.push(serde_json::json!({
             "name": "Audio Server", "status": "pass", "message": "CoreAudio available", "fixHint": null

@@ -13,6 +13,11 @@ export type STTEvent =
   | { type: "llm_token"; text: string }
   | { type: "llm_end"; text: string }
   | { type: "mic"; level: number }
+  | {
+      type: "error";
+      category: "connection" | "model" | "mic" | "permission" | "general";
+      message: string;
+    }
   | { type: "info"; profile: string; model: string; backend: string; device: string };
 
 export interface STTApi {

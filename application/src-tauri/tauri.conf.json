@@ -87,6 +87,11 @@
           "wtype"
         ]
       }
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "offlineInstaller"
+      }
     }
   },
   "plugins": {}

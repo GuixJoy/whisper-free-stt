@@ -82,7 +82,7 @@ export function createTauriApi(): STTApi {
       const events = [
         "asr_ready", "asr_partial", "asr_final",
         "llm_start", "llm_token", "llm_end",
-        "asr_error",
+        "asr_error", "llm_error", "output_error",
       ];
       for (const eventName of events) {
         const unlisten = await listen<TauriPayload>(eventName, (event) => {
@@ -90,6 +90,15 @@ export function createTauriApi(): STTApi {
             const msg = event.payload?.error ?? "Unknown ASR error";
             console.error("[asr_error]", msg);
             fail(msg);
+            return;
+          }
+          // Cleanup and output failures were emitted by the backend but never
+          // listened for, so a failed cleanup or a missing typing tool was
+          // invisible. Route them to the error banner.
+          if (eventName === "llm_error" || eventName === "output_error") {
+            const msg = event.payload?.error ?? "Unknown error";
+            console.error(`[${eventName}]`, msg);
+            emit({ type: "error", category: "general", message: msg });
             return;
           }
           handleEvent(eventName, event.payload ?? {});

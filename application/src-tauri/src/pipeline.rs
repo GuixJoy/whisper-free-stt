@@ -108,13 +108,59 @@ impl LlmProcessor {
         }
 
         if self.config.typing_enabled {
-            if let Err(e) = type_text(&cleaned) {
-                eprintln!("[pipeline] type_text failed: {}", e);
+            match type_text(&cleaned) {
+                Ok(true) => {}
+                // Empty text is a legitimate no-op, not a failure.
+                Ok(false) if cleaned.trim().is_empty() => {}
+                // The tool ran but reported failure — e.g. xdotool present
+                // with no DISPLAY. Previously indistinguishable from success.
+                Ok(false) => {
+                    eprintln!("[pipeline] type_text ran but reported failure");
+                    let _ = app.emit(
+                        "output_error",
+                        serde_json::json!({
+                            "error": "Typing the transcript failed. Check that xdotool (X11) or wtype (Wayland) works in this session."
+                        }),
+                    );
+                }
+                // Spawn failure: the tool is not installed at all.
+                Err(e) => {
+                    eprintln!("[pipeline] type_text failed: {}", e);
+                    let _ = app.emit(
+                        "output_error",
+                        serde_json::json!({
+                            "error": format!(
+                                "Could not type the transcript: {e}. Install xdotool (X11) or wtype (Wayland)."
+                            )
+                        }),
+                    );
+                }
             }
         }
         if self.config.clipboard_enabled {
-            if let Err(e) = copy_to_clipboard(&cleaned) {
-                eprintln!("[pipeline] copy_to_clipboard failed: {}", e);
+            match copy_to_clipboard(&cleaned) {
+                Ok(true) => {}
+                Ok(false) if cleaned.is_empty() => {}
+                Ok(false) => {
+                    eprintln!("[pipeline] copy_to_clipboard ran but reported failure");
+                    let _ = app.emit(
+                        "output_error",
+                        serde_json::json!({
+                            "error": "Copying to the clipboard failed. Check that wl-clipboard (Wayland) or xclip (X11) works in this session."
+                        }),
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[pipeline] copy_to_clipboard failed: {}", e);
+                    let _ = app.emit(
+                        "output_error",
+                        serde_json::json!({
+                            "error": format!(
+                                "Could not copy to the clipboard: {e}. Install wl-clipboard (Wayland) or xclip (X11)."
+                            )
+                        }),
+                    );
+                }
             }
         }
 
