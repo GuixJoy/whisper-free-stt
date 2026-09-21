@@ -80,20 +80,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: application/src-tauri
-      - name: Install Vulkan build deps (Linux)
+      - name: Install Tauri build deps (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvulkan-dev
-          # glslc (shader compiler required by llama.cpp's Vulkan backend;
-          # no apt package ships it, so take it from the LunarG SDK)
-          curl -fsSL https://sdk.lunarg.com/sdk/download/1.4.321.0/linux/vulkan-sdk.tar.xz -o /tmp/vulkan-sdk.tar.xz
-          mkdir -p /tmp/vulkan-sdk && tar -xf /tmp/vulkan-sdk.tar.xz -C /tmp/vulkan-sdk
-          echo "$(dirname $(find /tmp/vulkan-sdk -name glslc -type f | head -1))" >> $GITHUB_PATH
-          # SPIRV-Headers (no apt package; header-only, install from source)
-          git clone --depth 1 https://github.com/KhronosGroup/SPIRV-Headers /tmp/SPIRV-Headers
-          cmake -S /tmp/SPIRV-Headers -B /tmp/SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=/usr/local
-          sudo cmake --build /tmp/SPIRV-Headers/build --target install
-          echo "CPLUS_INCLUDE_PATH=/usr/local/include" >> $GITHUB_ENV
+          # No Vulkan SDK: the llama.cpp Vulkan backend is opt-in, so the
+          # default build needs no glslc / SPIRV-Headers.
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libasound2-dev \
+            libdbus-1-dev
       - run: cargo fmt --check
       - run: cargo clippy -- -D warnings
       - run: cargo test

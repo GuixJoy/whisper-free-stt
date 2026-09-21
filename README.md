@@ -42,11 +42,21 @@ cd application/src-tauri && cargo test     # Rust tests
 cd application && npx vitest run           # frontend tests
 ```
 
-### Local GPU offload
+### Local GPU offload (optional)
 
-The Rust backend prefers GPUs automatically: discrete NVIDIA → AMD → CPU (`application/src-tauri/src/compute.rs`). The local LLM offloads all layers via the llama.cpp Vulkan backend; ASR stays on CPU (int8 is already sub-second per utterance). Overrides: `FLOURE_COMPUTE=cpu|vulkan`, `FLOURE_MAIN_GPU=<index>`.
+Default builds link llama.cpp statically with CPU inference and need no Vulkan
+toolchain — the result is a single self-contained binary. ASR is CPU either way
+(int8 is already sub-second per utterance).
 
-GPU build prerequisites (Linux only; Windows/macOS build CPU inference): Vulkan loader + headers, a GPU with a Vulkan ICD, `glslc` and SPIRV-Headers — see `.github/workflows/ci.yml` for how CI provisions them.
+To offload the local LLM to a GPU, build the Vulkan backend:
+
+```bash
+cd application && pnpm tauri build -- --features vulkan
+```
+
+That requires a Vulkan toolchain at build time (Vulkan loader + headers, a GPU
+with a Vulkan ICD, `glslc` and SPIRV-Headers). At runtime the device is picked
+automatically — discrete NVIDIA → AMD → CPU (`application/src-tauri/src/compute.rs`) — and can be overridden with `FLOURE_COMPUTE=cpu|vulkan` and `FLOURE_MAIN_GPU=<index>`.
 
 ## Configuration
 

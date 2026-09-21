@@ -33,13 +33,23 @@ dirs-next = "2"
 thiserror = "2"
 sherpa-onnx = "1.13"
 cpal = "0.18"
-llama-cpp-4 = "0.6"
+# default-features must stay off: llama-cpp-4's defaults include
+# `dynamic-link`, which builds libllama/libggml as SHARED libraries. Tauri's
+# bundler does not ship them, so the installed .deb/.rpm failed to start with
+# "libllama.so.0: cannot open shared object file". Static linking gives one
+# self-contained binary that runs anywhere.
+llama-cpp-4 = { version = "0.6", default-features = false, features = ["openmp", "mtmd"] }
 
-# GPU offload (Vulkan) is built on Linux only, where the CI/release
-# runners and dev machines can provision glslc + SPIRV-Headers.
-# Windows/macOS fall back to CPU inference.
+[features]
+# GPU offload for the local LLM. Opt-in: building it needs a Vulkan toolchain
+# (glslc + SPIRV-Headers) at build time, which is why the default build stays
+# CPU-only and needs no Vulkan SDK.
+#   pnpm tauri build -- --features vulkan
+vulkan = ["llama-cpp-4/vulkan"]
+
+# reqwest/anyhow/bzip2/tar are used unconditionally in models.rs, but are
+# declared for Linux only — a pre-existing quirk, left as-is.
 [target.'cfg(target_os = "linux")'.dependencies]
-llama-cpp-4 = { version = "0.6", features = ["vulkan"] }
 reqwest = { version = "0.12", features = ["json", "gzip", "blocking"] }
 anyhow = "1"
 bzip2 = "0.4"

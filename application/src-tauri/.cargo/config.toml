@@ -1,8 +1,9 @@
 # No hardcoded target — Cargo auto-detects host platform.
 # Build with: pnpm tauri build
-
-# NOTE: the llama.cpp Vulkan backend needs SPIRV-Headers and glslc at
-# build time. These are machine-local (no sudo required) — see README
-# "GPU build prerequisites". Do NOT commit absolute include paths here;
-# CI provisions them in .github/workflows, local shells use
-# $CARGO_HOME/config.toml or exported CPLUS_INCLUDE_PATH.
+#
+# The default build links llama.cpp statically with CPU inference, so it needs
+# no Vulkan toolchain. The GPU backend is opt-in:
+#     pnpm tauri build -- --features vulkan
+# which additionally needs glslc + SPIRV-Headers at build time. Those are
+# machine-local (no sudo required); do NOT commit absolute include paths here —
+# local shells use $CARGO_HOME/config.toml or exported CPLUS_INCLUDE_PATH.
