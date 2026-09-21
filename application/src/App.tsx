@@ -63,6 +63,11 @@ export interface RuntimeSettings {
   language: string;
 }
 
+/// Model id used when the UI has no explicit selection. Mirrors the backend's
+/// `default_llm_model`; an empty id must never reach the backend because it
+/// resolves to a non-existent path (`models/""/file.gguf`).
+export const DEFAULT_LLM_MODEL = "s1-mini-q4_k_m";
+
 const DEFAULT_SETTINGS: RuntimeSettings = {
   wsPort: 8765,
   asrProfile: "parakeet",
@@ -109,7 +114,10 @@ export function toBackendSettings(s: RuntimeSettings) {
     language: s.language.trim() || "en",
     llm_provider: s.llmProvider,
     llm_mode: s.llmMode,
-    llm_model: s.llmModel,
+    // Same reason as `language`: an empty id is persisted verbatim and then
+    // resolves to models/""/file.gguf, so the model fails to load even though
+    // it is downloaded. Send the effective default instead of "".
+    llm_model: s.llmModel.trim() || DEFAULT_LLM_MODEL,
     typing_enabled: s.typing,
     clipboard_enabled: s.clipboard,
   };

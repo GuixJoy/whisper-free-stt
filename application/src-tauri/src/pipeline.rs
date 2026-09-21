@@ -30,10 +30,14 @@ impl LlmProcessor {
         // Build the model path from the selected LLM model ID in config.
         // The manifest's `filename` field is the on-disk name; fall back to
         // the legacy gemma path if the model isn't in the manifest yet.
-        let filename = crate::models::find_model(&config.llm_model)
+        // Resolve blank ids first: `models/""/file.gguf` collapses to
+        // `models/file.gguf` and never matches the downloaded layout, which is
+        // why a downloaded model could report "Local LLM model not loaded".
+        let llm_model_id = crate::config::resolved_llm_model(&config.llm_model);
+        let filename = crate::models::find_model(&llm_model_id)
             .and_then(|m| m.filename)
             .unwrap_or("s1-mini-q4_k_m.gguf");
-        let llm_model_path = config.model_dir.join(&config.llm_model).join(filename);
+        let llm_model_path = config.model_dir.join(&llm_model_id).join(filename);
         // Legacy fallback: check the old flat path before the subdirectory layout
         let llm_model_path = if llm_model_path.exists() {
             llm_model_path
@@ -44,7 +48,19 @@ impl LlmProcessor {
             crate::config::LlmProvider::OpenRouter => LlmBackend::OpenRouter,
             crate::config::LlmProvider::Local => LlmBackend::Local,
         };
-        let llm = LlmCleanup::new(backend, Some(&llm_model_path)).ok();
+        // `.ok()` used to swallow the load failure, so the only visible
+        // symptom was the downstream "Local LLM model not loaded" — which
+        // says nothing about *why* (missing file, blank model id, bad GGUF).
+        let llm = match LlmCleanup::new(backend, Some(&llm_model_path)) {
+            Ok(llm) => Some(llm),
+            Err(e) => {
+                eprintln!(
+                    "[llm] local model failed to load from {}: {e}",
+                    llm_model_path.display()
+                );
+                None
+            }
+        };
         Self { llm, config }
     }
 

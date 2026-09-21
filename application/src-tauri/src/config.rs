@@ -59,6 +59,21 @@ fn default_llm_model() -> String {
     "s1-mini-q4_k_m".to_string()
 }
 
+/// The LLM model id to actually load.
+///
+/// Configs written by the UI can carry an empty `llm_model` (the frontend's
+/// default is "" and it is sent verbatim). An empty id silently collapses the
+/// per-model subdirectory out of the path — `models/""/file.gguf` resolves to
+/// `models/file.gguf`, which does not exist — so the model "fails to load"
+/// even though it is downloaded. Treat blank as the default.
+pub fn resolved_llm_model(id: &str) -> String {
+    if id.trim().is_empty() {
+        default_llm_model()
+    } else {
+        id.to_string()
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         let model_dir = dirs_next::data_dir()
@@ -195,7 +210,8 @@ impl AppConfig {
         self.language = update.language;
         self.llm_provider = update.llm_provider;
         self.llm_mode = update.llm_mode;
-        self.llm_model = update.llm_model;
+        // Never persist a blank id: it would resolve to a non-existent path.
+        self.llm_model = resolved_llm_model(&update.llm_model);
         self.typing_enabled = update.typing_enabled;
         self.clipboard_enabled = update.clipboard_enabled;
     }

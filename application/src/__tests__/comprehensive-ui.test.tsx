@@ -211,7 +211,7 @@ import OnboardingWizard from "@/components/OnboardingWizard";
 import WidgetView from "@/components/WidgetView";
 import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "@/store";
 import type { STTEvent } from "@/api";
-import { toBackendSettings, type RuntimeSettings } from "../App";
+import { toBackendSettings, DEFAULT_LLM_MODEL, type RuntimeSettings } from "../App";
 
 // ── Helpers ──
 function renderWithProviders(ui: React.ReactElement) {
@@ -569,6 +569,42 @@ describe("toBackendSettings", () => {
     expect(payload.language).toBe("auto");
     expect(payload).not.toHaveProperty("openrouterApiKey");
     expect(payload).not.toHaveProperty("hotwords");
+  });
+
+  // Regression: an empty llm_model was persisted verbatim, and the backend then
+  // resolved it to models/""/file.gguf — so a downloaded model reported
+  // "Local LLM model not loaded".
+  it("never sends an empty llm_model", () => {
+    const payload = toBackendSettings({
+      wsPort: 8765,
+      asrProfile: "parakeet",
+      llmMode: "cleanup",
+      llmProvider: "local",
+      llmModel: "",
+      openrouterApiKey: "",
+      typing: true,
+      clipboard: true,
+      hotwords: "",
+      language: "",
+    });
+    expect(payload.llm_model).toBe(DEFAULT_LLM_MODEL);
+    expect(payload.llm_model).not.toBe("");
+  });
+
+  it("preserves an explicitly chosen llm_model", () => {
+    const payload = toBackendSettings({
+      wsPort: 8765,
+      asrProfile: "parakeet",
+      llmMode: "cleanup",
+      llmProvider: "local",
+      llmModel: "gemma-3-1b-it-q4_k_m",
+      openrouterApiKey: "",
+      typing: true,
+      clipboard: true,
+      hotwords: "",
+      language: "",
+    });
+    expect(payload.llm_model).toBe("gemma-3-1b-it-q4_k_m");
   });
 });
 
