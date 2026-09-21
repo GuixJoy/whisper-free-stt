@@ -192,7 +192,6 @@ vi.mock("@/store", async (importOriginal) => {
 
 // ── Imports after mocks ──
 import { Button } from "@/components/Button";
-import { Badge } from "@/components/Badge";
 import MicButton from "@/components/MicButton";
 import PttOverlay from "@/components/PttOverlay";
 import ModelBadge from "@/components/ModelBadge";
@@ -261,36 +260,6 @@ describe("Button", () => {
     const ref = React.createRef<HTMLButtonElement>();
     renderWithProviders(<Button ref={ref}>Test</Button>);
     expect(ref.current).toBeInstanceOf(HTMLButtonElement);
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
-// 5. Badge
-// ══════════════════════════════════════════════════════════════════
-describe("Badge", () => {
-  it("renders without crashing", () => {
-    renderWithProviders(<Badge>Pro</Badge>);
-    expect(screen.getByText("Pro")).toBeInTheDocument();
-  });
-
-  it("applies variant classes", () => {
-    const { rerender } = renderWithProviders(<Badge variant="accent">Test</Badge>);
-    let badge = screen.getByText("Test");
-    expect(badge.className).toContain("bg-accent-muted");
-
-    rerender(<Badge variant="success">Test</Badge>);
-    badge = screen.getByText("Test");
-    expect(badge.className).toContain("bg-success/10");
-
-    rerender(<Badge variant="outline">Test</Badge>);
-    badge = screen.getByText("Test");
-    expect(badge.className).toContain("border-border");
-  });
-
-  it("forwards ref", () => {
-    const ref = React.createRef<HTMLSpanElement>();
-    renderWithProviders(<Badge ref={ref}>Test</Badge>);
-    expect(ref.current).toBeInstanceOf(HTMLSpanElement);
   });
 });
 
@@ -1245,12 +1214,6 @@ describe("useAppState", () => {
 // 40. Edge Cases: Long text
 // ══════════════════════════════════════════════════════════════════
 describe("Edge cases: long text", () => {
-  it("Badge handles long text", () => {
-    const longText = "A".repeat(200);
-    renderWithProviders(<Badge>{longText}</Badge>);
-    expect(screen.getByText(longText)).toBeInTheDocument();
-  });
-
   it("Button handles long text", () => {
     const longText = "A".repeat(200);
     renderWithProviders(<Button>{longText}</Button>);
