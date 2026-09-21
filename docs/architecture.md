@@ -301,7 +301,7 @@ Registered in `lib.rs`:
 | Rust unit/integration | `cargo test` | `cd application/src-tauri && cargo test -- --test-threads=1` | 59 |
 | TypeScript unit | vitest | `npx vitest run` | 67 |
 | Python unit | pytest | `uv run python -m pytest` | TBD |
-| E2E | Playwright + tauri-driver | `scripts/e2e-test.sh` | TBD |
+| Smoke | build + dev server + both test suites | `application/scripts/smoke-test.sh` | 4 checks |
 
 ## Key Design Decisions
 

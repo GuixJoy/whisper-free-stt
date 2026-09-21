@@ -154,6 +154,11 @@ export default function WidgetView() {
   }, []);
 
   useEffect(() => {
+    // The widget is created with `focus: false` (tauri.conf.json) so showing it
+    // never steals focus from the window being dictated into. Consequence:
+    // this listener only fires once the user has clicked the widget (or the
+    // compositor focused it) — Escape is not available while it is unfocused.
+    // The Hide button is the always-available path.
     const handler = (e: KeyboardEvent) => {
       if (e.code === "Escape") {
         handleHide();

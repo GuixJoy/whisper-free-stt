@@ -871,6 +871,58 @@ mod tests {
         assert_eq!(got, payload, "resumed file must be the complete payload");
     }
 
+    // -----------------------------------------------------------------------
+    // History schema bootstrap
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn regression_history_schema_exists_on_a_fresh_db() {
+        // A fresh install has no history.db and no legacy DB to copy forward.
+        // Nothing else creates `transcripts`, so saving used to fail with
+        // "no such table: transcripts" and history never persisted.
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("STT_DATA_DIR", tmp.path());
+
+        let db = crate::config::history_db_path();
+        assert!(!db.exists(), "precondition: fresh install has no DB");
+
+        crate::output::save_to_history("cleaned text", "raw text", "cleanup", "parakeet", &db)
+            .expect("saving to a fresh history DB must create the schema");
+
+        let conn = Connection::open(&db).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM transcripts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "the saved transcript must be readable back");
+
+        let raw: String = conn
+            .query_row("SELECT raw_text FROM transcripts LIMIT 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(raw, "raw text");
+
+        std::env::remove_var("STT_DATA_DIR");
+    }
+
+    #[test]
+    fn regression_history_schema_is_idempotent() {
+        let _guard = env_lock().lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = tempfile::tempdir().unwrap();
+        std::env::set_var("STT_DATA_DIR", tmp.path());
+
+        let db = crate::config::history_db_path();
+        for _ in 0..3 {
+            crate::output::save_to_history("t", "r", "cleanup", "m", &db).unwrap();
+        }
+        let conn = Connection::open(&db).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM transcripts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 3);
+
+        std::env::remove_var("STT_DATA_DIR");
+    }
+
     #[test]
     fn probe_blocking_client_off_async_runtime_is_the_supported_pattern() {
         // The constraint that caused this bug: reqwest::blocking's internal

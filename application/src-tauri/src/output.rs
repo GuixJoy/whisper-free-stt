@@ -74,6 +74,7 @@ pub fn save_to_history(
 ) -> Result<()> {
     use rusqlite::Connection;
     let conn = Connection::open(db_path)?;
+    crate::ensure_history_schema(&conn)?;
     conn.execute(
         "INSERT INTO transcripts (raw_text, processed_text, language, mode, model, duration_sec)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",

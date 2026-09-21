@@ -21,7 +21,6 @@ use crate::models::ModelStatus;
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
-use tauri_plugin_sql::{Migration, MigrationKind};
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
@@ -88,11 +87,38 @@ fn history_db_path() -> Result<std::path::PathBuf, AppError> {
     Ok(crate::config::history_db_path())
 }
 
+/// Open the history DB, creating the `transcripts` schema if it is absent.
+///
+/// This is the only bootstrap for `history.db` — the plugin-sql migrations
+/// were registered against a different file (`stt.db`) that nothing reads, so
+/// a fresh install had no `transcripts` table and every history read/write
+/// failed with "no such table: transcripts".
+fn open_history_db() -> Result<Connection, AppError> {
+    let conn = Connection::open(crate::config::history_db_path())?;
+    ensure_history_schema(&conn)?;
+    Ok(conn)
+}
+
+fn ensure_history_schema(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_text TEXT NOT NULL,
+            processed_text TEXT NOT NULL DEFAULT '',
+            language TEXT DEFAULT '',
+            mode TEXT DEFAULT 'cleanup',
+            favorite INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            model TEXT DEFAULT '',
+            duration_sec REAL DEFAULT 0.0
+        );",
+    )
+}
+
 #[tauri::command]
 async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
-    let db_path = history_db_path()?;
     let rows = tauri::async_runtime::spawn_blocking(move || {
-        let conn = Connection::open(db_path)?;
+        let conn = open_history_db()?;
         let mut stmt = conn.prepare(
             "SELECT id, raw_text, processed_text, language, mode, model, duration_sec, favorite, created_at
              FROM transcripts ORDER BY created_at DESC LIMIT ?1",
@@ -120,9 +146,8 @@ async fn get_history(limit: usize) -> Result<Vec<TranscriptRow>, AppError> {
 
 #[tauri::command]
 async fn delete_history_entry(id: i64) -> Result<bool, AppError> {
-    let db_path = history_db_path()?;
     let ok = tauri::async_runtime::spawn_blocking(move || {
-        let conn = Connection::open(db_path)?;
+        let conn = open_history_db()?;
         let deleted = conn.execute("DELETE FROM transcripts WHERE id = ?1", [id])?;
         Ok::<bool, AppError>(deleted > 0)
     })
@@ -1087,77 +1112,13 @@ async fn test_microphone() -> Result<serde_json::Value, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![
-        Migration {
-            version: 1,
-            description: "create transcript history table",
-            sql: "CREATE TABLE IF NOT EXISTS transcripts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                raw_text TEXT NOT NULL,
-                processed_text TEXT NOT NULL DEFAULT '',
-                language TEXT DEFAULT '',
-                mode TEXT DEFAULT 'cleanup',
-                favorite INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "add model and duration columns",
-            sql: "ALTER TABLE transcripts ADD COLUMN model TEXT DEFAULT '';
-                 ALTER TABLE transcripts ADD COLUMN duration_sec REAL DEFAULT 0.0;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "create full-text search index",
-            sql: "CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
-                raw_text, processed_text, content='transcripts', content_rowid='id'
-            );
-            CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
-                INSERT INTO transcripts_fts(raw_text, processed_text) VALUES (new.raw_text, new.processed_text);
-            END;
-            CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
-                INSERT INTO transcripts_fts(transcripts_fts, raw_text, processed_text) VALUES ('delete', old.raw_text, old.processed_text);
-            END;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "create dictionary entries table",
-            sql: "CREATE TABLE IF NOT EXISTS dictionary_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phrase TEXT NOT NULL UNIQUE,
-                replacement TEXT NOT NULL,
-                category TEXT DEFAULT 'custom',
-                notes TEXT DEFAULT '',
-                use_count INTEGER DEFAULT 0,
-                is_favorite INTEGER DEFAULT 0,
-                auto_learned INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_dict_category ON dictionary_entries(category);
-            CREATE INDEX IF NOT EXISTS idx_dict_favorite ON dictionary_entries(is_favorite);
-            CREATE INDEX IF NOT EXISTS idx_dict_phrase ON dictionary_entries(phrase);",
-            kind: MigrationKind::Up,
-        },
-    ];
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:stt.db", migrations)
-                .build(),
-        )
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             check_system_deps,
             check_model_status,
@@ -1190,7 +1151,7 @@ pub fn run() {
 
             // --- System tray with start/stop menu ---
             use tauri::menu::{Menu, MenuItem};
-            use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+            use tauri::tray::TrayIconBuilder;
 
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let start_item = MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
@@ -1227,21 +1188,6 @@ pub fn run() {
                     }
                     "quit" => app.exit(0),
                     _ => {}
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
                 })
                 .build(app)?;
 
