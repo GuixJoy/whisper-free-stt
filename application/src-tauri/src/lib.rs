@@ -40,6 +40,9 @@ enum AppError {
 
     #[error("Config error: {0}")]
     Config(String),
+
+    #[error("Audio error: {0}")]
+    Audio(String),
 }
 
 impl AppError {
@@ -51,6 +54,7 @@ impl AppError {
             Self::Io(_) => "io",
             Self::Tauri(_) => "tauri",
             Self::Config(_) => "config",
+            Self::Audio(_) => "audio",
         }
     }
 }
@@ -939,7 +943,7 @@ async fn get_voice_intelligence() -> Result<VoiceIntelligenceData, AppError> {
 }
 
 #[tauri::command]
-async fn start_listening(app: tauri::AppHandle) -> Result<(), String> {
+async fn start_listening(app: tauri::AppHandle) -> Result<(), AppError> {
     eprintln!("[backend] start_listening invoked");
     // Model loading and the lazy VAD download are blocking, and
     // `reqwest::blocking` must never run on the async runtime: its internal
@@ -952,13 +956,13 @@ async fn start_listening(app: tauri::AppHandle) -> Result<(), String> {
         crate::pipeline::start_pipeline(app, config)
     })
     .await
-    .map_err(|e| format!("pipeline task failed: {e}"))?;
+    .map_err(|e| AppError::Audio(format!("pipeline task failed: {e}")))?;
 
     match &result {
         Ok(_) => eprintln!("[backend] start_listening OK"),
         Err(e) => eprintln!("[backend] start_listening FAILED: {}", e),
     }
-    result.map_err(|e| e.to_string())
+    result.map_err(|e| AppError::Audio(e.to_string()))
 }
 
 #[tauri::command]
@@ -1163,8 +1167,8 @@ fn check_system_deps() -> serde_json::Value {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-async fn test_microphone() -> Result<serde_json::Value, String> {
-    let devices = crate::audio::list_input_devices().map_err(|e| e.to_string())?;
+async fn test_microphone() -> Result<serde_json::Value, AppError> {
+    let devices = crate::audio::list_input_devices().map_err(|e| AppError::Audio(e.to_string()))?;
     let count = devices.len();
     let devices: Vec<serde_json::Value> = devices
         .into_iter()

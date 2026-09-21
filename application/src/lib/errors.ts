@@ -36,12 +36,14 @@ export function parseAppError(e: unknown): TauriAppError {
  */
 export function categoryForKind(kind: string): ErrorCategory {
   switch (kind) {
+    case "audio":
+      return "mic";
+    case "tauri":
+      return "connection";
     case "database":
     case "io":
     case "config":
       return "general";
-    case "tauri":
-      return "connection";
     default:
       return "general";
   }

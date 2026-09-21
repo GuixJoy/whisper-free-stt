@@ -41,6 +41,7 @@ describe("parseAppError", () => {
 describe("categoryForKind", () => {
   it("maps Rust variants to banner categories", () => {
     expect(categoryForKind("tauri")).toBe("connection");
+    expect(categoryForKind("audio")).toBe("mic");
     expect(categoryForKind("database")).toBe("general");
     expect(categoryForKind("config")).toBe("general");
     expect(categoryForKind("io")).toBe("general");

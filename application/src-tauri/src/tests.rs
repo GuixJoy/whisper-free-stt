@@ -290,9 +290,12 @@ mod tests {
         )))
         .unwrap();
         let cfg = serde_json::to_value(AppError::Config("bad".into())).unwrap();
+        let audio = serde_json::to_value(AppError::Audio("no mic".into())).unwrap();
         assert_eq!(io["kind"], "io");
         assert_eq!(cfg["kind"], "config");
+        assert_eq!(audio["kind"], "audio");
         assert_ne!(io["kind"], cfg["kind"]);
+        assert_ne!(cfg["kind"], audio["kind"]);
     }
 
     // -----------------------------------------------------------------------
