@@ -125,14 +125,11 @@ jobs:
           - platform: windows-latest
             args: "--target x86_64-pc-windows-msvc"
             target: "x86_64-pc-windows-msvc"
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            target: "aarch64-apple-darwin"
-          # macos-13 was retired 2025-12-04; macos-15-intel is the documented
-          # replacement and the only x86_64 macOS image (itself EOL Aug 2027).
-          - platform: macos-15-intel
-            args: "--target x86_64-apple-darwin"
-            target: "x86_64-apple-darwin"
+          # macOS is deliberately not built. The .dmg is unsigned (no Apple
+          # Developer account), so Gatekeeper blocks it on a clean machine, and
+          # macOS runners bill at 10x. To reinstate, add macos-latest
+          # (aarch64) and macos-15-intel (x86_64; macos-13 was retired
+          # 2025-12-04), and put **/*.dmg back in the upload paths below.
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -150,9 +147,10 @@ jobs:
           # whatever version happens to be committed, which is how a v0.2.0
           # release ends up shipping 0.1.0 installers.
           #
-          # `sed -i.bak` is the one invocation that behaves the same on GNU sed
-          # (Linux, Windows runners) and BSD sed (macOS). Both files have
-          # exactly one version line, so no section scoping is needed.
+          # `sed -i.bak` behaves the same on GNU sed (Linux) and the GNU sed in
+          # Git Bash (Windows), and would still be correct if the macOS job is
+          # reinstated. Both files have exactly one version line, so no section
+          # scoping is needed.
           sed -i.bak -E "s/^  \"version\": \"[^\"]+\",/  \"version\": \"$VERSION\",/" tauri.conf.json
           sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"$VERSION\"/" Cargo.toml
           rm -f tauri.conf.json.bak Cargo.toml.bak
@@ -223,7 +221,6 @@ jobs:
         with:
           name: floure-${{ matrix.platform }}
           path: |
-            application/src-tauri/target/release/bundle/**/*.dmg
             application/src-tauri/target/release/bundle/**/*.exe
             application/src-tauri/target/release/bundle/**/*.AppImage
             application/src-tauri/target/release/bundle/**/*.deb
