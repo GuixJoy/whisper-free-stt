@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { STTApi, STTEvent } from "./api";
-import { createTauriApi } from "./api-tauri";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicPermissionModal from "./components/MicPermissionModal";
 import PttOverlay from "./components/PttOverlay";
@@ -13,126 +11,58 @@ import DictionaryPage from "./components/DictionaryPage";
 import ModelsPage from "./components/ModelsPage";
 import { AppShell } from "./layouts/AppShell";
 import { type AppView } from "./store";
-import { micLevelEmitter } from "./utils/mic-emitter";
 import { useSettings } from "./hooks/useSettings";
-import { type RuntimeSettings } from "./lib/settings";
+import { useEngine } from "./hooks/useEngine";
+import { useHistoryLog } from "./hooks/useHistoryLog";
 import { FeedView, type TranscriptLine } from "./views/FeedView";
 import { categoryForKind } from "./lib/errors";
 
 function App() {
-  const [connected, setConnected] = useState(false);
   const { settings, setSettings, syncError } = useSettings();
-  const [status, setStatus] = useState("idle");
-  const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showErrors, setShowErrors] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
-  const [pttActive, setPttActive] = useState(false);
-  const [resolvedModel, setResolvedModel] = useState<{ profile: string; model: string; backend: string; device: string } | null>(null);
   const [view, setView] = useState<AppView>(
     localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
   );
   const [errors, setErrors] = useState<AppError[]>([]);
   const [activeItem, setActiveItem] = useState("Home");
-  const [historyItems, setHistoryItems] = useState<TranscriptLine[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyPage, setHistoryPage] = useState(1);
-  const [hasMoreHistory, setHasMoreHistory] = useState(true);
-
-  const runtimeRef = useRef<STTApi | null>(null);
-  // Bumped on every (re)spawn. Async callbacks from a previous generation must
-  // not touch the current engine: a stale spawn().catch() used to set
-  // runtimeRef to null and clobber the live handle.
-  const engineGenerationRef = useRef(0);
-  const nextLocalId = useRef(1);
-  const feedRef = useRef<HTMLDivElement | null>(null);
-  const connectedRef = useRef(connected);
-  const statusRef = useRef(status);
-  const lastWidgetMicEmit = useRef(0);
-  const isStartingRef = useRef(false);
-  const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
-  const stopRef = useRef<() => void>(() => {});
   const [settingsVersion, setSettingsVersion] = useState(0);
   const [hotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
 
+  const feedRef = useRef<HTMLDivElement | null>(null);
 
-  connectedRef.current = connected;
-  statusRef.current = status;
-
-  // --- Engine lifecycle: spawn once on mount, keep alive permanently ---
-  useEffect(() => {
-    // StrictMode guard: prevent double-spawn in development
-    if (runtimeRef.current) return;
-
-    const generation = ++engineGenerationRef.current;
-    const api: STTApi = createTauriApi();
-
-    api.onEvent(applyEvent);
-    runtimeRef.current = api;
-
-    // Spawn backend — loads models, warms ASR, stays idle until PTT
-    api.spawn().then(() => {
-      if (engineGenerationRef.current !== generation) return;
-      console.log("[Engine] Backend ready — waiting for PTT hotkey");
-    }).catch((err) => {
-      // Ignore failures from a superseded engine: a settings change respawns,
-      // and this callback must not clear the newer handle.
-      if (engineGenerationRef.current !== generation) return;
-      const msg = err instanceof Error ? err.message : "Failed to start engine";
-      setToast(msg);
-      addError("connection", msg, true, "Check if stt-engine is installed");
-      runtimeRef.current = null;
-    });
-
-    // Cleanup: kill backend on app unmount or respawn
-    return () => {
-      api.kill();
-      // Only clear if we still own the ref — a newer generation may have
-      // already replaced it.
-      if (runtimeRef.current === api) runtimeRef.current = null;
-    };
-  }, [settingsVersion]); // Re-spawn when settings are saved
-
-  // Load history from backend
-  const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
-    setHistoryLoading(true);
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      const rows = await invoke<Array<{ id: number; raw_text: string; processed_text: string; created_at: string; mode: string; language: string; duration_sec: number }>>("get_history", { limit: page * pageSize });
-      const items: TranscriptLine[] = rows.map((r) => ({
-        id: r.id,
-        raw: r.raw_text,
-        processed: r.processed_text,
-        status: "done",
-        createdAt: r.created_at,
-      }));
-      setHistoryItems(items);
-      setHasMoreHistory(rows.length >= page * pageSize);
-    } catch {
-      setHasMoreHistory(false);
-    } finally {
-      setHistoryLoading(false);
-    }
+  const addError = useCallback((category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }]);
+    setShowErrors(true);
   }, []);
 
-  // Load history on mount
-  useEffect(() => {
-    if (view === "main") {
-      fetchHistory(1);
-    }
-  }, [view, fetchHistory]);
+  const dismissError = useCallback((id: string) => {
+    setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
+  }, []);
 
-  // Infinite scroll: load more when scrolling to bottom
-  const handleFeedScroll = useCallback(() => {
-    const el = feedRef.current;
-    if (!el || historyLoading || !hasMoreHistory) return;
-    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 200) {
-      const nextPage = historyPage + 1;
-      setHistoryPage(nextPage);
-      fetchHistory(nextPage);
-    }
-  }, [historyLoading, hasMoreHistory, historyPage, fetchHistory]);
+  const dismissErrorsOfCategory = useCallback((category: AppError["category"]) => {
+    setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
+  }, []);
+
+  const {
+    connected,
+    status,
+    lines,
+    resolvedModel,
+    pttActive,
+    start,
+    stop,
+    clearLines,
+    connectedRef,
+    statusRef,
+    startRef,
+    stopRef,
+  } = useEngine({ settingsVersion, addError, dismissErrorsOfCategory, setToast });
+
+  const history = useHistoryLog(feedRef, view === "main");
 
   useEffect(() => {
     const setVH = () => {
@@ -185,17 +115,7 @@ function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [view]);
-
-  const addError = useCallback((category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }]);
-    setShowErrors(true);
-  }, []);
-
-  const dismissError = useCallback((id: string) => {
-    setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
-  }, []);
+  }, [view, connectedRef, startRef, stopRef]);
 
   // A failed settings push leaves the engine on the previous config; surface
   // it instead of letting the change silently not apply. The banner category
@@ -208,134 +128,6 @@ function App() {
       );
     }
   }, [syncError, addError]);
-
-  const applyEvent = (event: STTEvent) => {
-    if (event.type === "error") {
-      addError(event.category, event.message);
-      return;
-    }
-    if (event.type === "state") {
-      setStatus(event.state);
-      if (event.state === "error" && event.message) {
-        addError("model", event.message);
-      }
-      return;
-    }
-    if (event.type === "mic") {
-      micLevelEmitter.emit(event.level);
-      // ponytail: throttle Tauri bridge to ~15fps; full-rate stays local via micLevelEmitter.
-      const now = Date.now();
-      if (now - lastWidgetMicEmit.current >= 66) {
-        lastWidgetMicEmit.current = now;
-        const level = event.level;
-        (async () => {
-          try {
-            const { emit } = await import("@tauri-apps/api/event");
-            await emit("widget-mic-level", level);
-          } catch { /* not in Tauri */ }
-        })();
-      }
-      return;
-    }
-    if (event.type === "asr_ready") {
-      setResolvedModel({ profile: "parakeet", model: "Parakeet TDT", backend: event.backend, device: "cuda" });
-      setToast("Engine ready — models loaded");
-      return;
-    }
-    if (event.type === "asr_partial") {
-      setStatus("transcribing");
-      const id = nextLocalId.current;
-      setLines((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.status === "transcribing") {
-          return [...prev.slice(0, -1), { ...last, raw: event.text }];
-        }
-        return [...prev, { id, raw: event.text, processed: "", status: "transcribing", createdAt: new Date().toISOString() }].slice(-500);
-      });
-      return;
-    }
-    if (event.type === "asr_final") {
-      setLines((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.status === "transcribing") {
-          return [...prev.slice(0, -1), { ...last, raw: event.text, processed: event.text, status: "transcribing", createdAt: last.createdAt }];
-        }
-        return [...prev, { id: nextLocalId.current++, raw: event.text, processed: event.text, status: "transcribing", createdAt: new Date().toISOString() }].slice(-500);
-      });
-      return;
-    }
-    if (event.type === "llm_start") {
-      setLines((prev) => {
-        const last = prev[prev.length - 1];
-        if (last) {
-          return [...prev.slice(0, -1), { ...last, status: "rewriting" }];
-        }
-        return prev;
-      });
-      return;
-    }
-    if (event.type === "llm_token") {
-      setLines((prev) => {
-        const last = prev[prev.length - 1];
-        if (last) {
-          const updatedProcessed = (last.processed || "") + event.text;
-          return [...prev.slice(0, -1), { ...last, processed: updatedProcessed, status: "rewriting" }];
-        }
-        return prev;
-      });
-      return;
-    }
-    if (event.type === "llm_end") {
-      setLines((prev) => {
-        const last = prev[prev.length - 1];
-        if (last) {
-          return [...prev.slice(0, -1), { ...last, processed: event.text, status: "done" }];
-        }
-        return prev;
-      });
-      return;
-    }
-  };
-
-  const dismissErrorsOfCategory = (category: AppError["category"]) => {
-    setErrors((prev) => prev.map((e) => (e.category === category ? { ...e, dismissed: true } : e)));
-  };
-
-  // --- PTT lifecycle: send commands to running backend ---
-  const start = async (_overrideSettings?: RuntimeSettings, source: string = "Unknown") => {
-    if (connected || isStartingRef.current) {
-      console.log(`[PTT] Start rejected — already recording, source=${source}`);
-      return;
-    }
-    isStartingRef.current = true;
-    if (!runtimeRef.current) {
-      console.log(`[PTT] Start rejected — engine not ready, source=${source}`);
-      isStartingRef.current = false;
-      setToast("Engine not ready — wait a moment and try again");
-      return;
-    }
-    // Backend handles typing directly — no need for frontend focus restore
-    console.log(`[PTT] Start requested — source=${source}`);
-    runtimeRef.current.start(); // Sends start_recording to backend
-    setConnected(true);
-    setPttActive(true);
-    dismissErrorsOfCategory("connection");
-  };
-
-  const stop = async () => {
-    if (!runtimeRef.current) return;
-    isStartingRef.current = false;
-    // Backend handles typing directly — no need for frontend type_text
-    console.log("[PTT] Stop requested");
-    runtimeRef.current.stop(); // Sends stop_recording to backend
-    setConnected(false);
-    setStatus("idle");
-    setPttActive(false);
-    micLevelEmitter.emit(0);
-  };
-
-  startRef.current = start;
-  stopRef.current = stop;
 
   // --- Widget: emit status to widget window ---
   useEffect(() => {
@@ -377,8 +169,9 @@ function App() {
       } catch { /* not in Tauri */ }
     })();
     return () => { unlistenToggle?.(); unlistenShowMain?.(); unlistenReady?.(); };
-  }, []);
+  }, [connectedRef, statusRef, startRef, stopRef]);
 
+  // --- Tray actions + global push-to-talk shortcut ---
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let registeredShortcut: string | null = null;
@@ -408,7 +201,9 @@ function App() {
               return;
             }
             console.log("[PTT] Hotkey pressed — starting recording");
-            startRef.current(settings, "Hotkey");
+            // start()'s overrideSettings parameter is unused (the backend reads
+            // its config from disk), so there is nothing to thread through here.
+            startRef.current(undefined, "Hotkey");
           } else if (event.state === "Released") {
             console.log("[PTT] Hotkey released — committing text");
             if (!connectedRef.current) {
@@ -436,9 +231,7 @@ function App() {
           .catch(() => {});
       }
     };
-  }, [hotkey]);
-
-  const clearLines = () => setLines([]);
+  }, [hotkey, connectedRef, startRef, stopRef]);
 
   const copyText = async (text: string, label: string) => {
     const { copyToClipboard } = await import("@/lib/clipboard");
@@ -506,10 +299,10 @@ function App() {
             connected={connected}
             status={status}
             lines={lines}
-            historyItems={historyItems}
-            historyLoading={historyLoading}
-            hasMoreHistory={hasMoreHistory}
-            onFeedScroll={handleFeedScroll}
+            historyItems={history.items}
+            historyLoading={history.loading}
+            hasMoreHistory={history.hasMore}
+            onFeedScroll={history.onScroll}
             start={start}
             stop={stop}
             copyLatest={copyLatest}
