@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { z } from "zod";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
 import { createWebAudioApi } from "./api-web-audio";
@@ -21,26 +20,8 @@ import { type AppView } from "./store";
 import { micLevelEmitter } from "./utils/mic-emitter";
 import { isTauri, formatTimestamp } from "./lib/utils";
 import Waveform from "./components/Waveform";
-
-const SettingsSchema = z.object({
-  wsPort: z.number().int().min(1).max(65535),
-  asrProfile: z.enum(["parakeet", "whisper-turbo", "whisper-base"]),
-  llmMode: z.enum(["off", "cleanup", "bullet_list", "email", "commit_message"]),
-  llmProvider: z.enum(["local", "openrouter"]),
-  llmModel: z.string().max(100),
-  // API keys are session-only: never persisted (see save effect below).
-  openrouterApiKey: z.string().max(200).default(""),
-  typing: z.boolean(),
-  clipboard: z.boolean(),
-  hotwords: z.string().max(200),
-  language: z.string().max(10),
-});
-
-function validateSettings(settings: unknown): settings is RuntimeSettings {
-  return SettingsSchema.safeParse(settings).success;
-}
-
-export type RunMode = "ws" | "tauri";
+import { useSettings } from "./hooks/useSettings";
+import { type RunMode, type RuntimeSettings } from "./lib/settings";
 
 interface TranscriptLine {
   id: number;
@@ -48,79 +29,6 @@ interface TranscriptLine {
   processed: string;
   status: string;
   createdAt: string;
-}
-
-export interface RuntimeSettings {
-  wsPort: number;
-  asrProfile: "parakeet" | "whisper-turbo" | "whisper-base";
-  llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
-  llmProvider: "local" | "openrouter";
-  llmModel: string;
-  openrouterApiKey: string;
-  typing: boolean;
-  clipboard: boolean;
-  hotwords: string;
-  language: string;
-}
-
-/// Model id used when the UI has no explicit selection. Mirrors the backend's
-/// `default_llm_model`; an empty id must never reach the backend because it
-/// resolves to a non-existent path (`models/""/file.gguf`).
-export const DEFAULT_LLM_MODEL = "s1-mini-q4_k_m";
-
-const DEFAULT_SETTINGS: RuntimeSettings = {
-  wsPort: 8765,
-  asrProfile: "parakeet",
-  llmMode: "cleanup",
-  llmProvider: "local",
-  llmModel: "",
-  openrouterApiKey: "",
-  typing: true,
-  clipboard: true,
-  hotwords: "",
-  language: "",
-};
-
-const LOCAL_STORAGE_KEY = "stt-settings";
-const SETTINGS_VERSION = 2;
-
-function getInitialSettings(): RuntimeSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
-  try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if ((parsed as Record<string, unknown>).__version !== SETTINGS_VERSION) {
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-        return DEFAULT_SETTINGS;
-      }
-      if (validateSettings(parsed)) {
-        return { ...DEFAULT_SETTINGS, ...parsed };
-      }
-      console.warn("Invalid settings in localStorage, using defaults");
-    }
-  } catch (e) {
-    console.error("Failed to load settings", e);
-  }
-  return DEFAULT_SETTINGS;
-}
-
-/** Backend wire shape for `set_floure_config` (snake_case, UI-owned fields only).
- *  `hotwords` stays out until the P1 decode path exists. Empty language
- *  means "never set" → backend default ("en"); explicit "auto" passes through. */
-export function toBackendSettings(s: RuntimeSettings) {
-  return {
-    asr_profile: s.asrProfile,
-    language: s.language.trim() || "en",
-    llm_provider: s.llmProvider,
-    llm_mode: s.llmMode,
-    // Same reason as `language`: an empty id is persisted verbatim and then
-    // resolves to models/""/file.gguf, so the model fails to load even though
-    // it is downloaded. Send the effective default instead of "".
-    llm_model: s.llmModel.trim() || DEFAULT_LLM_MODEL,
-    typing_enabled: s.typing,
-    clipboard_enabled: s.clipboard,
-  };
 }
 
 function detectRunMode(): RunMode {
@@ -488,7 +396,7 @@ function FeedView({
 function App() {
   const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
-  const [settings, setSettings] = useState<RuntimeSettings>(getInitialSettings);
+  const { settings, setSettings } = useSettings();
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
   const [toast, setToast] = useState("");
@@ -646,34 +554,6 @@ function App() {
       } catch { /* not in Tauri */ }
     })();
   }, [status]);
-
-  useEffect(() => {
-    // Push settings to the native backend (no-op outside Tauri). The API key
-    // is session-only in memory; an empty key clears the backend slot.
-    const push = async () => {
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("set_floure_config", { update: toBackendSettings(settings) });
-        await invoke("set_openrouter_api_key", { key: settings.openrouterApiKey.trim() });
-      } catch {
-        // Web mode: no Tauri backend to configure.
-      }
-    };
-    void push();
-    try {
-      // API keys stay in memory only — strip them before persisting so
-      // localStorage never holds secrets.
-      const { openrouterApiKey: _ok, ...persisted } = settings;
-      void _ok;
-      if (validateSettings({ ...persisted, openrouterApiKey: "" })) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ ...persisted, __version: SETTINGS_VERSION }));
-      } else {
-        console.error("Invalid settings, not saving to localStorage");
-      }
-    } catch (e) {
-      console.error("Failed to save settings", e);
-    }
-  }, [settings]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

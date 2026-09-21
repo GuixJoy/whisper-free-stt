@@ -3,8 +3,8 @@ import { Settings, X, Bot, KeyRound, Mic, PlugZap, ShieldCheck, SlidersHorizonta
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 import Dialog from "./Dialog";
-import type { RuntimeSettings } from "../App";
-import type { RunMode } from "../App";
+import type { RuntimeSettings } from "../lib/settings";
+import type { RunMode } from "../lib/settings";
 
 interface Props {
   settings: RuntimeSettings;

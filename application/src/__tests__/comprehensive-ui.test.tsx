@@ -211,7 +211,7 @@ import OnboardingWizard from "@/components/OnboardingWizard";
 import WidgetView from "@/components/WidgetView";
 import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "@/store";
 import type { STTEvent } from "@/api";
-import { toBackendSettings, DEFAULT_LLM_MODEL, type RuntimeSettings } from "../App";
+import { toBackendSettings, DEFAULT_LLM_MODEL, type RuntimeSettings } from "../lib/settings";
 
 // ── Helpers ──
 function renderWithProviders(ui: React.ReactElement) {
