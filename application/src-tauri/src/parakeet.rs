@@ -14,6 +14,10 @@ impl ParakeetRecognizer {
     /// only decoding method sherpa-onnx applies hotwords under, and it needs
     /// `modeling_unit=bpe` plus a bpe vocab (derived from tokens.txt when the
     /// release ships none).
+    // Used only by the bench harness (`mod bench` is #[cfg(test)]), so it is
+    // dead code in a normal build. Not deleted: it is the beam-search /
+    // hotword surface the harness exists to verify.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn new_with_decoding(
         model_dir: &std::path::Path,
         num_threads: i32,
@@ -62,6 +66,9 @@ impl ParakeetRecognizer {
     }
 
     /// Transcribe a complete audio segment (e.g. a VAD speech segment).
+    /// Superseded by `transcribe_full` in the pipeline (which also returns the
+    /// timestamps the cleanup gate needs); kept for the bench harness.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn transcribe(&self, samples: &[f32]) -> String {
         self.transcribe_full(samples).map(|r| r.text).unwrap_or_default()
     }
@@ -79,6 +86,7 @@ impl ParakeetRecognizer {
     }
 
     /// Single decode with per-stream hotwords (`PHRASE/OTHER :score`).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn transcribe_with_hotwords(&self, samples: &[f32], hotwords: &str) -> String {
         let stream = self.recognizer.create_stream_with_hotwords(hotwords);
         stream.accept_waveform(16000, samples);
