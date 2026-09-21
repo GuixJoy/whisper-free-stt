@@ -1,9 +1,16 @@
 name: Release
 
 on:
+  # Any version tag, pushed by hand or by another tool.
   push:
     tags:
       - "v*"
+    # Keyword-gated builds. GitHub cannot filter `on.push` by commit message,
+    # so every push to master starts this workflow and the `if` on
+    # resolve-release decides whether anything actually runs. A skipped run
+    # costs seconds, not build minutes.
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       tag:
@@ -14,35 +21,82 @@ on:
 permissions:
   contents: write
 
+# Two runs must never race on the same release — both would try to upload the
+# same assets. Not cancel-in-progress: a cancelled release mid-build is worse
+# than a queued one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   resolve-release:
     name: Resolve Release
+    # Runs for: tag pushes, manual dispatch, and pushes to master whose head
+    # commit message contains `release v<version>`, e.g.
+    #
+    #     git commit -m "release v0.2.0"
+    #     git push origin master
+    #
+    # The keyword must be in the last commit of the push: head_commit is the
+    # only commit message available to an `if` expression.
+    if: |
+      github.event_name != 'push'
+      || startsWith(github.ref, 'refs/tags/')
+      || (github.ref == 'refs/heads/master' && contains(github.event.head_commit.message, 'release v'))
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.resolve.outputs.release_id }}
       tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || '' }}
           fetch-depth: 0
-      - name: Resolve release ID
+
+      - name: Resolve tag and release
         id: resolve
         shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          RELEASE_ID=$(gh api repos/${{ github.repository }}/releases/tags/$TAG --jq '.id' 2>/dev/null || true)
-          if [ -z "$RELEASE_ID" ]; then
-            RELEASE_ID=$(gh api repos/${{ github.repository }}/releases -f tag_name="$TAG" -f name="$TAG" --jq '.id')
-          fi
-          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed through the environment, never interpolated into the script:
+          # a commit message is attacker-influenced text and `${{ }}` inside a
+          # `run:` block would execute any `$(...)` in it.
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"                          # manual dispatch
+          elif [ "${GITHUB_REF#refs/tags/}" != "$GITHUB_REF" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"            # tag push
+          else
+            # Keyword push. Capture only the version itself, so no other part
+            # of the commit message can reach the shell or the API.
+            VERSION=$(printf '%s' "$COMMIT_MSG" \
+              | grep -oE 'release v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?' \
+              | head -1 | sed 's/^release v//')
+            if [ -z "$VERSION" ]; then
+              echo "::error::$(git rev-parse --short HEAD) has no 'release v<version>' keyword"
+              exit 1
+            fi
+            TAG="v$VERSION"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+          # Creating the release also creates the tag, via the API. That is
+          # deliberate: an event produced with GITHUB_TOKEN does not start
+          # another workflow run, so this cannot re-trigger the `tags: v*`
+          # path above and race itself. Swapping in a PAT *would* double-fire.
+          RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id' 2>/dev/null || true)
+          if [ -z "$RELEASE_ID" ]; then
+            RELEASE_ID=$(gh api "repos/${{ github.repository }}/releases" \
+              -f tag_name="$TAG" \
+              -f name="$TAG" \
+              -f target_commitish="$GITHUB_SHA" \
+              --jq '.id')
+          fi
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
   release:
     name: Build & Release
@@ -51,20 +105,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Pinned to 22.04, not latest/24.04, for glibc 2.35: a binary built
+          # against 2.39 will not start on Debian 12 or Ubuntu 22.04. The image
+          # entered deprecation on 2026-09-17 and is removed 2027-04-17, with
+          # brownout windows that fail this job intermittently in between.
+          # Moving up means dropping support for older distros.
           - platform: ubuntu-22.04
             args: ""
+            target: ""
           - platform: windows-latest
             args: "--target x86_64-pc-windows-msvc"
+            target: "x86_64-pc-windows-msvc"
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
-          - platform: macos-13
+            target: "aarch64-apple-darwin"
+          # macos-13 was retired 2025-12-04; macos-15-intel is the documented
+          # replacement and the only x86_64 macOS image (itself EOL Aug 2027).
+          - platform: macos-15-intel
             args: "--target x86_64-apple-darwin"
+            target: "x86_64-apple-darwin"
 
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || '' }}
+
+      - name: Stamp the release version
+        shell: bash
+        working-directory: application/src-tauri
+        env:
+          VERSION: ${{ needs.resolve-release.outputs.version }}
+        run: |
+          # The tag is the source of truth. Without this the bundles carry
+          # whatever version happens to be committed, which is how a v0.2.0
+          # release ends up shipping 0.1.0 installers.
+          #
+          # `sed -i.bak` is the one invocation that behaves the same on GNU sed
+          # (Linux, Windows runners) and BSD sed (macOS). Both files have
+          # exactly one version line, so no section scoping is needed.
+          sed -i.bak -E "s/^  \"version\": \"[^\"]+\",/  \"version\": \"$VERSION\",/" tauri.conf.json
+          sed -i.bak -E "s/^version = \"[^\"]+\"/version = \"$VERSION\"/" Cargo.toml
+          rm -f tauri.conf.json.bak Cargo.toml.bak
+          grep -m1 '"version"' tauri.conf.json
+          grep -m1 '^version = ' Cargo.toml
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -85,7 +169,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'windows-latest' && 'x86_64-pc-windows-msvc' || matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || matrix.platform == 'macos-13' && 'x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
