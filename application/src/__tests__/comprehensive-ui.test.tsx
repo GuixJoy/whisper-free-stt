@@ -201,6 +201,31 @@ import WidgetView from "@/components/WidgetView";
 import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "@/store";
 import type { STTEvent } from "@/api";
 import { toBackendSettings, DEFAULT_LLM_MODEL, type RuntimeSettings } from "../lib/settings";
+import { invoke } from "@tauri-apps/api/core";
+import { historyToCsv, historyToText } from "@/lib/historyExport";
+
+// Components call invoke directly: the REST fallbacks are gone, so there is no
+// fetch path left to exercise. A bare vi.fn() resolves to undefined and the
+// components index into it during render, which crashed them. Give each command
+// a plausible shape instead.
+beforeEach(() => {
+  vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+    switch (cmd) {
+      case "get_history":
+      case "get_dictionary":
+      case "check_model_status":
+      case "check_system_deps":
+        return [];
+      case "toggle_history_favorite":
+      case "toggle_dictionary_favorite":
+        return 0;
+      case "export_dictionary_csv":
+        return { csv: "" };
+      default:
+        return {};
+    }
+  });
+});
 
 // ── Helpers ──
 function renderWithProviders(ui: React.ReactElement) {
@@ -840,6 +865,34 @@ describe("DictionaryPage", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// 26b. History export
+// ══════════════════════════════════════════════════════════════════
+describe("history export", () => {
+  const row = {
+    created_at: "2026-01-01T00:00:00Z",
+    mode: "dictation",
+    language: "en",
+    raw_text: "a,b",
+    processed_text: 'He said "hi"\nthere',
+  };
+
+  it("quotes fields holding commas, quotes and newlines", () => {
+    const csv = historyToCsv([row]);
+    expect(csv.split("\n")[0]).toBe("created_at,mode,language,raw_text,processed_text");
+    expect(csv).toContain('"a,b"');
+    expect(csv).toContain('"He said ""hi""');
+  });
+
+  it("falls back to raw text when there is no processed text", () => {
+    expect(historyToText([{ ...row, processed_text: "" }])).toBe("a,b");
+  });
+
+  it("emits a header only for no rows", () => {
+    expect(historyToCsv([])).toBe("created_at,mode,language,raw_text,processed_text");
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
 // 27. ModelsPage
 // ══════════════════════════════════════════════════════════════════
 describe("ModelsPage", () => {
@@ -932,8 +985,10 @@ describe("HistoryPage", () => {
   it("calls onBack when back button clicked", async () => {
     const onBack = vi.fn();
     renderWithProviders(<HistoryPage onBack={onBack} />);
-    const backBtn = screen.getByText("History").closest("div")?.querySelector("button");
-    if (backBtn) await userEvent.click(backBtn);
+    // Addressed by aria-label. The old .closest("div") walk depended on the
+    // header's exact DOM nesting and silently clicked nothing once it changed,
+    // so the assertion failed for a reason unrelated to onBack.
+    await userEvent.click(screen.getByRole("button", { name: "Back to home" }));
     expect(onBack).toHaveBeenCalled();
   });
 

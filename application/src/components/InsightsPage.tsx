@@ -6,7 +6,6 @@ import HeatmapCard from "./HeatmapCard";
 import StreakJourney from "./StreakJourney";
 import VoiceIntelligence from "./VoiceIntelligence";
 import type { UsageCategory, HeatmapDay, StreakInfo } from "@/data/mockInsightsData";
-import { isTauri } from "@/lib/utils";
 
 const TABS = [
   { id: "usage", label: "Your Usage" },
@@ -67,19 +66,10 @@ export default function InsightsPage() {
   const loadInsights = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const data = await invoke<InsightsData>("get_insights");
-        if (!mountedRef.current) return;
-        applyData(data);
-      } else {
-        const resp = await fetch("http://127.0.0.1:8765/api/insights");
-        if (resp.ok) {
-          const data = await resp.json();
-          if (!mountedRef.current) return;
-          applyData(data);
-        }
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const data = await invoke<InsightsData>("get_insights");
+      if (!mountedRef.current || !data) return;
+      applyData(data);
     } catch (e) {
       console.warn("[Insights] Failed to load analytics:", e);
     } finally {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Search, Download, Trash2, ArrowLeft, CheckSquare, Square, Calendar, Filter, Star, RefreshCw, TriangleAlert } from "lucide-react";
-import { formatTimestamp, isTauri } from "@/lib/utils";
+import { formatTimestamp } from "@/lib/utils";
+import { historyToCsv, historyToText } from "@/lib/historyExport";
 import { parseAppError } from "@/lib/errors";
 
 interface HistoryRow {
@@ -15,7 +16,6 @@ interface HistoryRow {
   created_at: string;
 }
 
-const API_BASE = "http://127.0.0.1:8765/api";
 const PAGE_SIZE = 50;
 
 function getDateGroup(iso: string): string {
@@ -48,31 +48,20 @@ export default function HistoryPage({ onBack }: Props) {
   const [modeFilter, setModeFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const apiFetch = useCallback(async (path: string, options?: RequestInit): Promise<any> => {
-    const resp = await fetch(`${API_BASE}${path}`, options);
-    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-    return resp.json();
-  }, []);
-
   const loadHistory = useCallback(async (search?: string) => {
     setLoading(true);
     setError("");
     try {
       const limit = search ? 50000 : 2000;
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const result = await invoke<HistoryRow[]>("get_history", { limit });
-        setAllRows(result);
-      } else {
-        const data = await apiFetch(`/history?limit=${limit}`);
-        setAllRows(data);
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const result = await invoke<HistoryRow[]>("get_history", { limit });
+      setAllRows(result ?? []);
     } catch (e) {
       setError(parseAppError(e).message);
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, []);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
@@ -114,10 +103,12 @@ export default function HistoryPage({ onBack }: Props) {
     return Array.from(modes).sort();
   }, [allRows]);
 
-  const exportHistory = useCallback(async (format: "csv" | "text") => {
-    try {
-      const resp = await fetch(`${API_BASE}/export/${format}`);
-      const content = await resp.text();
+  // Built from the rows already in memory: there is no backend export command,
+  // and the fetch this used to do pointed at a port nothing serves, so export
+  // silently did nothing in the desktop app.
+  const exportHistory = useCallback(
+    (format: "csv" | "text") => {
+      const content = format === "csv" ? historyToCsv(allRows) : historyToText(allRows);
       const blob = new Blob([content], { type: format === "csv" ? "text/csv" : "text/plain" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -125,61 +116,45 @@ export default function HistoryPage({ onBack }: Props) {
       a.download = `stt-history-${new Date().toISOString().split("T")[0]}.${format === "csv" ? "csv" : "txt"}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("[history] export failed", e);
-    }
-  }, []);
+    },
+    [allRows],
+  );
 
   const deleteEntry = useCallback(async (id: number) => {
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("delete_history_entry", { id });
-      } else {
-        await apiFetch(`/history/${id}`, { method: "DELETE" });
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("delete_history_entry", { id });
       setAllRows((prev) => prev.filter((r) => r.id !== id));
       setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     } catch (e) {
       console.error("[history] delete failed", e);
     }
-  }, [apiFetch]);
+  }, []);
 
   const deleteSelected = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const ids = Array.from(selectedIds);
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        for (const id of ids) {
-          await invoke("delete_history_entry", { id });
-        }
-      } else {
-        for (const id of ids) {
-          await apiFetch(`/history/${id}`, { method: "DELETE" });
-        }
+      const { invoke } = await import("@tauri-apps/api/core");
+      for (const id of ids) {
+        await invoke("delete_history_entry", { id });
       }
       setAllRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
       setSelectedIds(new Set());
     } catch (e) {
       console.error("[history] bulk delete failed", e);
     }
-  }, [selectedIds, apiFetch]);
+  }, [selectedIds]);
 
   const toggleFavorite = useCallback(async (id: number) => {
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const favorite = await invoke<number>("toggle_history_favorite", { id });
-        setAllRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite } : r));
-      } else {
-        const result = await apiFetch(`/history/${id}/favorite`, { method: "POST" });
-        setAllRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite: result.favorite } : r));
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const favorite = await invoke<number>("toggle_history_favorite", { id });
+      setAllRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite } : r));
     } catch (e) {
       console.error("[history] favorite toggle failed", e);
     }
-  }, [apiFetch]);
+  }, []);
 
   const toggleSelect = useCallback((id: number) => {
     setSelectedIds((prev) => {

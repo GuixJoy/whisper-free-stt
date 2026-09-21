@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { Calendar, Clock, Timer, Globe } from "lucide-react";
-import { isTauri } from "@/lib/utils";
 
 interface InsightItem {
   icon: React.ElementType;
@@ -81,19 +80,10 @@ export default function VoiceIntelligence({ data: propData }: Props = {}) {
     let cancelled = false;
     (async () => {
       try {
-        if (isTauri()) {
-          const { invoke } = await import("@tauri-apps/api/core");
-          const result = await invoke<Partial<IntelligenceData>>("get_voice_intelligence");
-          if (!cancelled && result) {
-            setLiveData({ ...defaultData(), ...result });
-          }
-        } else {
-          const port = localStorage.getItem("stt-ws-port") || "8765";
-          const resp = await fetch(`http://127.0.0.1:${port}/api/insights/voice-intelligence`);
-          if (resp.ok) {
-            const result = await resp.json();
-            if (!cancelled) setLiveData({ ...defaultData(), ...result });
-          }
+        const { invoke } = await import("@tauri-apps/api/core");
+        const result = await invoke<Partial<IntelligenceData>>("get_voice_intelligence");
+        if (!cancelled && result) {
+          setLiveData({ ...defaultData(), ...result });
         }
       } catch (e) {
         console.warn("[VoiceIntelligence] Failed to load:", e);

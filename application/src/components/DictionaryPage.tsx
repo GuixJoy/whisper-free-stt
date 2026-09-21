@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { BookOpen, Plus, Star, Pencil, Trash2, Search, X, Upload, Download } from "lucide-react";
-import { cn, isTauri } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { parseAppError } from "@/lib/errors";
 import { Button } from "@/components/Button";
 import TabSwitcher from "@/components/TabSwitcher";
@@ -10,7 +10,6 @@ import {
   type DictionaryCategory,
 } from "@/data/mockDictionaryData";
 
-const API_BASE = "http://127.0.0.1:8765/api";
 
 export interface DictionaryEntry {
   id: number;
@@ -305,34 +304,20 @@ export default function DictionaryPage() {
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
 
-  const apiFetch = useCallback(async (path: string, options?: RequestInit) => {
-    const resp = await fetch(`${API_BASE}${path}`, {
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      ...options,
-    });
-    if (!resp.ok) throw new Error(`API error: ${resp.status}`);
-    return resp.json();
-  }, []);
-
   const loadEntries = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const data = await invoke<DictionaryEntry[]>("get_dictionary");
-        setEntries(data);
-      } else {
-        const data = await apiFetch("/dictionary");
-        setEntries(data);
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const data = await invoke<DictionaryEntry[]>("get_dictionary");
+      setEntries(data ?? []);
     } catch (e) {
       setError(parseAppError(e).message);
       setEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [apiFetch]);
+  }, []);
 
   useEffect(() => {
     loadEntries();
@@ -340,48 +325,33 @@ export default function DictionaryPage() {
 
   const toggleFavorite = useCallback(async (id: number) => {
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("toggle_dictionary_favorite", { id });
-      } else {
-        await apiFetch(`/dictionary/${id}/favorite`, { method: "POST" });
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("toggle_dictionary_favorite", { id });
       setEntries((prev) =>
         prev.map((e) => (e.id === id ? { ...e, is_favorite: !e.is_favorite } : e))
       );
     } catch (e) {
       setError(parseAppError(e).message);
     }
-  }, [apiFetch]);
+  }, []);
 
   const deleteEntry = useCallback(async (id: number) => {
     try {
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("delete_dictionary_entry", { id });
-      } else {
-        await apiFetch(`/dictionary/${id}`, { method: "DELETE" });
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("delete_dictionary_entry", { id });
       setEntries((prev) => prev.filter((e) => e.id !== id));
       setDeletingEntry(null);
     } catch (e) {
       setError(parseAppError(e).message);
     }
-  }, [apiFetch]);
+  }, []);
 
   const saveEntry = useCallback(
     async (data: { phrase: string; replacement: string; category: string; notes: string }) => {
       try {
         if (editingEntry) {
-          if (isTauri()) {
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("update_dictionary_entry", { id: editingEntry.id, ...data });
-          } else {
-            await apiFetch(`/dictionary/${editingEntry.id}`, {
-              method: "PUT",
-              body: JSON.stringify(data),
-            });
-          }
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("update_dictionary_entry", { id: editingEntry.id, ...data });
           setEntries((prev) =>
             prev.map((e) =>
               e.id === editingEntry.id
@@ -390,15 +360,8 @@ export default function DictionaryPage() {
             )
           );
         } else {
-          if (isTauri()) {
-            const { invoke } = await import("@tauri-apps/api/core");
-            await invoke("add_dictionary_entry", data);
-          } else {
-            await apiFetch("/dictionary", {
-              method: "POST",
-              body: JSON.stringify(data),
-            });
-          }
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("add_dictionary_entry", data);
           await loadEntries();
         }
         setModalOpen(false);
@@ -407,7 +370,7 @@ export default function DictionaryPage() {
         setError(parseAppError(e).message);
       }
     },
-    [editingEntry, apiFetch, loadEntries],
+    [editingEntry, loadEntries],
   );
 
   const handleImportCSV = useCallback(async () => {
@@ -424,15 +387,8 @@ export default function DictionaryPage() {
       setImporting(true);
       try {
         const text = await file.text();
-        if (isTauri()) {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("import_dictionary_csv", { csvText: text });
-        } else {
-          await apiFetch("/dictionary/import", {
-            method: "POST",
-            body: JSON.stringify({ csv_text: text }),
-          });
-        }
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("import_dictionary_csv", { csvText: text });
         await loadEntries();
       } catch (e) {
         setError(parseAppError(e).message);
@@ -441,19 +397,13 @@ export default function DictionaryPage() {
       }
     };
     input.click();
-  }, [apiFetch, loadEntries]);
+  }, [loadEntries]);
 
   const handleExportCSV = useCallback(async () => {
     try {
-      let csvText: string;
-      if (isTauri()) {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const result = await invoke<{ csv: string }>("export_dictionary_csv");
-        csvText = result.csv;
-      } else {
-        const data = await apiFetch("/dictionary/export/csv");
-        csvText = data.csv;
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const result = await invoke<{ csv: string }>("export_dictionary_csv");
+      const csvText = result?.csv ?? "";
       const blob = new Blob([csvText], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -464,7 +414,7 @@ export default function DictionaryPage() {
     } catch (e) {
       setError(parseAppError(e).message);
     }
-  }, [apiFetch]);
+  }, []);
 
   const filtered = useMemo(() => {
     let result = Array.isArray(entries) ? entries : [];
