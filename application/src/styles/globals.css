@@ -72,6 +72,9 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(44,37,32,0.10); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(44,37,32,0.18); }
 
+/* Native dialog backdrop (used by Dialog.tsx) */
+dialog::backdrop { background: rgba(44,37,32,0.4); }
+
 /* Nav indicator */
 .nav-active { position: relative; }
 .nav-active::before {

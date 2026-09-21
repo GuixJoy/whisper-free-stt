@@ -1,6 +1,6 @@
-import { useEffect, useCallback } from "react";
 import { Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Dialog from "./Dialog";
 
 interface MicPermissionModalProps {
   visible: boolean;
@@ -9,29 +9,11 @@ interface MicPermissionModalProps {
 }
 
 export default function MicPermissionModal({ visible, onOpenConfig, onClose }: MicPermissionModalProps) {
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-  }, [onClose]);
-
-  useEffect(() => {
-    if (visible) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [visible, handleKeyDown]);
-
   if (!visible) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(44,37,32,0.4)]"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Microphone permission required"
-    >
-      <div className="bg-white rounded-[14px] border border-border w-full max-w-[380px] shadow-lg overflow-hidden">
-        {/* Icon */}
+    <Dialog onClose={onClose} label="Microphone permission required" className="max-w-[380px] overflow-hidden">
+      {/* Icon */}
         <div className="flex items-center justify-center pt-6 pb-2">
           <div className="flex items-center justify-center w-[48px] h-[48px] rounded-[12px] bg-accent-surface">
             <Mic size={22} className="text-accent" />
@@ -72,7 +54,6 @@ export default function MicPermissionModal({ visible, onOpenConfig, onClose }: M
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

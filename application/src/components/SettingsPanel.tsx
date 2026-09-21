@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Settings, X, Bot, KeyRound, Mic, PlugZap, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
+import Dialog from "./Dialog";
 import type { RuntimeSettings } from "../App";
 import type { RunMode } from "../App";
 
@@ -43,19 +44,6 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
     }
   }, [visible]);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape" && visible) {
-      onClose();
-    }
-  }, [visible, onClose]);
-
-  useEffect(() => {
-    if (visible) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [visible, handleKeyDown]);
-
   if (!visible) return null;
 
   const update = (patch: Partial<RuntimeSettings>) => setLocal((s) => ({ ...s, ...patch }));
@@ -70,15 +58,12 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
   const checkHint = "text-small text-text-muted";
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(44,37,32,0.4)] backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Settings"
+    <Dialog
+      onClose={onClose}
+      label="Settings"
+      className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden bg-app-surface"
     >
-      <div className="bg-app-surface rounded-card border border-border w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden shadow-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-heading text-text-primary flex items-center gap-2"><Settings size={18} className="text-text-secondary" />Settings</h2>
           <button
             className={cn(
@@ -352,7 +337,6 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
             Save & Apply
           </button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }

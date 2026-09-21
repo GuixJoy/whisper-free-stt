@@ -605,11 +605,13 @@ describe("SettingsPanel", () => {
   });
 
   it("closes on Escape key", async () => {
+    // Escape handling is native (the platform closes a modal <dialog> and
+    // fires `close`); jsdom implements neither, so drive the contract directly.
     const onClose = vi.fn();
     renderWithProviders(
       <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose}  mode="tauri" onModeChange={() => {}} />
     );
-    await userEvent.keyboard("{Escape}");
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -692,11 +694,12 @@ describe("MicPermissionModal", () => {
   });
 
   it("closes on Escape", async () => {
+    // See SettingsPanel note: native Escape handling, drive `close` directly.
     const onClose = vi.fn();
     renderWithProviders(
       <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={onClose} />
     );
-    await userEvent.keyboard("{Escape}");
+    fireEvent(screen.getByRole("dialog"), new Event("close"));
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -736,6 +739,21 @@ describe("TabSwitcher", () => {
     renderWithProviders(<TabSwitcher tabs={tabs} activeTab="code" onChange={() => {}} />);
     const codeTab = screen.getByText("Code").closest("button");
     expect(codeTab?.className).toContain("text-accent");
+  });
+
+  it("exposes tab roles with roving tabindex", () => {
+    renderWithProviders(<TabSwitcher tabs={tabs} activeTab="all" onChange={() => {}} />);
+    expect(screen.getByRole("tablist")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Code" })).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("moves to next tab on ArrowRight", async () => {
+    const onChange = vi.fn();
+    renderWithProviders(<TabSwitcher tabs={tabs} activeTab="all" onChange={onChange} />);
+    screen.getByRole("tab", { name: "All" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(onChange).toHaveBeenCalledWith("code");
   });
 });
 

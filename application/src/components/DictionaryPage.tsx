@@ -3,6 +3,7 @@ import { BookOpen, Plus, Star, Pencil, Trash2, Search, X, Upload, Download } fro
 import { cn, isTauri } from "@/lib/utils";
 import { Button } from "@/components/Button";
 import TabSwitcher from "@/components/TabSwitcher";
+import Dialog from "@/components/Dialog";
 import {
   CATEGORY_META,
   type DictionaryCategory,
@@ -155,9 +156,11 @@ function EntryModal({
   const isValid = phrase.trim().length > 0 && replacement.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)]" onClick={onClose} />
-      <div className="relative w-full max-w-[440px] mx-4 rounded-xl bg-app-surface-dark border border-border-hover shadow-lg">
+    <Dialog
+      onClose={onClose}
+      label={entry ? "Edit Word" : "Add Word"}
+      className="max-w-[440px] bg-app-surface-dark border-border-hover"
+    >
         <div className="px-6 pt-6 pb-4">
           <h3 className="text-text-primary text-[16px] font-semibold">
             {entry ? "Edit Word" : "Add Word"}
@@ -250,8 +253,7 @@ function EntryModal({
             {entry ? "Save Changes" : "Add Word"}
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -265,9 +267,11 @@ function DeleteConfirm({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-[rgba(44,37,32,0.4)]" onClick={onCancel} />
-      <div className="relative w-full max-w-[380px] mx-4 rounded-xl bg-app-surface-dark border border-border-hover shadow-lg p-6">
+    <Dialog
+      onClose={onCancel}
+      label="Delete Word"
+      className="max-w-[380px] bg-app-surface-dark border-border-hover p-6"
+    >
         <h3 className="text-text-primary text-[16px] font-semibold">Delete Word</h3>
         <p className="text-text-muted text-[14px] mt-2">
           Are you sure you want to remove <span className="text-text-primary font-medium">"{phrase}"</span> from your dictionary? This cannot be undone.
@@ -285,8 +289,7 @@ function DeleteConfirm({
             Delete
           </Button>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
