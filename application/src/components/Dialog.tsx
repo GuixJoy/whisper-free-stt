@@ -39,7 +39,9 @@ export default function Dialog({ onClose, label, className, children }: DialogPr
         if (e.target === e.currentTarget) onClose();
       }}
       className={cn(
-        "m-auto w-[calc(100%-2rem)] rounded-[14px] border border-border bg-white p-0 text-text-primary shadow-lg",
+        // fixed+inset-0+m-auto is what actually centers a modal dialog:
+        // without offsets, top resolves to the static position (below the fold).
+        "fixed inset-0 m-auto w-[calc(100%-2rem)] rounded-[14px] border border-border bg-white p-0 text-text-primary shadow-lg",
         className,
       )}
     >
