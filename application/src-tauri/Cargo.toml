@@ -33,6 +33,17 @@ dirs-next = "2"
 thiserror = "2"
 sherpa-onnx = "1.13"
 cpal = "0.18"
+# These four were previously declared under
+# [target.'cfg(target_os = "linux")'.dependencies], but they are not
+# Linux-specific: models.rs uses reqwest/tar/bzip2 unconditionally for model
+# downloads and .tar.bz2 extraction, and anyhow::Result is used across the
+# crate (11 files). Declaring them Linux-only meant the crate had 52
+# unresolved-crate errors on Windows and macOS, so those targets had never
+# compiled and no release had ever produced an installer for them.
+reqwest = { version = "0.12", features = ["json", "gzip", "blocking"] }
+anyhow = "1"
+bzip2 = "0.4"
+tar = "0.4"
 # default-features must stay off: llama-cpp-4's defaults include
 # `dynamic-link`, which builds libllama/libggml as SHARED libraries. Tauri's
 # bundler does not ship them, so the installed .deb/.rpm failed to start with
@@ -46,14 +57,6 @@ llama-cpp-4 = { version = "0.6", default-features = false, features = ["openmp",
 # CPU-only and needs no Vulkan SDK.
 #   pnpm tauri build -- --features vulkan
 vulkan = ["llama-cpp-4/vulkan"]
-
-# reqwest/anyhow/bzip2/tar are used unconditionally in models.rs, but are
-# declared for Linux only — a pre-existing quirk, left as-is.
-[target.'cfg(target_os = "linux")'.dependencies]
-reqwest = { version = "0.12", features = ["json", "gzip", "blocking"] }
-anyhow = "1"
-bzip2 = "0.4"
-tar = "0.4"
 
 [dev-dependencies]
 tempfile = "3"
