@@ -77,7 +77,7 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
             <X size={14} /> Close
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col gap-6">
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 flex flex-col gap-6">
           <div className="flex flex-col gap-3">
             <h3 className="text-subheading text-text-primary flex items-center gap-2"><PlugZap size={15} className="text-text-secondary" />Connection</h3>
             <div className="flex flex-col gap-1.5">

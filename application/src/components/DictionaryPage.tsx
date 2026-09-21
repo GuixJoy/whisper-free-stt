@@ -170,7 +170,7 @@ function EntryModal({
           </p>
         </div>
 
-        <div className="px-6 space-y-4 pb-4">
+        <div className="px-6 space-y-4 pb-4 max-h-[55vh] overflow-y-auto">
           <div>
             <label htmlFor="dict-phrase" className="block text-text-secondary text-[12px] font-medium mb-1.5">
               Phrase
