@@ -21,13 +21,6 @@ on:
 permissions:
   contents: write
 
-# Two runs must never race on the same release — both would try to upload the
-# same assets. Not cancel-in-progress: a cancelled release mid-build is worse
-# than a queued one.
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   resolve-release:
     name: Resolve Release
@@ -110,6 +103,18 @@ jobs:
   release:
     name: Build & Release
     needs: resolve-release
+    # Serialize the build+upload, since two runs would race on the same release
+    # assets. Not cancel-in-progress: a cancelled release mid-build is worse
+    # than a queued one.
+    #
+    # This lives on the job, not the workflow. At workflow level it also queued
+    # runs that the keyword gate was about to skip, and GitHub cancels
+    # previously-pending runs when a new one joins the group -- so an unrelated
+    # push to master could cancel a real release. Skipped runs never reach this
+    # job, so they no longer touch the group at all.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
