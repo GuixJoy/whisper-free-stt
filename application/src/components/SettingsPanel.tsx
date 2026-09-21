@@ -1,18 +1,15 @@
 import { useState, useEffect } from "react";
-import { Settings, X, Bot, KeyRound, Mic, PlugZap, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Settings, X, Bot, KeyRound, Mic, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 import Dialog from "./Dialog";
 import type { RuntimeSettings } from "../lib/settings";
-import type { RunMode } from "../lib/settings";
 
 interface Props {
   settings: RuntimeSettings;
   onSave: (s: RuntimeSettings) => void;
   visible: boolean;
   onClose: () => void;
-  mode: RunMode;
-  onModeChange: (m: RunMode) => void;
 }
 
 const HOTKEY_OPTIONS = [
@@ -28,7 +25,7 @@ const TOGGLES = [
   { key: "clipboard", label: "Clipboard", hint: "Copy transcript to clipboard" },
 ] as const;
 
-export default function SettingsPanel({ settings, onSave, visible, onClose, mode, onModeChange }: Props) {
+export default function SettingsPanel({ settings, onSave, visible, onClose }: Props) {
   const [local, setLocal] = useState<RuntimeSettings>({ ...settings });
   const [showKeys, setShowKeys] = useState(false);
   const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
@@ -78,34 +75,6 @@ export default function SettingsPanel({ settings, onSave, visible, onClose, mode
           </button>
         </div>
         <div className="max-h-[60vh] overflow-y-auto px-6 py-4 flex flex-col gap-6">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-subheading text-text-primary flex items-center gap-2"><PlugZap size={15} className="text-text-secondary" />Connection</h3>
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="settings-mode" className="text-label text-text-secondary">Mode</label>
-              <select
-                id="settings-mode"
-                className={inputClass}
-                value={mode}
-                onChange={(e) => onModeChange(e.target.value as RunMode)}
-              >
-                <option value="ws">WebSocket</option>
-                <option value="tauri">Local Process</option>
-              </select>
-            </div>
-            {mode === "ws" && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="settings-port" className="text-label text-text-secondary">Port</label>
-                <input
-                  id="settings-port"
-                  className={inputClass}
-                  type="number"
-                  value={local.wsPort}
-                  onChange={(e) => update({ wsPort: Number(e.target.value) || 8765 })}
-                />
-              </div>
-            )}
-          </div>
-
           <div className="flex flex-col gap-3">
             <h3 className="text-subheading text-text-primary flex items-center gap-2"><Mic size={15} className="text-text-secondary" />Speech Recognition</h3>
             <div className="flex flex-col gap-1.5">

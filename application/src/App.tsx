@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { STTApi, STTEvent } from "./api";
 import { createTauriApi } from "./api-tauri";
-import { createWebAudioApi } from "./api-web-audio";
 import { Mic } from "lucide-react";
 import OnboardingWizard from "./components/OnboardingWizard";
 import MicButton from "./components/MicButton";
@@ -21,7 +20,7 @@ import { micLevelEmitter } from "./utils/mic-emitter";
 import { isTauri, formatTimestamp } from "./lib/utils";
 import Waveform from "./components/Waveform";
 import { useSettings } from "./hooks/useSettings";
-import { type RunMode, type RuntimeSettings } from "./lib/settings";
+import { type RuntimeSettings } from "./lib/settings";
 import { categoryForKind } from "./lib/errors";
 
 interface TranscriptLine {
@@ -30,13 +29,6 @@ interface TranscriptLine {
   processed: string;
   status: string;
   createdAt: string;
-}
-
-function detectRunMode(): RunMode {
-  if (typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
-    return "tauri";
-  }
-  return "ws";
 }
 
 function LiveFeedMicMeter() {
@@ -395,7 +387,6 @@ function FeedView({
 }
 
 function App() {
-  const [mode, setMode] = useState<RunMode>(detectRunMode);
   const [connected, setConnected] = useState(false);
   const { settings, setSettings, syncError } = useSettings();
   const [status, setStatus] = useState("idle");
@@ -436,21 +427,13 @@ function App() {
   connectedRef.current = connected;
   statusRef.current = status;
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
-      setMode("tauri");
-    }
-  }, []);
-
   // --- Engine lifecycle: spawn once on mount, keep alive permanently ---
   useEffect(() => {
     // StrictMode guard: prevent double-spawn in development
     if (runtimeRef.current) return;
 
     const generation = ++engineGenerationRef.current;
-    const api: STTApi = mode === "ws"
-      ? createWebAudioApi(settings.wsPort)
-      : createTauriApi();
+    const api: STTApi = createTauriApi();
 
     api.onEvent(applyEvent);
     runtimeRef.current = api;
@@ -476,46 +459,29 @@ function App() {
       // already replaced it.
       if (runtimeRef.current === api) runtimeRef.current = null;
     };
-  }, [mode, settingsVersion]); // Re-spawn when mode changes OR settings saved
+  }, [settingsVersion]); // Re-spawn when settings are saved
 
   // Load history from backend
   const fetchHistory = useCallback(async (page: number, pageSize: number = 200) => {
     setHistoryLoading(true);
     try {
-      if (mode === "tauri") {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const rows = await invoke<Array<{ id: number; raw_text: string; processed_text: string; created_at: string; mode: string; language: string; duration_sec: number }>>("get_history", { limit: page * pageSize });
-        const items: TranscriptLine[] = rows.map((r) => ({
-          id: r.id,
-          raw: r.raw_text,
-          processed: r.processed_text,
-          status: "done",
-          createdAt: r.created_at,
-        }));
-        setHistoryItems(items);
-        setHasMoreHistory(rows.length >= page * pageSize);
-      } else {
-        // Use REST API
-        const resp = await fetch(`http://127.0.0.1:${settings.wsPort}/api/history?limit=${page * pageSize}`);
-        if (resp.ok) {
-          const rows = await resp.json();
-          const items: TranscriptLine[] = rows.map((r: any) => ({
-            id: r.id,
-            raw: r.raw_text,
-            processed: r.processed_text,
-            status: "done",
-            createdAt: r.created_at,
-          }));
-          setHistoryItems(items);
-          setHasMoreHistory(rows.length >= page * pageSize);
-        }
-      }
+      const { invoke } = await import("@tauri-apps/api/core");
+      const rows = await invoke<Array<{ id: number; raw_text: string; processed_text: string; created_at: string; mode: string; language: string; duration_sec: number }>>("get_history", { limit: page * pageSize });
+      const items: TranscriptLine[] = rows.map((r) => ({
+        id: r.id,
+        raw: r.raw_text,
+        processed: r.processed_text,
+        status: "done",
+        createdAt: r.created_at,
+      }));
+      setHistoryItems(items);
+      setHasMoreHistory(rows.length >= page * pageSize);
     } catch {
       setHasMoreHistory(false);
     } finally {
       setHistoryLoading(false);
     }
-  }, [mode, settings.wsPort]);
+  }, []);
 
   // Load history on mount
   useEffect(() => {
@@ -943,8 +909,6 @@ function App() {
       <SettingsPanel
         visible={showSettings}
         settings={settings}
-        mode={mode}
-        onModeChange={setMode}
         onSave={async (s) => {
           setSettings(s);
           setSettingsVersion((v) => v + 1); // Trigger engine respawn with new CLI args

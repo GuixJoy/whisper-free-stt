@@ -5,10 +5,7 @@
 
 import { z } from "zod";
 
-export type RunMode = "ws" | "tauri";
-
 export interface RuntimeSettings {
-  wsPort: number;
   asrProfile: "parakeet" | "whisper-turbo" | "whisper-base";
   llmMode: "cleanup" | "off" | "bullet_list" | "email" | "commit_message";
   llmProvider: "local" | "openrouter";
@@ -26,7 +23,6 @@ export interface RuntimeSettings {
 export const DEFAULT_LLM_MODEL = "s1-mini-q4_k_m";
 
 export const DEFAULT_SETTINGS: RuntimeSettings = {
-  wsPort: 8765,
   asrProfile: "parakeet",
   llmMode: "cleanup",
   llmProvider: "local",
@@ -42,7 +38,6 @@ export const LOCAL_STORAGE_KEY = "stt-settings";
 export const SETTINGS_VERSION = 2;
 
 const SettingsSchema = z.object({
-  wsPort: z.number().int().min(1).max(65535),
   asrProfile: z.enum(["parakeet", "whisper-turbo", "whisper-base"]),
   llmMode: z.enum(["cleanup", "off", "bullet_list", "email", "commit_message"]),
   llmProvider: z.enum(["local", "openrouter"]),

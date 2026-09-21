@@ -40,16 +40,6 @@ vi.mock("framer-motion", () => {
   };
 });
 
-// Mock socket.io-client
-vi.mock("socket.io-client", () => ({
-  io: vi.fn(() => ({
-    on: vi.fn(),
-    emit: vi.fn(),
-    disconnect: vi.fn(),
-    connect: vi.fn(),
-  })),
-}));
-
 // Mock Tauri APIs
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -500,7 +490,6 @@ describe("toBackendSettings", () => {
   it("maps to the snake_case set_floure_config wire shape", () => {
     expect(
       toBackendSettings({
-        wsPort: 8765,
         asrProfile: "whisper-turbo",
         llmMode: "bullet_list",
         llmProvider: "openrouter",
@@ -524,7 +513,6 @@ describe("toBackendSettings", () => {
 
   it("passes explicit language through, never the API key", () => {
     const payload = toBackendSettings({
-      wsPort: 8765,
       asrProfile: "parakeet",
       llmMode: "cleanup",
       llmProvider: "local",
@@ -545,7 +533,6 @@ describe("toBackendSettings", () => {
   // "Local LLM model not loaded".
   it("never sends an empty llm_model", () => {
     const payload = toBackendSettings({
-      wsPort: 8765,
       asrProfile: "parakeet",
       llmMode: "cleanup",
       llmProvider: "local",
@@ -562,7 +549,6 @@ describe("toBackendSettings", () => {
 
   it("preserves an explicitly chosen llm_model", () => {
     const payload = toBackendSettings({
-      wsPort: 8765,
       asrProfile: "parakeet",
       llmMode: "cleanup",
       llmProvider: "local",
@@ -582,7 +568,6 @@ describe("toBackendSettings", () => {
 // ══════════════════════════════════════════════════════════════════
 describe("SettingsPanel", () => {
   const defaultSettings: RuntimeSettings = {
-    wsPort: 8765,
     asrProfile: "parakeet",
     llmMode: "cleanup",
     llmProvider: "openrouter",
@@ -596,14 +581,14 @@ describe("SettingsPanel", () => {
 
   it("renders nothing when not visible", () => {
     const { container } = renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={false} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={false} onClose={() => {}} />
     );
     expect(container.innerHTML).toBe("");
   });
 
   it("renders dialog when visible", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
@@ -614,7 +599,7 @@ describe("SettingsPanel", () => {
     // fires `close`); jsdom implements neither, so drive the contract directly.
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
     );
     fireEvent(screen.getByRole("dialog"), new Event("close"));
     expect(onClose).toHaveBeenCalled();
@@ -623,7 +608,7 @@ describe("SettingsPanel", () => {
   it("closes when clicking backdrop", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
     );
     const dialog = screen.getByRole("dialog");
     // Click on the backdrop (the dialog element itself, not the inner panel)
@@ -634,7 +619,7 @@ describe("SettingsPanel", () => {
   it("calls onSave with updated settings", async () => {
     const onSave = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={onSave} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={onSave} visible={true} onClose={() => {}} />
     );
     await userEvent.click(screen.getByText("Save & Apply"));
     expect(onSave).toHaveBeenCalled();
@@ -642,7 +627,7 @@ describe("SettingsPanel", () => {
 
   it("shows/hides API keys", async () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
     );
     const openrouterInput = screen.getByLabelText("OpenRouter API Key");
     expect(openrouterInput).toHaveAttribute("type", "password");
@@ -654,7 +639,7 @@ describe("SettingsPanel", () => {
 
   it("has aria-modal and aria-label", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}}  mode="tauri" onModeChange={() => {}} />
+      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -1171,36 +1156,6 @@ describe("createTauriApi", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-// 38. API Layer: createWebAudioApi
-// ══════════════════════════════════════════════════════════════════
-describe("createWebAudioApi", () => {
-  it("creates an API instance with required methods", async () => {
-    const { createWebAudioApi } = await import("@/api-web-audio");
-    const api = createWebAudioApi(8765);
-    expect(typeof api.spawn).toBe("function");
-    expect(typeof api.kill).toBe("function");
-    expect(typeof api.start).toBe("function");
-    expect(typeof api.stop).toBe("function");
-    expect(typeof api.sendCommand).toBe("function");
-    expect(typeof api.onEvent).toBe("function");
-  });
-
-  it("registers event listeners", async () => {
-    const { createWebAudioApi } = await import("@/api-web-audio");
-    const api = createWebAudioApi(8765);
-    const listener = vi.fn();
-    api.onEvent(listener);
-  });
-
-  it("kill clears listeners and state", async () => {
-    const { createWebAudioApi } = await import("@/api-web-audio");
-    const api = createWebAudioApi(8765);
-    api.onEvent(vi.fn());
-    api.kill();
-  });
-});
-
-// ══════════════════════════════════════════════════════════════════
 // 39. Store: useAppState
 // ══════════════════════════════════════════════════════════════════
 describe("useAppState", () => {
@@ -1248,11 +1203,10 @@ describe("Accessibility: ARIA attributes", () => {
   it("SettingsPanel has role=dialog", () => {
     renderWithProviders(
       <SettingsPanel
-        settings={{ wsPort: 8765, asrProfile: "parakeet", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", openrouterApiKey: "", typing: true, clipboard: true, hotwords: "", language: "" }}
+        settings={{ asrProfile: "parakeet", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", openrouterApiKey: "", typing: true, clipboard: true, hotwords: "", language: "" }}
         onSave={() => {}}
         visible={true}
-        onClose={() => {}}
-      mode="tauri" onModeChange={() => {}} />
+        onClose={() => {}} />
     );
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
   });
