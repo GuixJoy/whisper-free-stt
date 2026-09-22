@@ -94,8 +94,8 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         {/* Logo */}
         <div className="flex items-center gap-2 mb-6">
           <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Floure" className="w-6 h-6 object-contain" />
-            <span className="text-[20px] font-bold text-text-primary" style={{ fontFamily: "'Instrument Serif', serif" }}>Floure</span>
+            <img src="/logo.png" alt="Floure" width={24} height={24} className="w-6 h-6 object-contain" />
+            <h1 translate="no" className="text-[20px] font-bold text-text-primary" style={{ fontFamily: "'Instrument Serif', serif" }}>Floure</h1>
           </div>
         </div>
 
@@ -176,7 +176,7 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
         {/* Upgrade Card */}
         <div className="relative rounded-card p-4 mb-4 overflow-hidden border border-border bg-app-surface-dark">
           <div className="relative z-10 flex items-center gap-3">
-            <img src="/logo.png" alt="Floure" className="w-8 h-8 object-contain" />
+            <img src="/logo.png" alt="Floure" width={32} height={32} className="w-8 h-8 object-contain" />
             <div>
               <p className="text-[15px] font-semibold text-text-primary">Floure</p>
               <p className="text-[12px] text-text-secondary">Local-first STT</p>

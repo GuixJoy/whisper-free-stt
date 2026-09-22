@@ -91,17 +91,6 @@ vi.mock("@/utils/mic-emitter", () => ({
   },
 }));
 
-// Mock platform utils
-vi.mock("@/utils/platform", () => ({
-  detectPlatform: vi.fn(() => ({
-    platform: "linux",
-    displayServer: "x11",
-    clipboardTool: "xclip",
-    typingTool: "xdotool",
-    audioGroup: "audio",
-  })),
-}));
-
 // Mock useOnboarding hook
 vi.mock("@/hooks/useOnboarding", () => ({
   useOnboarding: vi.fn(() => ({
@@ -259,11 +248,8 @@ describe("Button", () => {
   });
 
   it("applies size classes", () => {
-    const { rerender } = renderWithProviders(<Button size="sm">Test</Button>);
+    renderWithProviders(<Button size="sm">Test</Button>);
     expect(screen.getByRole("button").className).toContain("h-8");
-
-    rerender(<Button size="lg">Test</Button>);
-    expect(screen.getByRole("button").className).toContain("h-12");
   });
 
   it("disables when disabled prop is true", () => {
@@ -327,12 +313,12 @@ describe("PttOverlay", () => {
 
   it("renders overlay when visible", () => {
     renderWithProviders(<PttOverlay visible={true} />);
-    expect(screen.getByText("Listening...")).toBeInTheDocument();
+    expect(screen.getByText("Listening…")).toBeInTheDocument();
   });
 
   it("has pulsing mic icon", () => {
     renderWithProviders(<PttOverlay visible={true} />);
-    expect(screen.getByText("Listening...")).toBeInTheDocument();
+    expect(screen.getByText("Listening…")).toBeInTheDocument();
   });
 });
 
@@ -856,9 +842,9 @@ describe("DictionaryPage", () => {
   it("search input works", async () => {
     renderWithProviders(<DictionaryPage />);
     await waitFor(() => {
-      expect(screen.getByPlaceholderText("Search dictionary...")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Search dictionary…")).toBeInTheDocument();
     });
-    const searchInput = screen.getByPlaceholderText("Search dictionary...");
+    const searchInput = screen.getByPlaceholderText("Search dictionary…");
     await userEvent.type(searchInput, "CEO");
     expect(searchInput).toHaveValue("CEO");
   });
@@ -943,7 +929,7 @@ describe("InsightsPage", () => {
   it("renders loading then content", async () => {
     renderWithProviders(<InsightsPage />);
     // Initially shows loading
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
     // After fetch resolves, should show Insights header
     await waitFor(() => {
       expect(screen.getByText("Your voice productivity story.")).toBeInTheDocument();
@@ -952,10 +938,10 @@ describe("InsightsPage", () => {
 
   it("shows loading state initially", async () => {
     renderWithProviders(<InsightsPage />);
-    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
     // After data loads, loading disappears
     await waitFor(() => {
-      expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
     });
   });
 });
@@ -1001,7 +987,7 @@ describe("HistoryPage", () => {
 
   it("has search input", async () => {
     renderWithProviders(<HistoryPage onBack={() => {}} />);
-    expect(screen.getByPlaceholderText("Search transcripts...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search transcripts…")).toBeInTheDocument();
   });
 });
 

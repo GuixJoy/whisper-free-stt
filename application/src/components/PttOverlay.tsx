@@ -22,6 +22,8 @@ export default function PttOverlay({ visible }: PttOverlayProps) {
 
   return (
     <div
+      role="status"
+      aria-live="polite"
       className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
       style={{
         opacity: visible ? 1 : 0,
@@ -41,7 +43,7 @@ export default function PttOverlay({ visible }: PttOverlayProps) {
           <Mic size={14} className="relative z-10 text-white" />
         </div>
 
-        <span className="text-[13px] font-medium text-white/90">Listening...</span>
+        <span className="text-[13px] font-medium text-white/90">Listening…</span>
 
         {/* Waveform dots */}
         <div className="flex items-center gap-[3px] ml-1">

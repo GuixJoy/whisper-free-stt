@@ -51,11 +51,11 @@ function ModelCard({
 
       {/* Info row */}
       <div className="flex items-center gap-4 text-[13px] text-text-muted">
-        <span>{info.size}</span>
+        <span className="tabular-nums">{info.size}</span>
         {info.speed && <span>{info.speed}</span>}
         {info.accuracy && <span>{info.accuracy}</span>}
         {model.downloaded && model.sizeBytes > 0 && (
-          <span className="text-green-400">{formatBytes(model.sizeBytes)}</span>
+          <span className="text-green-400 tabular-nums">{formatBytes(model.sizeBytes)}</span>
         )}
       </div>
       <p className="text-[13px] text-text-secondary">{info.bestFor}</p>
@@ -69,8 +69,8 @@ function ModelCard({
               style={{ width: `${model.progress}%` }}
             />
           </div>
-          <span className="text-[12px] text-text-secondary">
-            {model.progress > 0 ? `${model.progress}%` : "Preparing download..."}
+          <span className="text-[12px] text-text-secondary tabular-nums">
+            {model.progress > 0 ? `${model.progress}%` : "Preparing download…"}
           </span>
         </div>
       )}
@@ -174,7 +174,7 @@ export default function ModelsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-[24px] font-semibold text-text-primary leading-tight">Models</h1>
+          <h2 className="text-balance text-[24px] font-semibold text-text-primary leading-tight">Models</h2>
           <p className="text-[13px] text-text-muted mt-1">
             Manage speech recognition models. Download, check status, or remove models you no longer need.
           </p>
@@ -254,7 +254,7 @@ export default function ModelsPage() {
       {loading && (
         <div className="flex items-center justify-center py-16 text-[14px] text-text-muted">
           <Loader2 size={18} className="animate-spin mr-2" />
-          Checking model status...
+          Checking model status…
         </div>
       )}
 
@@ -264,7 +264,7 @@ export default function ModelsPage() {
           {/* ASR Models */}
           {filteredAsr.length > 0 && (
             <div>
-              <h2 className="text-[14px] font-medium text-text-primary mb-3">Speech Recognition</h2>
+              <h2 className="text-balance text-[14px] font-medium text-text-primary mb-3">Speech Recognition</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filteredAsr.map((model) => {
                   const info = getModelInfo(model.name);
@@ -286,7 +286,7 @@ export default function ModelsPage() {
           {/* LLM Models */}
           {filteredLlm.length > 0 && (
             <div>
-              <h2 className="text-[14px] font-medium text-text-primary mb-3">Text Cleanup (LLM)</h2>
+              <h2 className="text-balance text-[14px] font-medium text-text-primary mb-3">Text Cleanup (LLM)</h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {filteredLlm.map((model) => {
                   const info = getLlmModelInfo(model.name);

@@ -5,7 +5,6 @@ import { parseAppError } from "./lib/errors";
 type EngineStatus = "idle" | "listening" | "transcribing" | "rewriting" | "done" | "error";
 
 let currentStatus: EngineStatus = "idle";
-let nextUtteranceId = 0;
 let currentText = "";
 
 interface TauriPayload {
@@ -117,7 +116,6 @@ export function createTauriApi(): STTApi {
         const { invoke } = await import("@tauri-apps/api/core");
         await invoke("start_listening");
         currentText = "";
-        nextUtteranceId += 1;
         currentStatus = "listening";
       } catch (e) {
         fail("[Tauri] start_listening failed", e);
@@ -141,7 +139,6 @@ export function createTauriApi(): STTApi {
         if (cmd.type === "start_recording") {
           await invoke("start_listening");
           currentText = "";
-          nextUtteranceId += 1;
           currentStatus = "listening";
         } else if (cmd.type === "stop_recording") {
           await invoke("stop_listening");

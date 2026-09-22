@@ -66,17 +66,11 @@ function buildInsights(data: IntelligenceData): InsightItem[] {
   ];
 }
 
-interface Props {
-  /** If provided, use live data from parent instead of fetching */
-  data?: Partial<IntelligenceData>;
-}
-
-export default function VoiceIntelligence({ data: propData }: Props = {}) {
+export default function VoiceIntelligence() {
   const [liveData, setLiveData] = useState<IntelligenceData>(defaultData);
-  const [loading, setLoading] = useState(!propData);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (propData) return; // Parent provides data
     let cancelled = false;
     (async () => {
       try {
@@ -92,10 +86,9 @@ export default function VoiceIntelligence({ data: propData }: Props = {}) {
       }
     })();
     return () => { cancelled = true; };
-  }, [propData]);
+  }, []);
 
-  const effectiveData = propData ? { ...defaultData(), ...propData } : liveData;
-  const insights = buildInsights(effectiveData);
+  const insights = buildInsights(liveData);
 
   return (
     <div className="rounded-[14px] bg-white border border-border px-5 py-5">

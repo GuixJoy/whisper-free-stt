@@ -3,6 +3,8 @@ import { Search, Download, Trash2, ArrowLeft, CheckSquare, Square, Calendar, Fil
 import { formatTimestamp } from "@/lib/utils";
 import { historyToCsv, historyToText } from "@/lib/historyExport";
 import { parseAppError } from "@/lib/errors";
+import { Button } from "@/components/Button";
+import Dialog from "@/components/Dialog";
 
 interface HistoryRow {
   id: number;
@@ -38,6 +40,48 @@ interface Props {
   onBack: () => void;
 }
 
+function DeleteConfirm({
+  count,
+  onConfirm,
+  onCancel,
+}: {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const one = count === 1;
+  return (
+    <Dialog
+      onClose={onCancel}
+      label="Delete Transcripts"
+      className="max-w-[380px] bg-app-surface-dark border-border-hover p-6"
+    >
+      <h3 className="text-text-primary text-[16px] font-semibold">
+        {one ? "Delete transcript" : `Delete ${count} transcripts`}
+      </h3>
+      <p className="text-text-muted text-[14px] mt-2">
+        {one
+          ? "This transcript will be removed from your history. This cannot be undone."
+          : `These ${count} transcripts will be removed from your history. This cannot be undone.`}
+      </p>
+      <div className="flex items-center justify-end gap-2 mt-6">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          className="!bg-[#E55353]/90 hover:!bg-[#E55353]"
+          onClick={onConfirm}
+        >
+          Delete
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+
 export default function HistoryPage({ onBack }: Props) {
   const [allRows, setAllRows] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,6 +89,7 @@ export default function HistoryPage({ onBack }: Props) {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<number[]>([]);
   const [modeFilter, setModeFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -120,31 +165,24 @@ export default function HistoryPage({ onBack }: Props) {
     [allRows],
   );
 
-  const deleteEntry = useCallback(async (id: number) => {
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("delete_history_entry", { id });
-      setAllRows((prev) => prev.filter((r) => r.id !== id));
-      setSelectedIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    } catch (e) {
-      console.error("[history] delete failed", e);
-    }
-  }, []);
-
-  const deleteSelected = useCallback(async () => {
-    if (selectedIds.size === 0) return;
-    const ids = Array.from(selectedIds);
+  // Destructive: only ever called from DeleteConfirm, never straight off a click.
+  const deleteTranscripts = useCallback(async (ids: number[]) => {
+    if (ids.length === 0) return;
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       for (const id of ids) {
         await invoke("delete_history_entry", { id });
       }
-      setAllRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
-      setSelectedIds(new Set());
+      setAllRows((prev) => prev.filter((r) => !ids.includes(r.id)));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
+      });
     } catch (e) {
-      console.error("[history] bulk delete failed", e);
+      console.error("[history] delete failed", e);
     }
-  }, [selectedIds]);
+  }, []);
 
   const toggleFavorite = useCallback(async (id: number) => {
     try {
@@ -199,7 +237,7 @@ export default function HistoryPage({ onBack }: Props) {
           <button onClick={onBack} aria-label="Back to home" className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-border transition-colors">
             <ArrowLeft size={18} className="text-text-secondary" />
           </button>
-          <h1 className="text-[32px] font-semibold text-text-primary">History</h1>
+          <h2 className="text-balance text-[32px] font-semibold text-text-primary">History</h2>
           {filteredRows.length > 0 && (
             <span className="text-[13px] text-text-muted">{filteredRows.length} transcripts</span>
           )}
@@ -207,7 +245,7 @@ export default function HistoryPage({ onBack }: Props) {
         <div className="flex items-center gap-2">
           {selectedIds.size > 0 && (
             <button
-              onClick={deleteSelected}
+              onClick={() => setPendingDelete(Array.from(selectedIds))}
               className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-red-500 hover:bg-red-50 transition-colors"
             >
               <Trash2 size={14} /> Delete ({selectedIds.size})
@@ -230,11 +268,13 @@ export default function HistoryPage({ onBack }: Props) {
         <Search size={16} className="text-text-muted shrink-0" />
         <input
           type="text"
+          name="history-search"
+          autoComplete="off"
           value={searchQuery}
           onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(PAGE_SIZE); }}
-          placeholder="Search transcripts..."
+          placeholder="Search transcripts…"
           aria-label="Search transcripts"
-          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent focus:bg-accent-focus-surface"
+          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface"
         />
         {availableModes.length > 0 && (
           <div className="flex items-center gap-1.5">
@@ -243,7 +283,7 @@ export default function HistoryPage({ onBack }: Props) {
               value={modeFilter}
               onChange={(e) => { setModeFilter(e.target.value); setVisibleCount(PAGE_SIZE); }}
               aria-label="Filter by mode"
-              className="h-10 px-3 bg-app-surface-secondary border border-border rounded-[12px] text-[13px] text-text-primary focus:outline-none focus:border-accent"
+              className="h-10 px-3 bg-app-surface-secondary border border-border rounded-[12px] text-[13px] text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent"
             >
               <option value="all">All modes</option>
               {availableModes.map(m => (
@@ -320,7 +360,7 @@ export default function HistoryPage({ onBack }: Props) {
                       <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-[10px] text-[12px] font-medium bg-border border border-border text-text-muted hover:text-text-primary transition-colors">
                         {copiedId === row.id ? "Copied!" : "Copy"}
                       </button>
-                      <button onClick={() => deleteEntry(row.id)} aria-label="Delete transcript" className="inline-flex items-center h-8 px-2 rounded-[10px] text-[12px] font-medium text-red-600 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
+                      <button onClick={() => setPendingDelete([row.id])} aria-label="Delete transcript" className="inline-flex items-center h-8 px-2 rounded-[10px] text-[12px] font-medium text-red-600 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -341,6 +381,18 @@ export default function HistoryPage({ onBack }: Props) {
           </div>
         )}
       </div>
+
+      {pendingDelete.length > 0 && (
+        <DeleteConfirm
+          count={pendingDelete.length}
+          onCancel={() => setPendingDelete([])}
+          onConfirm={() => {
+            const ids = pendingDelete;
+            setPendingDelete([]);
+            void deleteTranscripts(ids);
+          }}
+        />
+      )}
     </div>
   );
 }

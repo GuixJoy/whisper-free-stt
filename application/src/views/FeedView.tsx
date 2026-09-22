@@ -264,7 +264,7 @@ export function FeedView({
                   {connected ? "Live" : "Idle"}
                 </span>
               </span>
-              <span className="text-text-muted">{lines.length + historyItems.length} lines</span>
+              <span className="text-text-muted tabular-nums">{lines.length + historyItems.length}&nbsp;lines</span>
             </div>
             {connected && (
               <div className="ml-auto flex items-center gap-4 text-[12px] text-text-muted">

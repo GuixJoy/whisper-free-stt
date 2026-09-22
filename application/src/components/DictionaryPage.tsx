@@ -170,18 +170,20 @@ function EntryModal({
           </p>
         </div>
 
-        <div className="px-6 space-y-4 pb-4 max-h-[55vh] overflow-y-auto">
+        <div className="px-6 space-y-4 pb-4 max-h-[55vh] overflow-y-auto overscroll-contain">
           <div>
             <label htmlFor="dict-phrase" className="block text-text-secondary text-[12px] font-medium mb-1.5">
               Phrase
             </label>
             <input
               id="dict-phrase"
+              name="phrase"
+              autoComplete="off"
               type="text"
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
               placeholder="e.g. CEO, Tauri, Snehaa"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -191,11 +193,13 @@ function EntryModal({
             </label>
             <input
               id="dict-replacement"
+              name="replacement"
+              autoComplete="off"
               type="text"
               value={replacement}
               onChange={(e) => setReplacement(e.target.value)}
               placeholder="e.g. Chief Executive Officer"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
 
@@ -227,11 +231,13 @@ function EntryModal({
             </label>
             <input
               id="dict-notes"
+              name="notes"
+              autoComplete="off"
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Context or usage notes"
-              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
+              placeholder="e.g. spoken in weekly standups"
+              className="w-full h-10 px-3 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface transition-colors"
             />
           </div>
         </div>
@@ -451,14 +457,14 @@ export default function DictionaryPage() {
   }, [entries]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto overscroll-contain">
       <div className="max-w-[680px] mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h1 className="text-text-primary text-[22px] font-semibold tracking-tight">
+            <h2 className="text-balance text-text-primary text-[22px] font-semibold tracking-tight">
               Dictionary
-            </h1>
+            </h2>
             <p className="text-text-muted text-[13px] mt-1">
               Manage custom words, names, abbreviations, and terminology.
             </p>
@@ -473,7 +479,7 @@ export default function DictionaryPage() {
               title="Import CSV"
             >
               <Upload className="w-4 h-4" />
-              {importing ? "Importing..." : "Import"}
+              {importing ? "Importing…" : "Import"}
             </Button>
             <Button
               variant="ghost"
@@ -518,11 +524,13 @@ export default function DictionaryPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input
                 type="text"
+                name="dictionary-search"
+                autoComplete="off"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search dictionary..."
+                placeholder="Search dictionary…"
                 aria-label="Search dictionary"
-                className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus:border-accent focus:bg-accent-focus-surface transition-colors"
+                className="w-full h-10 pl-10 pr-10 rounded-[10px] bg-app-surface-secondary border border-border text-text-primary text-[14px] placeholder:text-text-muted outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface transition-colors"
               />
               {search && (
                 <button
@@ -559,7 +567,7 @@ export default function DictionaryPage() {
                 {/* Pinned Section */}
                 {pinned.length > 0 && (
                   <div>
-                    <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                    <h2 className="text-balance text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                       Pinned Terms
                     </h2>
                     <div className="space-y-2">
@@ -583,7 +591,7 @@ export default function DictionaryPage() {
                 {unpinned.length > 0 && (
                   <div>
                     {pinned.length > 0 && (
-                      <h2 className="text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
+                      <h2 className="text-balance text-text-muted text-[11px] font-semibold uppercase tracking-wider mb-3 px-1">
                         All Terms
                       </h2>
                     )}

@@ -29,7 +29,7 @@ export default function HeatmapCard({ data }: HeatmapCardProps) {
   }
 
   return (
-    <div className="rounded-[14px] bg-white border border-border px-5 py-5">
+    <div className="rounded-[14px] bg-white border border-border px-5 py-5 tabular-nums">
       <div className="mb-4">
         <h3 className="text-[15px] font-semibold text-text-primary mb-1">Voice Activity Calendar</h3>
         <p className="text-[12px] text-text-muted">Your daily voice usage patterns</p>

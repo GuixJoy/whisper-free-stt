@@ -22,6 +22,14 @@
   --glass-bg: rgba(255,255,255,0.55);
   --glass-border: rgba(255,255,255,0.55);
   --shadow-glass: 0 1px 0 0 rgba(255,255,255,0.70) inset, 0 0 0 1px rgba(255,255,255,0.18) inset, 0 20px 60px -20px rgba(44,37,32,0.18);
+  /* Light-only UI: pin native controls/scrollbars to light and drop the tap flash */
+  color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, select, textarea, summary, label {
+  /* Remove the ~300ms double-tap zoom delay on touch targets */
+  touch-action: manipulation;
 }
 
 body {

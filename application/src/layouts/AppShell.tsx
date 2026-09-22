@@ -44,6 +44,14 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         style={{ backgroundColor: "#FAF8F5", color: "#2C2520" }}
         {...props}
       >
+        {/* Skip link: invisible until focused, jumps past sidebar + titlebar */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:border focus:border-border focus:bg-white focus:px-4 focus:py-2 focus:text-[13px] focus:font-medium focus:text-text-primary focus:shadow-lg"
+        >
+          Skip to content
+        </a>
+
         {/* Ambient glow layer */}
         <div className="ambient-glow" />
 
@@ -85,9 +93,9 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-auto">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto">
             {children}
-          </div>
+          </main>
         </div>
       </div>
     );

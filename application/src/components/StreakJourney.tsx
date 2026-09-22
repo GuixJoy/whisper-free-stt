@@ -51,7 +51,7 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
         </div>
         <div className="h-[6px] rounded-full bg-border-hover overflow-hidden">
           <div
-            className="h-full rounded-full bg-accent transition-all duration-1000 ease-out"
+            className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-out"
             style={{
               width: isVisible ? `${progress}%` : "0%",
             }}
@@ -64,7 +64,7 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
         {/* Progress line */}
         <div className="absolute top-[14px] left-0 right-0 h-[2px] bg-border-hover">
           <div
-            className="h-full bg-accent transition-all duration-1000 ease-out"
+            className="h-full bg-accent transition-[width] duration-1000 ease-out"
             style={{
               width: isVisible ? `${(streak.current / MILESTONES[MILESTONES.length - 1]) * 100}%` : "0%",
             }}

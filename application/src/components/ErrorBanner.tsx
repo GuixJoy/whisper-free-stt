@@ -41,7 +41,7 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
       aria-label="Error log"
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h2 className="text-subheading text-text-primary">Errors ({activeErrors.length})</h2>
+        <h2 className="text-balance text-subheading text-text-primary">Errors ({activeErrors.length})</h2>
         <button
           className={cn(
             "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
@@ -54,7 +54,7 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
           <X size={14} /> Hide
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-3 flex flex-col gap-2">
         {activeErrors.length === 0 ? (
           <p className="text-center text-text-muted text-body py-8">No active errors. System running normally.</p>
         ) : (

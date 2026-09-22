@@ -28,6 +28,7 @@ const TOGGLES = [
 export default function SettingsPanel({ settings, onSave, visible, onClose }: Props) {
   const [local, setLocal] = useState<RuntimeSettings>({ ...settings });
   const [showKeys, setShowKeys] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [hotkey, setHotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
   const { permissions, requestClipboard, requestMic, isCapturingMic, stopMic } = usePermissions();
 
@@ -38,10 +39,24 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
   useEffect(() => {
     if (visible) {
       setHotkey(localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
+      setConfirmDiscard(false);
     }
   }, [visible]);
 
   if (!visible) return null;
+
+  // Closing discards edits with no undo, so the first Close asks and the
+  // second one commits — same "confirm a discard" contract as a beforeunload
+  // guard, without nesting a dialog inside this one.
+  const dirty = JSON.stringify(local) !== JSON.stringify(settings);
+  const handleClose = () => {
+    if (dirty && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    setConfirmDiscard(false);
+    onClose();
+  };
 
   const update = (patch: Partial<RuntimeSettings>) => setLocal((s) => ({ ...s, ...patch }));
 
@@ -56,25 +71,25 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
 
   return (
     <Dialog
-      onClose={onClose}
+      onClose={handleClose}
       label="Settings"
       className="max-w-lg max-h-[85vh] flex flex-col overflow-hidden bg-app-surface"
     >
       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-heading text-text-primary flex items-center gap-2"><Settings size={18} className="text-text-secondary" />Settings</h2>
+          <h2 className="text-balance text-heading text-text-primary flex items-center gap-2"><Settings size={18} className="text-text-secondary" />Settings</h2>
           <button
             className={cn(
               "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
               "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             )}
-            onClick={onClose}
-            aria-label="Close settings"
+            onClick={handleClose}
+            aria-label={confirmDiscard ? "Discard settings changes" : "Close settings"}
           >
-            <X size={14} /> Close
+            <X size={14} /> {confirmDiscard ? "Discard?" : "Close"}
           </button>
         </div>
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 flex flex-col gap-6">
+        <div className="max-h-[60vh] overflow-y-auto overscroll-contain px-6 py-4 flex flex-col gap-6">
           <div className="flex flex-col gap-3">
             <h3 className="text-subheading text-text-primary flex items-center gap-2"><Mic size={15} className="text-text-secondary" />Speech Recognition</h3>
             <div className="flex flex-col gap-1.5">
@@ -116,6 +131,8 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
               <label htmlFor="settings-hotwords" className="text-label text-text-secondary">Custom Vocabulary</label>
               <input
                 id="settings-hotwords"
+                name="hotwords"
+                autoComplete="off"
                 className={inputClass}
                 value={local.hotwords}
                 onChange={(e) => update({ hotwords: e.target.value })}
@@ -191,6 +208,9 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                 <label htmlFor="settings-model" className="text-label text-text-secondary">Model</label>
                 <input
                   id="settings-model"
+                  name="llm-model"
+                  autoComplete="off"
+                  spellCheck={false}
                   className={inputClass}
                   value={local.llmModel}
                   onChange={(e) => update({ llmModel: e.target.value })}
@@ -208,11 +228,13 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                 <label htmlFor="settings-openrouter-key" className="text-label text-text-secondary">OpenRouter API Key</label>
                 <input
                   id="settings-openrouter-key"
+                  name="openrouter-api-key"
+                  spellCheck={false}
                   className={cn(inputClass, "font-mono")}
                   type={showKeys ? "text" : "password"}
                   value={local.openrouterApiKey}
                   onChange={(e) => update({ openrouterApiKey: e.target.value })}
-                  placeholder={local.openrouterApiKey ? "••••••••" : "sk-or-..."}
+                  placeholder={local.openrouterApiKey ? "••••••••" : "sk-or-…"}
                   autoComplete="off"
                 />
               </div>

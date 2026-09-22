@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { MODEL_CATALOG } from "../store";
 import type { SystemCheck } from "../store";
-import { detectPlatform } from "../utils/platform";
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   return (
@@ -40,8 +39,8 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
   const allChecked = checks.every((c) => c.status !== "pending") && checks.length > 0;
   return (
     <div className="flex flex-col items-center gap-6 text-center">
-      <h2 className="text-heading text-text-primary">System Check</h2>
-      <p className="text-body text-text-secondary">Making sure everything is ready...</p>
+      <h2 className="text-balance text-heading text-text-primary">System Check</h2>
+      <p className="text-body text-text-secondary">Making sure everything is ready…</p>
       <div className="w-full flex flex-col gap-2">
         {checks.map((check, i) => (
           <div
@@ -132,12 +131,12 @@ function Step2ModelDownload({
 
   const totalSize = MODEL_CATALOG
     .filter((m) => selected.has(m.name))
-    .reduce((s, m) => s + m.size, "0 MB")
+    .reduce((s, m) => s + m.size, "0\u00A0MB")
     .toString();
 
   return (
     <div className="flex flex-col items-center gap-6 text-center">
-      <h2 className="text-heading text-text-primary">Download Models</h2>
+      <h2 className="text-balance text-heading text-text-primary">Download Models</h2>
       <p className="text-body text-text-secondary">Choose which speech recognition models to install. Smaller = faster, larger = more accurate.</p>
 
       <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -229,7 +228,7 @@ function Step3MicSetup({
 }) {
   return (
     <div className="flex flex-col items-center gap-6 text-center">
-      <h2 className="text-heading text-text-primary">Microphone Setup</h2>
+      <h2 className="text-balance text-heading text-text-primary">Microphone Setup</h2>
       <p className="text-body text-text-secondary">Check your mic and adjust settings.</p>
 
       <div className="w-full flex flex-col items-center gap-4">
@@ -281,17 +280,15 @@ function Step4Permissions({
   onTyping: (v: boolean) => void;
   onDone: () => void;
 }) {
-  const p = detectPlatform();
   return (
     <div className="flex flex-col items-center gap-6 text-center">
-      <h2 className="text-heading text-text-primary">Permissions</h2>
+      <h2 className="text-balance text-heading text-text-primary">Permissions</h2>
       <p className="text-body text-text-secondary">Control where your transcribed text goes.</p>
 
       <div className="w-full flex flex-col gap-3">
         <label className="flex items-center justify-between rounded-card bg-app-surface border border-border px-4 py-3 cursor-pointer">
           <div className="text-left">
             <strong className="text-body text-text-primary flex items-center gap-2"><ClipboardList size={16} className="text-text-secondary" />Auto-copy to Clipboard</strong>
-            <p className="text-small text-text-muted">Uses {p.clipboardTool} on {p.platform}</p>
           </div>
           <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-app-surface-secondary border border-border transition-colors">
             <input
@@ -307,7 +304,6 @@ function Step4Permissions({
         <label className="flex items-center justify-between rounded-card bg-app-surface border border-border px-4 py-3 cursor-pointer">
           <div className="text-left">
             <strong className="text-body text-text-primary flex items-center gap-2"><Keyboard size={16} className="text-text-secondary" />Type into Focused Window</strong>
-            <p className="text-small text-text-muted">Uses {p.typingTool} on {p.platform}</p>
           </div>
           <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-app-surface-secondary border border-border transition-colors">
             <input
@@ -343,7 +339,7 @@ function Step5Ready({ onFinish }: { onFinish: () => void }) {
       <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center text-accent">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
       </div>
-      <h2 className="text-heading text-text-primary">You're All Set!</h2>
+      <h2 className="text-balance text-heading text-text-primary">You're All Set!</h2>
       <p className="text-body text-text-secondary">Press <kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary">Space</kbd> to start/stop dictation anytime.</p>
       <div className="w-full rounded-card bg-app-surface border border-border p-4 flex flex-col gap-2 text-left text-body text-text-secondary">
         <div><kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary mr-2">Space</kbd> Start / Stop</div>
@@ -404,7 +400,7 @@ export default function OnboardingWizard({ onFinished }: Props) {
               <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
                 <Step1SystemCheck
                   checks={systemChecks.length > 0 ? systemChecks : [
-                    { name: "Running checks...", status: "pending", message: "Scanning system" },
+                    { name: "Running checks…", status: "pending", message: "Scanning system" },
                   ]}
                   onNext={() => runSystemChecks()}
                 />

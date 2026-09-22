@@ -77,7 +77,7 @@ export default function UsageDistribution({ categories }: UsageDistributionProps
                   style={{ background: COLORS[i % COLORS.length] }}
                 />
                 <span className="text-[12px] text-text-secondary flex-1">{cat.name}</span>
-                <span className="text-[12px] font-medium text-text-primary">{pct}%</span>
+                <span className="text-[12px] font-medium text-text-primary tabular-nums">{pct}%</span>
               </div>
             );
           })}

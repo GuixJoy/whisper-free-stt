@@ -22,7 +22,7 @@ export default function MicPermissionModal({ visible, onOpenConfig, onClose }: M
 
         {/* Content */}
         <div className="px-6 pb-6 text-center">
-          <h2 className="text-[16px] font-semibold text-text-primary mb-2">
+          <h2 className="text-balance text-[16px] font-semibold text-text-primary mb-2">
             Microphone Access Required
           </h2>
           <p className="text-[13px] text-text-muted leading-relaxed mb-5">

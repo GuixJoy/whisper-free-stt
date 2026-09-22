@@ -10,7 +10,7 @@ describe("PttOverlay", () => {
 
   it("renders listening text when visible", () => {
     render(<PttOverlay visible={true} />);
-    expect(screen.getByText("Listening...")).toBeDefined();
+    expect(screen.getByText("Listening…")).toBeDefined();
   });
 
   it("renders mic icon when visible", () => {
