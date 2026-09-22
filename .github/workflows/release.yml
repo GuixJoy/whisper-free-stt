@@ -127,14 +127,18 @@ jobs:
           - platform: ubuntu-22.04
             args: ""
             target: ""
-          - platform: windows-latest
-            args: "--target x86_64-pc-windows-msvc"
-            target: "x86_64-pc-windows-msvc"
-          # macOS is deliberately not built. The .dmg is unsigned (no Apple
-          # Developer account), so Gatekeeper blocks it on a clean machine, and
-          # macOS runners bill at 10x. To reinstate, add macos-latest
-          # (aarch64) and macos-15-intel (x86_64; macos-13 was retired
-          # 2025-12-04), and put **/*.dmg back in the upload paths below.
+          # Linux only, deliberately. Windows fails to link the native C++
+          # dependencies: msvcprt.lib duplicate-symbol errors out of
+          # libsherpa_onnx_sys, plus an unresolved hash_sha256_hex from
+          # llama.cpp (LNK2005/LNK2019/LNK1120). macOS is unsigned, so
+          # Gatekeeper blocks it on a clean machine, and its runners bill at
+          # 10x. Both are contributions waiting to happen rather than
+          # something to carry red in CI.
+          #
+          # To reinstate: add windows-latest with args/target
+          # x86_64-pc-windows-msvc and put **/*.exe back below; for macOS add
+          # macos-latest (aarch64) and macos-15-intel (x86_64; macos-13 was
+          # retired 2025-12-04) plus **/*.dmg.
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -226,7 +230,6 @@ jobs:
         with:
           name: floure-${{ matrix.platform }}
           path: |
-            application/src-tauri/target/release/bundle/**/*.exe
             application/src-tauri/target/release/bundle/**/*.AppImage
             application/src-tauri/target/release/bundle/**/*.deb
             application/src-tauri/target/release/bundle/**/*.rpm
