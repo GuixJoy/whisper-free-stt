@@ -32,26 +32,6 @@ function formatWords(n: number): string {
   return String(n);
 }
 
-/** Derive weekly bar chart data from heatmap (last 7 days) */
-function heatmapToWeekly(heatmap: HeatmapDay[]): { label: string; value: number }[] {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const today = new Date();
-  const result: { label: string; value: number }[] = [];
-
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().split("T")[0];
-    const entry = heatmap.find((h) => h.date === key);
-    result.push({
-      label: days[d.getDay()],
-      // Use level as rough proxy; real word count not stored per-day in heatmap
-      value: entry ? entry.level * 300 + 200 : 0,
-    });
-  }
-  return result;
-}
-
 export default function InsightsPage() {
   const [activeTab, setActiveTab] = useState("usage");
   const [categories, setCategories] = useState<UsageCategory[]>([]);
@@ -83,8 +63,9 @@ export default function InsightsPage() {
     setCategories(data.categories || []);
     setHeatmap(data.heatmap || []);
     setStreak(data.streak || { current: 0, longest: 0 });
-    const weekly = (data.weeklyWords || []).map(w => ({ label: w.label, value: w.words }));
-    setWeeklyData(weekly.length > 0 ? weekly : heatmapToWeekly(data.heatmap || []));
+    // Real per-day counts only. The heatmap carries a 0-4 activity level, not
+    // words, so deriving a word count from it would invent numbers.
+    setWeeklyData((data.weeklyWords || []).map((w) => ({ label: w.label, value: w.words })));
   };
 
   // Initial load + auto-refresh every 10s
