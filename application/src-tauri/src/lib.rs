@@ -1163,21 +1163,6 @@ fn check_system_deps() -> serde_json::Value {
 }
 
 // ---------------------------------------------------------------------------
-// Diagnostics
-// ---------------------------------------------------------------------------
-
-#[tauri::command]
-async fn test_microphone() -> Result<serde_json::Value, AppError> {
-    let devices = crate::audio::list_input_devices().map_err(|e| AppError::Audio(e.to_string()))?;
-    let count = devices.len();
-    let devices: Vec<serde_json::Value> = devices
-        .into_iter()
-        .map(|(name, id)| serde_json::json!({ "name": name, "id": id }))
-        .collect();
-    Ok(serde_json::json!({ "devices": devices, "count": count, "ok": true }))
-}
-
-// ---------------------------------------------------------------------------
 // App entry point
 // ---------------------------------------------------------------------------
 
@@ -1207,7 +1192,6 @@ pub fn run() {
             toggle_dictionary_favorite,
             import_dictionary_csv,
             export_dictionary_csv,
-            test_microphone,
             set_floure_config,
             set_openrouter_api_key,
             start_listening,

@@ -117,8 +117,6 @@ export interface OnboardingState {
   totalSteps: number;
   completed: boolean;
   systemChecks: SystemCheck[];
-  selectedMicIndex: number | null;
-  micLevel: number;
   clipboardEnabled: boolean;
   typingEnabled: boolean;
   modelDownloadProgress: Record<string, { percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" }>;
@@ -174,8 +172,6 @@ export const DEFAULT_ONBOARDING: OnboardingState = {
   totalSteps: 5,
   completed: false,
   systemChecks: [],
-  selectedMicIndex: null,
-  micLevel: 0,
   clipboardEnabled: true,
   typingEnabled: true,
   modelDownloadProgress: {},

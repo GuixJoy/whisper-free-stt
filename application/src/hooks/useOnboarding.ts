@@ -128,10 +128,6 @@ export function useOnboarding(onComplete: () => void) {
     dispatch({ type: "NEXT_STEP" });
   }, []);
 
-  const testMic = useCallback(() => {
-    // Mic test placeholder
-  }, []);
-
   const nextStep = useCallback(() => {
     dispatch({ type: "NEXT_STEP" });
   }, []);
@@ -146,7 +142,6 @@ export function useOnboarding(onComplete: () => void) {
     dispatch,
     runSystemChecks,
     downloadModels,
-    testMic,
     nextStep,
     finish,
   };

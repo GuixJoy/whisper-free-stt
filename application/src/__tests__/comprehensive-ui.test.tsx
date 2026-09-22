@@ -100,8 +100,6 @@ vi.mock("@/hooks/useOnboarding", () => ({
       completed: false,
       skipped: false,
       systemChecks: [],
-      selectedMicIndex: null,
-      micLevel: 0,
       clipboardEnabled: false,
       typingEnabled: false,
       modelDownloadProgress: {},
@@ -110,7 +108,6 @@ vi.mock("@/hooks/useOnboarding", () => ({
     dispatch: vi.fn(),
     runSystemChecks: vi.fn(),
     downloadModels: vi.fn(),
-    testMic: vi.fn(),
     nextStep: vi.fn(),
     finish: vi.fn(),
   })),
@@ -1094,8 +1091,6 @@ describe("DEFAULT_ONBOARDING", () => {
     expect(DEFAULT_ONBOARDING.totalSteps).toBe(5);
     expect(DEFAULT_ONBOARDING.completed).toBe(false);
     expect(DEFAULT_ONBOARDING.systemChecks).toEqual([]);
-    expect(DEFAULT_ONBOARDING.selectedMicIndex).toBeNull();
-    expect(DEFAULT_ONBOARDING.micLevel).toBe(0);
     expect(DEFAULT_ONBOARDING.clipboardEnabled).toBe(true);
     expect(DEFAULT_ONBOARDING.typingEnabled).toBe(true);
     expect(DEFAULT_ONBOARDING.error).toBeNull();

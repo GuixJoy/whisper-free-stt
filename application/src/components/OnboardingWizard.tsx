@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CircleCheck,
@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { useOnboarding } from "../hooks/useOnboarding";
 import { MODEL_CATALOG } from "../store";
 import type { SystemCheck } from "../store";
+import { usePermissions } from "../hooks/usePermissions";
+import { micLevelEmitter } from "../utils/mic-emitter";
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   return (
@@ -218,11 +220,12 @@ function Step2ModelDownload({
 
 function Step3MicSetup({
   micLevel,
+  testing,
   onTest,
   onDone,
 }: {
-  micIndex: number | null;
   micLevel: number;
+  testing: boolean;
   onTest: () => void;
   onDone: () => void;
 }) {
@@ -247,7 +250,7 @@ function Step3MicSetup({
           )}
           onClick={onTest}
         >
-          Test Microphone
+          {testing ? "Stop Test" : "Test Microphone"}
         </button>
       </div>
 
@@ -367,9 +370,15 @@ interface Props {
 }
 
 export default function OnboardingWizard({ onFinished }: Props) {
-  const { state, dispatch, runSystemChecks, downloadModels, testMic, nextStep, finish } = useOnboarding(onFinished);
-  const { step, systemChecks, modelDownloadProgress, selectedMicIndex, micLevel, clipboardEnabled, typingEnabled, error } = state;
+  const { state, dispatch, runSystemChecks, downloadModels, nextStep, finish } = useOnboarding(onFinished);
+  const { step, systemChecks, modelDownloadProgress, clipboardEnabled, typingEnabled, error } = state;
   const totalSteps = 5;
+
+  // Live mic test: reuse the Settings capture path (usePermissions) and the
+  // shared level emitter. The wizard reducer never carried a real level.
+  const { isCapturingMic, requestMic, stopMic } = usePermissions();
+  const [micLevel, setMicLevel] = useState(0);
+  useEffect(() => micLevelEmitter.subscribe(setMicLevel), []);
 
   return (
     <motion.div
@@ -417,7 +426,15 @@ export default function OnboardingWizard({ onFinished }: Props) {
             )}
             {step === 2 && (
               <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step3MicSetup micIndex={selectedMicIndex} micLevel={micLevel} onTest={testMic} onDone={() => nextStep()} />
+                <Step3MicSetup
+                  micLevel={micLevel}
+                  testing={isCapturingMic}
+                  onTest={isCapturingMic ? stopMic : () => void requestMic()}
+                  onDone={() => {
+                    stopMic();
+                    nextStep();
+                  }}
+                />
               </motion.div>
             )}
             {step === 3 && (
