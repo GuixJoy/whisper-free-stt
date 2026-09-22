@@ -386,7 +386,15 @@ impl PipelineController {
             if verify_model(&config_clone.model_dir, find_model(model_id).unwrap()) {
                 match config_clone.asr_profile {
                     crate::config::AsrProfile::Parakeet => {
-                        match ParakeetRecognizer::new(&model_dir, 4, false) {
+                        // No vocabulary means no biasing: greedy search is
+                        // faster and the bench baseline shows it is not less
+                        // accurate without hotwords.
+                        let built = if config_clone.hotwords.is_empty() {
+                            ParakeetRecognizer::new(&model_dir, 4, false)
+                        } else {
+                            ParakeetRecognizer::new_biased(&model_dir, 4, false)
+                        };
+                        match built {
                             Ok(r) => {
                                 parakeet = Some(r);
                                 let _ = app_clone
@@ -444,7 +452,12 @@ impl PipelineController {
                         if let Some(segment) = vad.try_get_segment() {
                             let start = Instant::now();
                             let (text, timestamps, durations) = if let Some(ref rec) = parakeet {
-                                match rec.transcribe_full(&segment) {
+                                let decoded = if config_clone.hotwords.is_empty() {
+                                    rec.transcribe_full(&segment)
+                                } else {
+                                    rec.transcribe_full_with_hotwords(&segment, &config_clone.hotwords)
+                                };
+                                match decoded {
                                     Some(r) => (
                                         r.text.clone(),
                                         r.timestamps.clone().unwrap_or_default(),

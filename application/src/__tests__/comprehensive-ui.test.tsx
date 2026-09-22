@@ -519,6 +519,7 @@ describe("toBackendSettings", () => {
       llm_model: "openai/gpt-4o-mini",
       typing_enabled: false,
       clipboard_enabled: true,
+      hotwords: "Floure",
     });
   });
 
@@ -536,7 +537,7 @@ describe("toBackendSettings", () => {
     });
     expect(payload.language).toBe("auto");
     expect(payload).not.toHaveProperty("openrouterApiKey");
-    expect(payload).not.toHaveProperty("hotwords");
+    expect(payload.hotwords).toBe("");
   });
 
   // Regression: an empty llm_model was persisted verbatim, and the backend then

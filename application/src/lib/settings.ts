@@ -84,7 +84,6 @@ export function persistableSettings(s: RuntimeSettings) {
 }
 
 /** Backend wire shape for `set_floure_config` (snake_case, UI-owned fields only).
- *  `hotwords` stays out until the P1 decode path exists.
  *
  *  This is the single chokepoint between UI state and the Rust config, so the
  *  "never send an invalid payload" rule lives here: blank values that would
@@ -101,5 +100,7 @@ export function toBackendSettings(s: RuntimeSettings) {
     llm_model: s.llmModel.trim() || DEFAULT_LLM_MODEL,
     typing_enabled: s.typing,
     clipboard_enabled: s.clipboard,
+    // Normalised to space-separated on the Rust side (config::normalize_hotwords).
+    hotwords: s.hotwords.trim(),
   };
 }

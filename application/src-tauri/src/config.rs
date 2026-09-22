@@ -48,6 +48,10 @@ pub struct AppConfig {
     pub selected_mic_index: Option<usize>,
     pub typing_enabled: bool,
     pub clipboard_enabled: bool,
+    /// Space-separated vocabulary to bias decoding toward. Empty disables the
+    /// biased decode path entirely (see `pipeline.rs`).
+    #[serde(default)]
+    pub hotwords: String,
     pub model_dir: PathBuf,
 }
 
@@ -90,6 +94,7 @@ impl Default for AppConfig {
             selected_mic_index: None,
             typing_enabled: true,
             clipboard_enabled: true,
+            hotwords: String::new(),
             model_dir,
         }
     }
@@ -115,6 +120,22 @@ pub struct SettingsUpdate {
     pub typing_enabled: bool,
     #[serde(default = "default_true")]
     pub clipboard_enabled: bool,
+    #[serde(default)]
+    pub hotwords: String,
+}
+
+/// Hotwords arrive as the UI's comma-separated list; sherpa-onnx wants a
+/// space-separated string. Normalise at this boundary so the decode path stays
+/// a straight pass-through, and cap the length so a runaway paste cannot blow
+/// up the beam search.
+pub fn normalize_hotwords(raw: &str) -> String {
+    raw.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(200)
+        .collect()
 }
 
 fn default_profile() -> AsrProfile {
@@ -214,6 +235,7 @@ impl AppConfig {
         self.llm_model = resolved_llm_model(&update.llm_model);
         self.typing_enabled = update.typing_enabled;
         self.clipboard_enabled = update.clipboard_enabled;
+        self.hotwords = normalize_hotwords(&update.hotwords);
     }
 }
 
@@ -241,6 +263,33 @@ mod tests {
         });
         let config: AppConfig = serde_json::from_value(old).unwrap();
         assert_eq!(config.language, "en");
+        // Same for configs predating `hotwords`.
+        assert!(config.hotwords.is_empty());
+    }
+
+    #[test]
+    fn hotwords_normalize_commas_and_whitespace() {
+        assert_eq!(
+            super::normalize_hotwords("Tauri, PyTorch ,,  wl-copy\nFloure"),
+            "Tauri PyTorch wl-copy Floure"
+        );
+        assert_eq!(super::normalize_hotwords("   "), "");
+    }
+
+    #[test]
+    fn apply_update_normalizes_hotwords() {
+        let mut config = AppConfig::default();
+        config.apply_update(super::SettingsUpdate {
+            asr_profile: super::AsrProfile::Parakeet,
+            language: "en".to_string(),
+            llm_provider: super::LlmProvider::Local,
+            llm_mode: crate::llm::LlmMode::Cleanup,
+            llm_model: "x".to_string(),
+            typing_enabled: true,
+            clipboard_enabled: true,
+            hotwords: "Calico, Kaliko".to_string(),
+        });
+        assert_eq!(config.hotwords, "Calico Kaliko");
     }
 
     #[test]
@@ -284,6 +333,7 @@ mod tests {
             llm_model: "x".to_string(),
             typing_enabled: false,
             clipboard_enabled: false,
+            hotwords: String::new(),
         };
         let dir = config.model_dir.clone();
         config.apply_update(update);

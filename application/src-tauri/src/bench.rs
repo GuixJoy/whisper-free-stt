@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use crate::config::{AppConfig, AsrProfile};
-use crate::parakeet::ParakeetRecognizer;
+use crate::parakeet::{derive_bpe_vocab, ParakeetRecognizer};
 use crate::whisper::WhisperRecognizer;
 
 fn bench_dir() -> Option<PathBuf> {
@@ -56,24 +56,6 @@ fn percentile(mut v: Vec<f64>, pct: f64) -> f64 {
     }
     v.sort_by(|a, b| a.partial_cmp(b).unwrap());
     v[((v.len() as f64 * pct / 100.0) as usize).min(v.len() - 1)]
-}
-
-/// Derive the bpe.vocab the Parakeet release doesn't ship (per the upstream
-/// node hotwords example: every tokens.txt entry with a uniform score).
-fn derive_bpe_vocab(model_dir: &std::path::Path) -> PathBuf {
-    let out = std::env::temp_dir().join("floure-bench-bpe.vocab");
-    if !out.exists() {
-        let tokens = std::fs::read_to_string(model_dir.join("tokens.txt")).unwrap();
-        let mut vocab: String = tokens
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| format!("{}\t-1.0", l.split_whitespace().next().unwrap()))
-            .collect::<Vec<_>>()
-            .join("\n");
-        vocab.push('\n');
-        std::fs::write(&out, vocab).unwrap();
-    }
-    out
 }
 
 #[test]
@@ -178,7 +160,7 @@ fn bench_baseline() {
     );
 
     // Spike verification 2: modified_beam_search + hotwords on Parakeet v2-int8.
-    let vocab = derive_bpe_vocab(&parakeet_dir);
+    let vocab = derive_bpe_vocab(&parakeet_dir).expect("[bench] derive bpe vocab");
     let beam = ParakeetRecognizer::new_with_decoding(&parakeet_dir, 4, false, "modified_beam_search", Some(&vocab), 2.0)
         .expect("[bench] beam recognizer creation failed");
     let t0 = Instant::now();
@@ -187,4 +169,36 @@ fn bench_baseline() {
     let hot = beam.transcribe_with_hotwords(first_wave.samples(), "KALIKO");
     eprintln!("[bench] beam: plain={:?} hotwords={:?} latency={:.2}s", plain, hot, beam_lat);
     assert!(!plain.is_empty(), "[bench] beam search returned empty text");
+}
+
+/// App-path check: the exact recognizer the pipeline builds when the user has
+/// hotwords (`new_biased`) plus the timestamp-preserving decode. Kept separate
+/// from `bench_baseline` so it neither needs BENCH_AUDIO nor rewrites
+/// baseline.json — it uses the wav bundled with the Parakeet release.
+#[test]
+#[ignore]
+fn bench_hotwords_app_path() {
+    let base = AppConfig::default().model_dir;
+    let parakeet_dir = AsrProfile::Parakeet.model_dir(&base);
+    let wav = parakeet_dir.join("test_wavs").join("0.wav");
+    if !wav.exists() {
+        eprintln!("[bench] {} missing — skipped", wav.display());
+        return;
+    }
+    let wave = sherpa_onnx::Wave::read(wav.to_str().unwrap()).unwrap();
+
+    let biased = ParakeetRecognizer::new_biased(&parakeet_dir, 4, false)
+        .expect("[bench] biased recognizer creation failed");
+    let full = biased
+        .transcribe_full_with_hotwords(wave.samples(), "KALIKO")
+        .expect("[bench] biased decode returned no result");
+    eprintln!(
+        "[bench] app path: text={:?} tokens={} timestamps={}",
+        full.text,
+        full.tokens.len(),
+        full.timestamps.as_ref().map(|t| t.len()).unwrap_or(0)
+    );
+    assert!(!full.text.is_empty(), "[bench] biased decode returned empty text");
+    // No timestamp assertion: if modified_beam_search omits them the cleanup
+    // gate degrades to its text heuristics, which is allowed but worth seeing.
 }
