@@ -57,16 +57,17 @@ window APIs that work out of the box on these platforms.
 
 ## Platform Notes
 
-| Feature | Windows | macOS | Linux X11 | Linux Wayland |
-|---|---|---|---|---|
-| Always on top | Yes | Yes | Yes | Requires WM rules |
-| Window positioning | Yes | Yes | Yes | Requires WM rules |
-| Drag to move | Yes | Yes | Yes | No (use WM move) |
-| Glass blur effect | Yes | Yes | Needs compositor | Yes |
+| Feature            | Windows | macOS | Linux X11        | Linux Wayland     |
+| ------------------ | ------- | ----- | ---------------- | ----------------- |
+| Always on top      | Yes     | Yes   | Yes              | Requires WM rules |
+| Window positioning | Yes     | Yes   | Yes              | Requires WM rules |
+| Drag to move       | Yes     | Yes   | Yes              | No (use WM move)  |
+| Glass blur effect  | Yes     | Yes   | Needs compositor | Yes               |
 
 ## How to Apply
 
 After adding the config lines, restart your window manager or reload its config:
+
 - **Sway**: `swaymsg reload`
 - **Hyprland**: `hyprctl reload`
 - **i3**: `$mod+Shift+r`
@@ -76,16 +77,19 @@ After adding the config lines, restart your window manager or reload its config:
 If the rules don't match, find the actual class/app_id:
 
 **Sway/Wayland:**
+
 ```bash
 swaymsg -t get_tree | grep app_id
 ```
 
 **Hyprland:**
+
 ```bash
 hyprctl clients | grep class
 ```
 
 **i3/X11:**
+
 ```bash
 xprop | grep WM_CLASS
 ```

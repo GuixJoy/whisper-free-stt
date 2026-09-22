@@ -29,7 +29,9 @@ export function usePermissions() {
           setPermissions((p) => ({ ...p, clipboard: "prompt" }));
         }
       } else if (navigator.clipboard && navigator.permissions) {
-        const status = await navigator.permissions.query({ name: "clipboard-read" as PermissionName });
+        const status = await navigator.permissions.query({
+          name: "clipboard-read" as PermissionName,
+        });
         setPermissions((p) => ({ ...p, clipboard: status.state as PermissionState["clipboard"] }));
       } else {
         setPermissions((p) => ({ ...p, clipboard: "unavailable" }));
@@ -65,7 +67,10 @@ export function usePermissions() {
         setPermissions((p) => ({ ...p, microphone: "granted" }));
       } else if (navigator.permissions && navigator.permissions.query) {
         const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
-        setPermissions((p) => ({ ...p, microphone: status.state as PermissionState["microphone"] }));
+        setPermissions((p) => ({
+          ...p,
+          microphone: status.state as PermissionState["microphone"],
+        }));
       } else {
         setPermissions((p) => ({ ...p, microphone: "prompt" }));
       }

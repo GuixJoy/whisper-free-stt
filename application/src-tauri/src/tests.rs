@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::*;
     use crate::models::walk_dir_size;
+    use crate::*;
     use rusqlite::Connection;
     use std::path::Path;
 
@@ -166,7 +166,10 @@ mod tests {
                 words: 3000,
                 max_words: 5000,
             }],
-            streak: InsightsStreak { current: 7, longest: 14 },
+            streak: InsightsStreak {
+                current: 7,
+                longest: 14,
+            },
             heatmap: vec![InsightsHeatmapDay {
                 date: "2026-06-28".to_string(),
                 level: 3,
@@ -220,7 +223,10 @@ mod tests {
 
     #[test]
     fn test_weekly_word_day_serializes() {
-        let day = WeeklyWordDay { label: "Mon".to_string(), words: 500 };
+        let day = WeeklyWordDay {
+            label: "Mon".to_string(),
+            words: 500,
+        };
         let json = serde_json::to_value(&day).unwrap();
         assert_eq!(json["label"], "Mon");
         assert_eq!(json["words"], 500);
@@ -228,7 +234,10 @@ mod tests {
 
     #[test]
     fn test_insights_streak_serializes() {
-        let streak = InsightsStreak { current: 7, longest: 30 };
+        let streak = InsightsStreak {
+            current: 7,
+            longest: 30,
+        };
         let json = serde_json::to_value(&streak).unwrap();
         assert_eq!(json["current"], 7);
         assert_eq!(json["longest"], 30);
@@ -236,7 +245,10 @@ mod tests {
 
     #[test]
     fn test_insights_heatmap_day_serializes() {
-        let day = InsightsHeatmapDay { date: "2026-06-28".to_string(), level: 4 };
+        let day = InsightsHeatmapDay {
+            date: "2026-06-28".to_string(),
+            level: 4,
+        };
         let json = serde_json::to_value(&day).unwrap();
         assert_eq!(json["date"], "2026-06-28");
         assert_eq!(json["level"], 4);
@@ -244,7 +256,11 @@ mod tests {
 
     #[test]
     fn test_insights_category_serializes() {
-        let cat = InsightsCategory { name: "AI Prompts".to_string(), words: 3000, max_words: 5000 };
+        let cat = InsightsCategory {
+            name: "AI Prompts".to_string(),
+            words: 3000,
+            max_words: 5000,
+        };
         let json = serde_json::to_value(&cat).unwrap();
         assert_eq!(json["name"], "AI Prompts");
     }
@@ -342,17 +358,22 @@ mod tests {
                 model TEXT DEFAULT '',
                 duration_sec REAL DEFAULT 0.0
             );",
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO transcripts (raw_text, processed_text, language, mode, model, duration_sec) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params!["hello world", "Hello World", "en", "cleanup", "tiny.en", 1.5],
         ).unwrap();
 
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM transcripts", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM transcripts", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1);
 
-        let raw: String = conn.query_row("SELECT raw_text FROM transcripts LIMIT 1", [], |r| r.get(0)).unwrap();
+        let raw: String = conn
+            .query_row("SELECT raw_text FROM transcripts LIMIT 1", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(raw, "hello world");
     }
 
@@ -366,21 +387,36 @@ mod tests {
             rusqlite::params!["teh", "the", "corrections", "Common typo"],
         ).unwrap();
 
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM dictionary_entries", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1);
 
-        let phrase: String = conn.query_row("SELECT phrase FROM dictionary_entries LIMIT 1", [], |r| r.get(0)).unwrap();
+        let phrase: String = conn
+            .query_row("SELECT phrase FROM dictionary_entries LIMIT 1", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(phrase, "teh");
 
         conn.execute(
             "UPDATE dictionary_entries SET replacement = ?1 WHERE phrase = ?2",
             rusqlite::params!["the corrected", "teh"],
-        ).unwrap();
-        let replacement: String = conn.query_row("SELECT replacement FROM dictionary_entries LIMIT 1", [], |r| r.get(0)).unwrap();
+        )
+        .unwrap();
+        let replacement: String = conn
+            .query_row(
+                "SELECT replacement FROM dictionary_entries LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(replacement, "the corrected");
 
         conn.execute("DELETE FROM dictionary_entries", []).unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM dictionary_entries", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 0);
     }
 
@@ -399,16 +435,19 @@ mod tests {
                 model TEXT DEFAULT '',
                 duration_sec REAL DEFAULT 0.0
             );",
-        ).unwrap();
+        )
+        .unwrap();
 
         conn.execute(
             "INSERT INTO transcripts (raw_text, duration_sec) VALUES (?1, ?2)",
             rusqlite::params!["hello world", 1.0],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO transcripts (raw_text, duration_sec) VALUES (?1, ?2)",
             rusqlite::params!["one two three four five", 2.0],
-        ).unwrap();
+        )
+        .unwrap();
 
         let total_words: i64 = conn.query_row(
             "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != ''",
@@ -434,7 +473,11 @@ mod tests {
                 2 => "2026-06-26",
                 _ => unreachable!(),
             };
-            if day_set.contains(check) { count += 1; } else { break; }
+            if day_set.contains(check) {
+                count += 1;
+            } else {
+                break;
+            }
         }
         assert_eq!(count, 3);
     }
@@ -451,7 +494,11 @@ mod tests {
                 2 => "2026-06-26",
                 _ => unreachable!(),
             };
-            if day_set.contains(check) { count += 1; } else { break; }
+            if day_set.contains(check) {
+                count += 1;
+            } else {
+                break;
+            }
         }
         assert_eq!(count, 1);
     }
@@ -462,7 +509,17 @@ mod tests {
 
     #[test]
     fn test_heatmap_level_mapping() {
-        let cases = vec![(0, 0), (1, 1), (2, 1), (3, 2), (5, 2), (6, 3), (10, 3), (11, 4), (100, 4)];
+        let cases = vec![
+            (0, 0),
+            (1, 1),
+            (2, 1),
+            (3, 2),
+            (5, 2),
+            (6, 3),
+            (10, 3),
+            (11, 4),
+            (100, 4),
+        ];
         for (count, expected_level) in cases {
             let level = match count {
                 0 => 0,
@@ -483,7 +540,15 @@ mod tests {
     fn test_weekly_words_day_names() {
         let day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         // SQLite %w: 0=Sun, 1=Mon, ..., 6=Sat
-        let test_cases = vec![(0, "Sun"), (1, "Mon"), (2, "Tue"), (3, "Wed"), (4, "Thu"), (5, "Fri"), (6, "Sat")];
+        let test_cases = vec![
+            (0, "Sun"),
+            (1, "Mon"),
+            (2, "Tue"),
+            (3, "Wed"),
+            (4, "Thu"),
+            (5, "Fri"),
+            (6, "Sat"),
+        ];
         for (sqlite_dow, expected_name) in test_cases {
             assert_eq!(day_names[sqlite_dow], expected_name);
         }
@@ -534,7 +599,10 @@ mod tests {
         }
         assert_eq!(pairs.len(), 2);
         assert_eq!(pairs[0], ("teh".to_string(), "the".to_string()));
-        assert_eq!(pairs[1], ("correctin".to_string(), "correction".to_string()));
+        assert_eq!(
+            pairs[1],
+            ("correctin".to_string(), "correction".to_string())
+        );
     }
 
     #[test]
@@ -604,25 +672,41 @@ mod tests {
 
     #[test]
     fn test_language_percentage_zero_total() {
-        let pct = if 0i64 > 0 { (0i64 as f64 / 0i64 as f64 * 100.0).round() as i64 } else { 0 };
+        let pct = if 0i64 > 0 {
+            (0i64 as f64 / 0i64 as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
         assert_eq!(pct, 0);
     }
 
     #[test]
     fn test_wpm_trend_positive() {
-        let trend = if 100i64 > 0 { ((120i64 - 100i64) as f64 / 100i64 as f64 * 100.0).round() as i64 } else { 0 };
+        let trend = if 100i64 > 0 {
+            ((120i64 - 100i64) as f64 / 100i64 as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
         assert_eq!(trend, 20);
     }
 
     #[test]
     fn test_wpm_trend_negative() {
-        let trend = if 100i64 > 0 { ((80i64 - 100i64) as f64 / 100i64 as f64 * 100.0).round() as i64 } else { 0 };
+        let trend = if 100i64 > 0 {
+            ((80i64 - 100i64) as f64 / 100i64 as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
         assert_eq!(trend, -20);
     }
 
     #[test]
     fn test_wpm_trend_zero_prev() {
-        let trend = if 0i64 > 0 { ((120i64 - 0i64) as f64 / 0i64 as f64 * 100.0).round() as i64 } else { 0 };
+        let trend = if 0i64 > 0 {
+            ((120i64 - 0i64) as f64 / 0i64 as f64 * 100.0).round() as i64
+        } else {
+            0
+        };
         assert_eq!(trend, 0);
     }
 
@@ -645,7 +729,8 @@ mod tests {
                 model TEXT DEFAULT '',
                 duration_sec REAL DEFAULT 0.0
             );",
-        ).unwrap();
+        )
+        .unwrap();
 
         let total_words: i64 = conn.query_row(
             "SELECT COALESCE(SUM(LENGTH(raw_text) - LENGTH(REPLACE(raw_text, ' ', '')) + 1), 0) FROM transcripts WHERE raw_text != ''",
@@ -669,13 +754,19 @@ mod tests {
                 model TEXT DEFAULT '',
                 duration_sec REAL DEFAULT 0.0
             );",
-        ).unwrap();
+        )
+        .unwrap();
 
-        for (text, dur) in vec![("hello world", 1.0), ("one two three", 2.0), ("one two three four five", 3.0)] {
+        for (text, dur) in vec![
+            ("hello world", 1.0),
+            ("one two three", 2.0),
+            ("one two three four five", 3.0),
+        ] {
             conn.execute(
                 "INSERT INTO transcripts (raw_text, duration_sec, mode) VALUES (?1, ?2, 'cleanup')",
                 rusqlite::params![text, dur],
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         let total_words: i64 = conn.query_row(
@@ -697,9 +788,7 @@ mod tests {
             .plugin(tauri_plugin_clipboard_manager::init())
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             .plugin(tauri_plugin_opener::init())
-            .invoke_handler(tauri::generate_handler![
-                check_system_deps,
-            ])
+            .invoke_handler(tauri::generate_handler![check_system_deps,])
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .expect("failed to build mock app")
     }
@@ -729,7 +818,10 @@ mod tests {
         }
     }
 
-    fn make_invoke_request_with_body(cmd: &str, body: serde_json::Value) -> tauri::webview::InvokeRequest {
+    fn make_invoke_request_with_body(
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> tauri::webview::InvokeRequest {
         tauri::webview::InvokeRequest {
             cmd: cmd.into(),
             callback: tauri::ipc::CallbackFn(0),
@@ -776,8 +868,13 @@ mod tests {
             }
             Err(e) => {
                 let s = format!("{:?}", e);
-                assert!(s.contains("Database error") || s.contains("not found") || s.contains("No such file"),
-                    "Unexpected error: {}", s);
+                assert!(
+                    s.contains("Database error")
+                        || s.contains("not found")
+                        || s.contains("No such file"),
+                    "Unexpected error: {}",
+                    s
+                );
             }
         }
     }
@@ -855,7 +952,8 @@ mod tests {
     #[test]
     fn probe_download_model_fetches_and_verifies() {
         let payload: Vec<u8> = (0..12_000u32).map(|i| (i % 251) as u8).collect();
-        let url: &'static str = Box::leak(spawn_stub_server(payload.clone(), false).into_boxed_str());
+        let url: &'static str =
+            Box::leak(spawn_stub_server(payload.clone(), false).into_boxed_str());
 
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("probe-vad");
@@ -866,16 +964,27 @@ mod tests {
             .expect("download_model should succeed");
 
         let got = std::fs::read(target.join("silero_vad.onnx")).unwrap();
-        assert_eq!(got, payload, "downloaded bytes must match the served payload");
+        assert_eq!(
+            got, payload,
+            "downloaded bytes must match the served payload"
+        );
         assert_eq!(got.len() as u64, model.size_bytes);
-        assert!(target.join(".downloaded").exists(), "success sentinel not written");
-        assert_eq!(percents.last().copied(), Some(100), "progress must reach 100%, got {percents:?}");
+        assert!(
+            target.join(".downloaded").exists(),
+            "success sentinel not written"
+        );
+        assert_eq!(
+            percents.last().copied(),
+            Some(100),
+            "progress must reach 100%, got {percents:?}"
+        );
     }
 
     #[test]
     fn probe_download_model_resumes_from_partial_file() {
         let payload: Vec<u8> = (0..12_000u32).map(|i| (i % 251) as u8).collect();
-        let url: &'static str = Box::leak(spawn_stub_server(payload.clone(), true).into_boxed_str());
+        let url: &'static str =
+            Box::leak(spawn_stub_server(payload.clone(), true).into_boxed_str());
 
         let tmp = tempfile::tempdir().unwrap();
         let target = tmp.path().join("probe-vad");
@@ -960,13 +1069,11 @@ mod tests {
 
         // The supported pattern: the same work on the blocking pool.
         let on_blocking_pool = tauri::async_runtime::block_on(tauri::async_runtime::spawn(async {
-            tauri::async_runtime::spawn_blocking(|| drop(reqwest::blocking::Client::new()))
-                .await
+            tauri::async_runtime::spawn_blocking(|| drop(reqwest::blocking::Client::new())).await
         }));
         assert!(
             on_blocking_pool.is_ok(),
             "blocking pool must be safe for reqwest::blocking: {on_blocking_pool:?}"
         );
     }
-
 }

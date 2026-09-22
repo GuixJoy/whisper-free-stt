@@ -81,8 +81,8 @@ export default function InsightsPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col p-6 overflow-auto">
-        <div className="flex items-center justify-center h-[400px] text-text-muted">Loading…</div>
+      <div className="flex flex-1 flex-col overflow-auto p-6">
+        <div className="flex h-[400px] items-center justify-center text-text-muted">Loading…</div>
       </div>
     );
   }
@@ -96,20 +96,22 @@ export default function InsightsPage() {
     heatmap.some((d) => d.level > 0);
 
   return (
-    <div className="flex-1 flex flex-col overflow-auto">
-      <div className="flex-1 px-8 py-6 max-w-[1200px] mx-auto w-full">
+    <div className="flex flex-1 flex-col overflow-auto">
+      <div className="mx-auto w-full max-w-[1200px] flex-1 px-8 py-6">
         {/* Header */}
         <div className="mb-6">
-          <h2 className="text-balance text-[22px] font-semibold text-text-primary mb-1">Insights</h2>
+          <h2 className="mb-1 text-balance text-[22px] font-semibold text-text-primary">
+            Insights
+          </h2>
           <p className="text-[13px] text-text-muted">Your voice productivity story.</p>
         </div>
 
         <TabSwitcher tabs={TABS} activeTab={activeTab} onChange={setActiveTab} />
 
         {activeTab === "usage" && !hasActivity && (
-          <div className="mt-6 rounded-[14px] bg-white border border-border px-6 py-14 text-center">
+          <div className="mt-6 rounded-[14px] border border-border bg-white px-6 py-14 text-center">
             <p className="text-[15px] font-medium text-text-primary">No activity yet</p>
-            <p className="text-[13px] text-text-muted mt-1">
+            <p className="mt-1 text-[13px] text-text-muted">
               Dictate something and your stats will show up here.
             </p>
           </div>
@@ -118,26 +120,26 @@ export default function InsightsPage() {
         {activeTab === "usage" && hasActivity && (
           <div className="mt-6 flex flex-col gap-5">
             {/* Section 1 — Voice Activity Story */}
-            <div className="rounded-[14px] bg-white border border-border px-6 py-6">
+            <div className="rounded-[14px] border border-border bg-white px-6 py-6">
               <div className="mb-2">
-                <h2 className="text-balance text-[18px] font-semibold text-text-primary mb-1">Voice Activity</h2>
+                <h2 className="mb-1 text-balance text-[18px] font-semibold text-text-primary">
+                  Voice Activity
+                </h2>
                 <p className="text-[13px] text-text-muted">
                   This week you dictated{" "}
-                  <span className="font-semibold text-[#3B6B9E] tabular-nums">{formatWords(weeklyWordsTotal)} words</span>
+                  <span className="font-semibold tabular-nums text-[#3B6B9E]">
+                    {formatWords(weeklyWordsTotal)} words
+                  </span>
                   {wordsTrend > 0 && (
-                    <span className="text-accent ml-1">
-                      ↑ {wordsTrend}% more than last week
-                    </span>
+                    <span className="ml-1 text-accent">↑ {wordsTrend}% more than last week</span>
                   )}
                 </p>
               </div>
-              <VoiceActivityGraph
-                data={weeklyData}
-              />
+              <VoiceActivityGraph data={weeklyData} />
             </div>
 
             {/* Section 2 — Usage Distribution + Streak Journey */}
-            <div className="grid grid-cols-2 gap-5 items-start">
+            <div className="grid grid-cols-2 items-start gap-5">
               <UsageDistribution categories={categories} />
               <StreakJourney streak={streak} />
             </div>

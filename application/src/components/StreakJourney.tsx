@@ -16,25 +16,30 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
     return () => clearTimeout(timer);
   }, []);
 
-  const nextMilestone = MILESTONES.find((m) => m > streak.current) ?? MILESTONES[MILESTONES.length - 1];
+  const nextMilestone =
+    MILESTONES.find((m) => m > streak.current) ?? MILESTONES[MILESTONES.length - 1];
   const progress = Math.min((streak.current / nextMilestone) * 100, 100);
 
   return (
-    <div className="rounded-[14px] bg-white border border-border px-5 py-5">
+    <div className="rounded-[14px] border border-border bg-white px-5 py-5">
       <div className="mb-5">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Streaks</h3>
+        <h3 className="mb-1 text-[15px] font-semibold text-text-primary">Streaks</h3>
         <p className="text-[12px] text-text-muted">Consistency builds mastery</p>
       </div>
 
       {/* Current Streak */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="mb-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-[10px] bg-accent-surface">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-accent-surface">
             <Flame size={20} className="text-accent" />
           </div>
           <div>
-            <div className="text-[11px] text-text-muted uppercase tracking-wide">Current Streak</div>
-            <div className="text-[28px] font-bold text-accent leading-tight">{streak.current} days</div>
+            <div className="text-[11px] uppercase tracking-wide text-text-muted">
+              Current Streak
+            </div>
+            <div className="text-[28px] font-bold leading-tight text-accent">
+              {streak.current} days
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-[12px] text-text-muted">
@@ -45,11 +50,11 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
 
       {/* Progress to next milestone */}
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-1.5">
+        <div className="mb-1.5 flex items-center justify-between">
           <span className="text-[11px] text-text-muted">Next milestone</span>
           <span className="text-[12px] font-medium text-text-primary">{nextMilestone} days</span>
         </div>
-        <div className="h-[6px] rounded-full bg-border-hover overflow-hidden">
+        <div className="h-[6px] overflow-hidden rounded-full bg-border-hover">
           <div
             className="h-full rounded-full bg-accent transition-[width] duration-1000 ease-out"
             style={{
@@ -62,11 +67,13 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
       {/* Milestone Timeline */}
       <div className="relative">
         {/* Progress line */}
-        <div className="absolute top-[14px] left-0 right-0 h-[2px] bg-border-hover">
+        <div className="absolute left-0 right-0 top-[14px] h-[2px] bg-border-hover">
           <div
             className="h-full bg-accent transition-[width] duration-1000 ease-out"
             style={{
-              width: isVisible ? `${(streak.current / MILESTONES[MILESTONES.length - 1]) * 100}%` : "0%",
+              width: isVisible
+                ? `${(streak.current / MILESTONES[MILESTONES.length - 1]) * 100}%`
+                : "0%",
             }}
           />
         </div>
@@ -78,10 +85,8 @@ export default function StreakJourney({ streak }: StreakJourneyProps) {
             return (
               <div key={m} className="flex flex-col items-center gap-1.5">
                 <div
-                  className={`w-[28px] h-[28px] rounded-full flex items-center justify-center text-[11px] font-semibold transition-colors duration-500 ${
-                    achieved
-                      ? "bg-accent text-white"
-                      : "bg-border-hover text-text-muted"
+                  className={`flex h-[28px] w-[28px] items-center justify-center rounded-full text-[11px] font-semibold transition-colors duration-500 ${
+                    achieved ? "bg-accent text-white" : "bg-border-hover text-text-muted"
                   }`}
                 >
                   {m}

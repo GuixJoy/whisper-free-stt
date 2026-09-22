@@ -93,11 +93,6 @@ export default function Waveform({
   }, [width, height, barCount, color]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width, height }}
-      className="rounded"
-      aria-hidden="true"
-    />
+    <canvas ref={canvasRef} style={{ width, height }} className="rounded" aria-hidden="true" />
   );
 }

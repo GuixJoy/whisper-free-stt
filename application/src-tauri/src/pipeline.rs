@@ -6,13 +6,13 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::Emitter;
 
-use crate::config::{AppConfig, history_db_path};
+use crate::config::{history_db_path, AppConfig};
 use crate::llm::{LlmBackend, LlmCleanup, LlmMode};
-use crate::models::{MODEL_MANIFEST, find_model, download_model, verify_model};
+use crate::models::{download_model, find_model, verify_model, MODEL_MANIFEST};
+use crate::output::{copy_to_clipboard, save_to_history, type_text};
 use crate::parakeet::ParakeetRecognizer;
 use crate::vad::VoiceActivityDetector;
 use crate::whisper::WhisperRecognizer;
-use crate::output::{save_to_history, type_text, copy_to_clipboard};
 
 static PIPELINE_RUNNING: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
@@ -64,13 +64,21 @@ impl LlmProcessor {
         Self { llm, config }
     }
 
-    pub fn process(&mut self, text: &str, timestamps: &[f32], durations: &[f32], app: &tauri::AppHandle) {
+    pub fn process(
+        &mut self,
+        text: &str,
+        timestamps: &[f32],
+        durations: &[f32],
+        app: &tauri::AppHandle,
+    ) {
         let mode = self.config.llm_mode;
         let cleaned: String;
 
         if mode == LlmMode::Off {
             cleaned = text.to_string();
-        } else if mode == LlmMode::Cleanup && !crate::llm::needs_cleanup(text, timestamps, durations) {
+        } else if mode == LlmMode::Cleanup
+            && !crate::llm::needs_cleanup(text, timestamps, durations)
+        {
             // Skip the LLM on transcripts that look clean: the pass costs
             // seconds and unconstrained rewriting regresses good output.
             eprintln!("[pipeline] cleanup gate: skipped (looks clean)");
@@ -102,8 +110,7 @@ impl LlmProcessor {
             let app_for_callback = app.clone();
 
             let result = llm.stream_cleanup(&prompt, move |token| {
-                let _ = app_for_callback
-                    .emit("llm_token", serde_json::json!({ "token": token }));
+                let _ = app_for_callback.emit("llm_token", serde_json::json!({ "token": token }));
                 collected_clone.lock().unwrap().push_str(&token);
             });
 
@@ -211,9 +218,7 @@ impl PipelineController {
 
         eprintln!(
             "[pipeline] model_dir={:?} profile={:?} silero_valid={}",
-            model_dir,
-            config.asr_profile,
-            silero_valid
+            model_dir, config.asr_profile, silero_valid
         );
 
         if !silero_valid {
@@ -275,7 +280,11 @@ impl PipelineController {
                 return Err(anyhow::anyhow!("ASR model {} still downloading in background — retry when the Models page shows 100%", asr_model_id));
             }
             std::fs::create_dir_all(&asr_dir)?;
-            eprintln!("[pipeline] ASR model {} missing, downloading in background to {}", asr_model_id, asr_dir.display());
+            eprintln!(
+                "[pipeline] ASR model {} missing, downloading in background to {}",
+                asr_model_id,
+                asr_dir.display()
+            );
             // Never block the Tauri command on a ~500MB download (it hangs
             // the backend until the last byte). Fetch on a worker thread and
             // fail fast: the Models page shows live progress, retry start
@@ -336,19 +345,20 @@ impl PipelineController {
         let running_clone = self.running.clone();
         let silero_path = self.silero_path.clone();
 
-        let audio = match crate::audio::start_capture(mic_name.as_deref(), move |samples: &[f32]| {
-            let _ = tx.send(samples.to_vec());
-        }) {
-            Ok(a) => a,
-            Err(e) => {
-                let _ = app_clone.emit(
-                    "asr_error",
-                    serde_json::json!({"error": format!("Audio device error: {}", e)}),
-                );
-                running_clone.store(false, Ordering::SeqCst);
-                return Ok(());
-            }
-        };
+        let audio =
+            match crate::audio::start_capture(mic_name.as_deref(), move |samples: &[f32]| {
+                let _ = tx.send(samples.to_vec());
+            }) {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = app_clone.emit(
+                        "asr_error",
+                        serde_json::json!({"error": format!("Audio device error: {}", e)}),
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    return Ok(());
+                }
+            };
 
         let mic_sample_rate = audio.sample_rate;
 
@@ -364,10 +374,8 @@ impl PipelineController {
             let mut vad = match VoiceActivityDetector::new(&silero_path, 0.5) {
                 Ok(v) => v,
                 Err(e) => {
-                    let _ = app_clone.emit(
-                        "asr_error",
-                        serde_json::json!({"error": e.to_string()}),
-                    );
+                    let _ =
+                        app_clone.emit("asr_error", serde_json::json!({"error": e.to_string()}));
                     return;
                 }
             };
@@ -397,8 +405,10 @@ impl PipelineController {
                         match built {
                             Ok(r) => {
                                 parakeet = Some(r);
-                                let _ = app_clone
-                                    .emit("asr_ready", serde_json::json!({ "backend": "parakeet" }));
+                                let _ = app_clone.emit(
+                                    "asr_ready",
+                                    serde_json::json!({ "backend": "parakeet" }),
+                                );
                             }
                             Err(e) => {
                                 let _ = app_clone
@@ -406,7 +416,8 @@ impl PipelineController {
                             }
                         }
                     }
-                    crate::config::AsrProfile::WhisperTurbo | crate::config::AsrProfile::WhisperBase => {
+                    crate::config::AsrProfile::WhisperTurbo
+                    | crate::config::AsrProfile::WhisperBase => {
                         match WhisperRecognizer::new(&model_dir, 4, false) {
                             Ok(mut r) => {
                                 if let Err(e) = r.set_language(&config_clone.language) {
@@ -455,7 +466,10 @@ impl PipelineController {
                                 let decoded = if config_clone.hotwords.is_empty() {
                                     rec.transcribe_full(&segment)
                                 } else {
-                                    rec.transcribe_full_with_hotwords(&segment, &config_clone.hotwords)
+                                    rec.transcribe_full_with_hotwords(
+                                        &segment,
+                                        &config_clone.hotwords,
+                                    )
                                 };
                                 match decoded {
                                     Some(r) => (

@@ -1,10 +1,6 @@
 // ── Onboarding hook: manages wizard state machine, system checks, model downloads ──
 import { useReducer, useCallback } from "react";
-import {
-  onboardingReducer,
-  DEFAULT_ONBOARDING,
-  MODEL_CATALOG,
-} from "../store";
+import { onboardingReducer, DEFAULT_ONBOARDING, MODEL_CATALOG } from "../store";
 import type { SystemCheck } from "../store";
 import { isTauri } from "../lib/utils";
 import { parseAppError } from "../lib/errors";

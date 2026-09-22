@@ -29,19 +29,18 @@ export default function HeatmapCard({ data }: HeatmapCardProps) {
   }
 
   return (
-    <div className="rounded-[14px] bg-white border border-border px-5 py-5 tabular-nums">
+    <div className="rounded-[14px] border border-border bg-white px-5 py-5 tabular-nums">
       <div className="mb-4">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Voice Activity Calendar</h3>
+        <h3 className="mb-1 text-[15px] font-semibold text-text-primary">
+          Voice Activity Calendar
+        </h3>
         <p className="text-[12px] text-text-muted">Your daily voice usage patterns</p>
       </div>
 
       <div className="flex gap-[3px]">
-        <div className="flex flex-col gap-[3px] mr-2 pt-[2px]">
+        <div className="mr-2 flex flex-col gap-[3px] pt-[2px]">
           {WEEKDAY_LABELS.map((label, i) => (
-            <div
-              key={i}
-              className="h-[13px] text-[11px] text-text-muted leading-[13px]"
-            >
+            <div key={i} className="h-[13px] text-[11px] leading-[13px] text-text-muted">
               {label}
             </div>
           ))}
@@ -52,7 +51,7 @@ export default function HeatmapCard({ data }: HeatmapCardProps) {
             {week.map((day, di) => (
               <div
                 key={di}
-                className="w-[13px] h-[13px] rounded-[3px] transition duration-150 hover:ring-1 hover:ring-accent/30 hover:scale-110"
+                className="h-[13px] w-[13px] rounded-[3px] transition duration-150 hover:scale-110 hover:ring-1 hover:ring-accent/30"
                 style={{
                   background: LEVEL_COLORS[day.level] ?? LEVEL_COLORS[0],
                   opacity: isVisible ? 1 : 0,
@@ -65,16 +64,16 @@ export default function HeatmapCard({ data }: HeatmapCardProps) {
         ))}
       </div>
 
-      <div className="flex items-center justify-end gap-1.5 mt-4">
-        <span className="text-[11px] text-text-muted mr-1">Less</span>
+      <div className="mt-4 flex items-center justify-end gap-1.5">
+        <span className="mr-1 text-[11px] text-text-muted">Less</span>
         {[0, 1, 2, 3, 4].map((level) => (
           <div
             key={level}
-            className="w-[11px] h-[11px] rounded-[2px]"
+            className="h-[11px] w-[11px] rounded-[2px]"
             style={{ background: LEVEL_COLORS[level] }}
           />
         ))}
-        <span className="text-[11px] text-text-muted ml-1">More</span>
+        <span className="ml-1 text-[11px] text-text-muted">More</span>
       </div>
     </div>
   );

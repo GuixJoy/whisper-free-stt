@@ -24,13 +24,13 @@ export default function UsageDistribution({ categories }: UsageDistributionProps
   let accumulatedPct = 0;
 
   return (
-    <div className="rounded-[14px] bg-white border border-border px-5 py-5">
-      <h3 className="text-[15px] font-semibold text-text-primary mb-5">Usage Mix</h3>
+    <div className="rounded-[14px] border border-border bg-white px-5 py-5">
+      <h3 className="mb-5 text-[15px] font-semibold text-text-primary">Usage Mix</h3>
 
       <div className="flex items-center gap-8">
         {/* Donut chart */}
         <div className="flex-shrink-0" style={{ width: size, height: size }}>
-          <svg viewBox={`0 0 ${size} ${size}`} className="w-full h-full -rotate-90">
+          <svg viewBox={`0 0 ${size} ${size}`} className="h-full w-full -rotate-90">
             <circle
               cx={size / 2}
               cy={size / 2}
@@ -67,17 +67,19 @@ export default function UsageDistribution({ categories }: UsageDistributionProps
         </div>
 
         {/* Legend */}
-        <div className="flex flex-col gap-2.5 flex-1">
+        <div className="flex flex-1 flex-col gap-2.5">
           {categories.map((cat, i) => {
             const pct = Math.round((cat.words / total) * 100);
             return (
               <div key={cat.name} className="flex items-center gap-2.5">
                 <div
-                  className="w-[8px] h-[8px] rounded-full flex-shrink-0"
+                  className="h-[8px] w-[8px] flex-shrink-0 rounded-full"
                   style={{ background: COLORS[i % COLORS.length] }}
                 />
-                <span className="text-[12px] text-text-secondary flex-1">{cat.name}</span>
-                <span className="text-[12px] font-medium text-text-primary tabular-nums">{pct}%</span>
+                <span className="flex-1 text-[12px] text-text-secondary">{cat.name}</span>
+                <span className="text-[12px] font-medium tabular-nums text-text-primary">
+                  {pct}%
+                </span>
               </div>
             );
           })}

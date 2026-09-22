@@ -250,7 +250,10 @@ fn hoist_single_subdir(model_dir: &Path) -> Result<()> {
             std::fs::rename(entry.path(), dest)?;
         }
         std::fs::remove_dir(inner)?;
-        eprintln!("[models] hoisted single archive folder -> {}", model_dir.display());
+        eprintln!(
+            "[models] hoisted single archive folder -> {}",
+            model_dir.display()
+        );
     }
     Ok(())
 }
@@ -286,7 +289,11 @@ fn pick_whisper_file(model_dir: &Path, kind: &str) -> Result<PathBuf> {
         .into_iter()
         .min_by_key(|p| {
             let name = p.file_name().unwrap().to_string_lossy();
-            if name.contains(".int8.") { 0 } else { 1 }
+            if name.contains(".int8.") {
+                0
+            } else {
+                1
+            }
         })
         .unwrap())
 }
@@ -388,7 +395,8 @@ pub fn download_model(
     let resume_file: PathBuf = if model.is_archive {
         model_dir.join("model.tar.bz2")
     } else {
-        let file_name: String = model.filename
+        let file_name: String = model
+            .filename
             .map(|f| f.to_string())
             .unwrap_or_else(|| format!("{}.{}", model.id, ext));
         model_dir.join(&file_name)
@@ -415,10 +423,7 @@ pub fn download_model(
                 "[models] {} partial file found ({} bytes), resuming download",
                 model.id, resume_offset
             );
-            request = request.header(
-                reqwest::header::RANGE,
-                format!("bytes={}-", resume_offset),
-            );
+            request = request.header(reqwest::header::RANGE, format!("bytes={}-", resume_offset));
         }
 
         let response = request
@@ -473,7 +478,10 @@ pub fn download_model(
             let mut on_progress = |percent: usize, bytes: u64| {
                 if percent >= last_pct + 10 || percent <= 1 {
                     last_pct = percent;
-                    eprintln!("[models] {} download: {}% ({} bytes)", model.id, percent, bytes);
+                    eprintln!(
+                        "[models] {} download: {}% ({} bytes)",
+                        model.id, percent, bytes
+                    );
                 }
                 progress(percent, bytes);
             };
@@ -508,12 +516,11 @@ pub fn download_model(
         // against the fixed URL) must not latch and fail forever.
         let extract_ok = (|| -> Result<()> {
             let file = std::fs::File::open(&resume_file)?;
-            let decompressed =
-                bzip2::read::BzDecoder::new(std::io::BufReader::new(file));
+            let decompressed = bzip2::read::BzDecoder::new(std::io::BufReader::new(file));
             let mut archive = tar::Archive::new(decompressed);
-            archive.unpack(model_dir).map_err(|e| {
-                anyhow::anyhow!("Failed to extract {} archive: {}", model.id, e)
-            })?;
+            archive
+                .unpack(model_dir)
+                .map_err(|e| anyhow::anyhow!("Failed to extract {} archive: {}", model.id, e))?;
             normalize_extracted(model.backend, model_dir)?;
             Ok(())
         })();
@@ -523,7 +530,11 @@ pub fn download_model(
         extract_ok?;
         std::fs::remove_file(&resume_file)?;
     } else {
-        eprintln!("[models] {} file saved -> {}", model.id, resume_file.display());
+        eprintln!(
+            "[models] {} file saved -> {}",
+            model.id,
+            resume_file.display()
+        );
     }
 
     // Never latch success over broken files: the sentinel is written only
@@ -539,7 +550,11 @@ pub fn download_model(
     }
 
     std::fs::write(model_dir.join(".downloaded"), b"")?;
-    eprintln!("[models] {} download complete -> {}", model.id, model_dir.display());
+    eprintln!(
+        "[models] {} download complete -> {}",
+        model.id,
+        model_dir.display()
+    );
 
     Ok(())
 }
@@ -556,7 +571,9 @@ pub fn verify_model(models_dir: &Path, model: &ModelManifest) -> bool {
             // body saved by an old broken download): such a file passes
             // `exists()` but makes sherpa-onnx throw a C++ exception at
             // VAD creation, which aborts the process.
-            model_dir.join("silero_vad.onnx").metadata()
+            model_dir
+                .join("silero_vad.onnx")
+                .metadata()
                 .map(|m| m.len() == model.size_bytes)
                 .unwrap_or(false)
         }
@@ -571,9 +588,7 @@ pub fn verify_model(models_dir: &Path, model: &ModelManifest) -> bool {
                 && model_dir.join("whisper-decoder.onnx").exists()
                 && model_dir.join("tokens.txt").exists()
         }
-        "llm" => {
-            model_dir.join(format!("{}.gguf", model.id)).exists()
-        }
+        "llm" => model_dir.join(format!("{}.gguf", model.id)).exists(),
         _ => false,
     }
 }

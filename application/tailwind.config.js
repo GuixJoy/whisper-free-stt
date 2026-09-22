@@ -82,7 +82,8 @@ export default {
       },
       boxShadow: {
         DEFAULT: "0 1px 2px rgba(44,37,32,0.04)",
-        glass: "0 1px 0 0 rgba(255,255,255,0.70) inset, 0 0 0 1px rgba(255,255,255,0.18) inset, 0 20px 60px -20px rgba(44,37,32,0.18)",
+        glass:
+          "0 1px 0 0 rgba(255,255,255,0.70) inset, 0 0 0 1px rgba(255,255,255,0.18) inset, 0 20px 60px -20px rgba(44,37,32,0.18)",
         float: "0 20px 60px -20px rgba(44,37,32,0.22), 0 8px 24px -8px rgba(44,37,32,0.08)",
         ambient: "0 0 80px rgba(0,0,0,0.04)",
         "accent-glow": "none",

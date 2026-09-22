@@ -39,7 +39,10 @@ function buildInsights(data: IntelligenceData): InsightItem[] {
       icon: Calendar,
       label: "Most Active Day",
       value: data.mostActiveDay,
-      detail: data.mostActiveDayWords > 0 ? `Average ${data.mostActiveDayWords.toLocaleString()} words` : undefined,
+      detail:
+        data.mostActiveDayWords > 0
+          ? `Average ${data.mostActiveDayWords.toLocaleString()} words`
+          : undefined,
       color: "text-[#3B6B9E]",
     },
     {
@@ -85,15 +88,17 @@ export default function VoiceIntelligence() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const insights = buildInsights(liveData);
 
   return (
-    <div className="rounded-[14px] bg-white border border-border px-5 py-5">
+    <div className="rounded-[14px] border border-border bg-white px-5 py-5">
       <div className="mb-5">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-1">Voice Intelligence</h3>
+        <h3 className="mb-1 text-[15px] font-semibold text-text-primary">Voice Intelligence</h3>
         <p className="text-[12px] text-text-muted">Insights from your voice patterns</p>
       </div>
 
@@ -102,14 +107,18 @@ export default function VoiceIntelligence() {
           <div key={item.label} className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
               <item.icon size={14} className={item.color} />
-              <span className="text-[11px] text-text-muted uppercase tracking-wide">{item.label}</span>
+              <span className="text-[11px] uppercase tracking-wide text-text-muted">
+                {item.label}
+              </span>
             </div>
-            <div className="text-[16px] font-semibold text-text-primary leading-tight">
-              {loading ? <span className="inline-block w-12 h-4 bg-border rounded animate-pulse" /> : item.value}
+            <div className="text-[16px] font-semibold leading-tight text-text-primary">
+              {loading ? (
+                <span className="inline-block h-4 w-12 animate-pulse rounded bg-border" />
+              ) : (
+                item.value
+              )}
             </div>
-            {item.detail && (
-              <span className="text-[11px] text-text-muted">{item.detail}</span>
-            )}
+            {item.detail && <span className="text-[11px] text-text-muted">{item.detail}</span>}
           </div>
         ))}
       </div>

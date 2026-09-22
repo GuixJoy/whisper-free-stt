@@ -73,8 +73,7 @@ export function useModels() {
         prev.map((m) => {
           // Match by name first, fall back to id (backend uses id for LLM models)
           const status =
-            rustStatuses.find((s) => s.name === m.name) ??
-            rustStatuses.find((s) => s.id === m.id);
+            rustStatuses.find((s) => s.name === m.name) ?? rustStatuses.find((s) => s.id === m.id);
           if (status) {
             return {
               ...m,
@@ -84,7 +83,7 @@ export function useModels() {
             };
           }
           return m;
-        })
+        }),
       );
     } catch (err) {
       setGlobalError(parseAppError(err).message);
@@ -115,20 +114,18 @@ export function useModels() {
                 prev.map((m) =>
                   m.id === id
                     ? { ...m, downloading: !done, progress: done ? 100 : percent, error: null }
-                    : m
-                )
+                    : m,
+                ),
               );
               if (done) void refreshModels();
-            }
+            },
           ),
           await listen<{ id: string; error: string }>("model_download_error", (event) => {
             const { id, error } = event.payload;
             setModels((prev) =>
-              prev.map((m) =>
-                m.id === id ? { ...m, downloading: false, error } : m
-              )
+              prev.map((m) => (m.id === id ? { ...m, downloading: false, error } : m)),
             );
-          })
+          }),
         );
       } catch {
         /* not in Tauri; polling covers status */
@@ -139,80 +136,81 @@ export function useModels() {
     };
   }, [refreshModels]);
 
-  const downloadModel = useCallback(async (modelName: string) => {
-    if (!isTauri()) {
-      setGlobalError("Model download is only available in the desktop app");
-      return;
-    }
+  const downloadModel = useCallback(
+    async (modelName: string) => {
+      if (!isTauri()) {
+        setGlobalError("Model download is only available in the desktop app");
+        return;
+      }
 
-    const entry = models.find((m) => m.name === modelName);
-    if (!entry) {
-      setGlobalError(`Model "${modelName}" not found in catalog`);
-      return;
-    }
+      const entry = models.find((m) => m.name === modelName);
+      if (!entry) {
+        setGlobalError(`Model "${modelName}" not found in catalog`);
+        return;
+      }
 
-    setModels((prev) =>
-      prev.map((m) =>
-        m.name === modelName
-          ? { ...m, downloading: true, progress: 0, error: null }
-          : m
-      )
-    );
-
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("download_model", { id: entry.id });
-
-      // Poll check_model_status until the model appears downloaded.
-      const poll = setInterval(async () => {
-        try {
-          const statuses = await invoke<RustModelStatus[]>("check_model_status");
-          const status =
-            statuses.find((s) => s.name === modelName) ??
-            statuses.find((s) => s.id === entry.id);
-          if (status?.downloaded) {
-            clearInterval(poll);
-            pollingRef.current.delete(entry.id);
-            setModels((prev) =>
-              prev.map((m) =>
-                m.name === modelName
-                  ? { ...m, downloading: false, progress: 100 }
-                  : m
-              )
-            );
-            await refreshModels();
-          }
-        } catch {
-          /* retry next tick */
-        }
-      }, 2000);
-
-      pollingRef.current.set(entry.id, poll);
-    } catch (err) {
       setModels((prev) =>
         prev.map((m) =>
-          m.name === modelName
-            ? { ...m, downloading: false, progress: 0, error: parseAppError(err).message }
-            : m
-        )
+          m.name === modelName ? { ...m, downloading: true, progress: 0, error: null } : m,
+        ),
       );
-    }
-  }, [models, refreshModels]);
 
-  const deleteModel = useCallback(async (modelName: string) => {
-    if (!isTauri()) return;
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("download_model", { id: entry.id });
 
-    const model = models.find((m) => m.name === modelName);
-    if (!model || !model.downloaded || !model.path) return;
+        // Poll check_model_status until the model appears downloaded.
+        const poll = setInterval(async () => {
+          try {
+            const statuses = await invoke<RustModelStatus[]>("check_model_status");
+            const status =
+              statuses.find((s) => s.name === modelName) ?? statuses.find((s) => s.id === entry.id);
+            if (status?.downloaded) {
+              clearInterval(poll);
+              pollingRef.current.delete(entry.id);
+              setModels((prev) =>
+                prev.map((m) =>
+                  m.name === modelName ? { ...m, downloading: false, progress: 100 } : m,
+                ),
+              );
+              await refreshModels();
+            }
+          } catch {
+            /* retry next tick */
+          }
+        }, 2000);
 
-    try {
-      const { invoke: invokeCmd } = await import("@tauri-apps/api/core");
-      await invokeCmd("delete_model_file", { path: model.path });
-      await refreshModels();
-    } catch {
-      setGlobalError(`Failed to delete ${modelName}`);
-    }
-  }, [models, refreshModels]);
+        pollingRef.current.set(entry.id, poll);
+      } catch (err) {
+        setModels((prev) =>
+          prev.map((m) =>
+            m.name === modelName
+              ? { ...m, downloading: false, progress: 0, error: parseAppError(err).message }
+              : m,
+          ),
+        );
+      }
+    },
+    [models, refreshModels],
+  );
+
+  const deleteModel = useCallback(
+    async (modelName: string) => {
+      if (!isTauri()) return;
+
+      const model = models.find((m) => m.name === modelName);
+      if (!model || !model.downloaded || !model.path) return;
+
+      try {
+        const { invoke: invokeCmd } = await import("@tauri-apps/api/core");
+        await invokeCmd("delete_model_file", { path: model.path });
+        await refreshModels();
+      } catch {
+        setGlobalError(`Failed to delete ${modelName}`);
+      }
+    },
+    [models, refreshModels],
+  );
 
   // Cleanup polling on unmount
   useEffect(() => {

@@ -304,8 +304,13 @@ describe("ModelBadge", () => {
     renderWithProviders(
       <ModelBadge
         profile="parakeet"
-        resolvedModel={{ profile: "whisper-turbo", model: "large-v3-turbo", backend: "sherpa_onnx", device: "cuda" }}
-      />
+        resolvedModel={{
+          profile: "whisper-turbo",
+          model: "large-v3-turbo",
+          backend: "sherpa_onnx",
+          device: "cuda",
+        }}
+      />,
     );
     expect(screen.getByText("Turbo")).toBeInTheDocument();
     expect(screen.getByText("large-v3-turbo")).toBeInTheDocument();
@@ -328,8 +333,13 @@ describe("ModelBadge", () => {
     renderWithProviders(
       <ModelBadge
         profile="parakeet"
-        resolvedModel={{ profile: "whisper-base", model: "base", backend: "sherpa_onnx", device: "cpu" }}
-      />
+        resolvedModel={{
+          profile: "whisper-base",
+          model: "base",
+          backend: "sherpa_onnx",
+          device: "cpu",
+        }}
+      />,
     );
     expect(screen.getByText("CPU")).toBeInTheDocument();
   });
@@ -340,20 +350,38 @@ describe("ModelBadge", () => {
 // ══════════════════════════════════════════════════════════════════
 describe("ErrorBanner", () => {
   const mockErrors: AppError[] = [
-    { id: "1", category: "connection", message: "Connection failed", canRetry: true, dismissed: false },
+    {
+      id: "1",
+      category: "connection",
+      message: "Connection failed",
+      canRetry: true,
+      dismissed: false,
+    },
     { id: "2", category: "mic", message: "Mic not found", canRetry: false, dismissed: false },
   ];
 
   it("renders without crashing", () => {
     renderWithProviders(
-      <ErrorBanner errors={[]} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={[]}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText(/No active errors/)).toBeInTheDocument();
   });
 
   it("displays errors", () => {
     renderWithProviders(
-      <ErrorBanner errors={mockErrors} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={mockErrors}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText("Connection failed")).toBeInTheDocument();
     expect(screen.getByText("Mic not found")).toBeInTheDocument();
@@ -362,7 +390,13 @@ describe("ErrorBanner", () => {
   it("hides dismissed errors", () => {
     const errors = [{ ...mockErrors[0], dismissed: true }];
     renderWithProviders(
-      <ErrorBanner errors={errors} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={errors}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText(/No active errors/)).toBeInTheDocument();
   });
@@ -370,7 +404,13 @@ describe("ErrorBanner", () => {
   it("calls onDismiss when dismiss button clicked", async () => {
     const onDismiss = vi.fn();
     renderWithProviders(
-      <ErrorBanner errors={mockErrors} onDismiss={onDismiss} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={mockErrors}
+        onDismiss={onDismiss}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     const dismissBtn = screen.getByLabelText("Dismiss error: Connection failed");
     await userEvent.click(dismissBtn);
@@ -380,7 +420,13 @@ describe("ErrorBanner", () => {
   it("calls onRetry when retry button clicked", async () => {
     const onRetry = vi.fn();
     renderWithProviders(
-      <ErrorBanner errors={mockErrors} onDismiss={() => {}} onRetry={onRetry} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={mockErrors}
+        onDismiss={() => {}}
+        onRetry={onRetry}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     const retryBtn = screen.getByText("Retry");
     await userEvent.click(retryBtn);
@@ -390,7 +436,13 @@ describe("ErrorBanner", () => {
   it("calls onClose when hide button clicked", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <ErrorBanner errors={[]} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={onClose} />
+      <ErrorBanner
+        errors={[]}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={onClose}
+      />,
     );
     await userEvent.click(screen.getByLabelText("Hide error panel"));
     expect(onClose).toHaveBeenCalled();
@@ -398,7 +450,13 @@ describe("ErrorBanner", () => {
 
   it("does not render retry button when canRetry is false", () => {
     renderWithProviders(
-      <ErrorBanner errors={mockErrors} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={mockErrors}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     // Mic error has canRetry: false, so only 1 retry button (for connection error)
     const retryButtons = screen.getAllByText("Retry");
@@ -408,14 +466,26 @@ describe("ErrorBanner", () => {
   it("shows retry hint when provided", () => {
     const errors = [{ ...mockErrors[0], retryHint: "Check your connection" }];
     renderWithProviders(
-      <ErrorBanner errors={errors} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={errors}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByText(/Check your connection/)).toBeInTheDocument();
   });
 
   it("has role=complementary and aria-label", () => {
     renderWithProviders(
-      <ErrorBanner errors={[]} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={[]}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     const aside = screen.getByRole("complementary");
     expect(aside).toHaveAttribute("aria-label", "Error log");
@@ -479,7 +549,7 @@ describe("toBackendSettings", () => {
         clipboard: true,
         hotwords: "Floure",
         language: "",
-      })
+      }),
     ).toEqual({
       asr_profile: "whisper-turbo",
       language: "en",
@@ -562,14 +632,24 @@ describe("SettingsPanel", () => {
 
   it("renders nothing when not visible", () => {
     const { container } = renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={false} onClose={() => {}} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={false}
+        onClose={() => {}}
+      />,
     );
     expect(container.innerHTML).toBe("");
   });
 
   it("renders dialog when visible", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
@@ -580,7 +660,12 @@ describe("SettingsPanel", () => {
     // fires `close`); jsdom implements neither, so drive the contract directly.
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={true}
+        onClose={onClose}
+      />,
     );
     fireEvent(screen.getByRole("dialog"), new Event("close"));
     expect(onClose).toHaveBeenCalled();
@@ -589,7 +674,12 @@ describe("SettingsPanel", () => {
   it("closes when clicking backdrop", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={onClose} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={true}
+        onClose={onClose}
+      />,
     );
     const dialog = screen.getByRole("dialog");
     // Click on the backdrop (the dialog element itself, not the inner panel)
@@ -600,7 +690,12 @@ describe("SettingsPanel", () => {
   it("calls onSave with updated settings", async () => {
     const onSave = vi.fn();
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={onSave} visible={true} onClose={() => {}} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={onSave}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     await userEvent.click(screen.getByText("Save & Apply"));
     expect(onSave).toHaveBeenCalled();
@@ -608,7 +703,12 @@ describe("SettingsPanel", () => {
 
   it("shows/hides API keys", async () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     const openrouterInput = screen.getByLabelText("OpenRouter API Key");
     expect(openrouterInput).toHaveAttribute("type", "password");
@@ -620,7 +720,12 @@ describe("SettingsPanel", () => {
 
   it("has aria-modal and aria-label", () => {
     renderWithProviders(
-      <SettingsPanel settings={defaultSettings} onSave={() => {}} visible={true} onClose={() => {}} />
+      <SettingsPanel
+        settings={defaultSettings}
+        onSave={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -634,14 +739,14 @@ describe("SettingsPanel", () => {
 describe("MicPermissionModal", () => {
   it("renders nothing when not visible", () => {
     const { container } = renderWithProviders(
-      <MicPermissionModal visible={false} onOpenConfig={() => {}} onClose={() => {}} />
+      <MicPermissionModal visible={false} onOpenConfig={() => {}} onClose={() => {}} />,
     );
     expect(container.innerHTML).toBe("");
   });
 
   it("renders modal when visible", () => {
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />
+      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />,
     );
     expect(screen.getByText("Microphone Access Required")).toBeInTheDocument();
   });
@@ -649,7 +754,7 @@ describe("MicPermissionModal", () => {
   it("calls onOpenConfig when Open Config clicked", async () => {
     const onOpenConfig = vi.fn();
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={onOpenConfig} onClose={() => {}} />
+      <MicPermissionModal visible={true} onOpenConfig={onOpenConfig} onClose={() => {}} />,
     );
     await userEvent.click(screen.getByText("Open Config"));
     expect(onOpenConfig).toHaveBeenCalled();
@@ -658,7 +763,7 @@ describe("MicPermissionModal", () => {
   it("calls onClose when Cancel clicked", async () => {
     const onClose = vi.fn();
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={onClose} />
+      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={onClose} />,
     );
     await userEvent.click(screen.getByText("Cancel"));
     expect(onClose).toHaveBeenCalled();
@@ -668,7 +773,7 @@ describe("MicPermissionModal", () => {
     // See SettingsPanel note: native Escape handling, drive `close` directly.
     const onClose = vi.fn();
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={onClose} />
+      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={onClose} />,
     );
     fireEvent(screen.getByRole("dialog"), new Event("close"));
     expect(onClose).toHaveBeenCalled();
@@ -676,7 +781,7 @@ describe("MicPermissionModal", () => {
 
   it("has correct aria attributes", () => {
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />
+      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />,
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -791,7 +896,7 @@ describe("DictionaryPage", () => {
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve([]),
-      })
+      }),
     ) as any;
   });
 
@@ -878,17 +983,18 @@ describe("InsightsPage", () => {
     globalThis.fetch = vi.fn(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({
-          wpm: 109,
-          wpmTrend: 12,
-          totalWords: 24600,
-          wordsTrend: 18,
-          aiFixes: 7,
-          categories: [],
-          streak: { current: 0, longest: 10 },
-          heatmap: [],
-        }),
-      })
+        json: () =>
+          Promise.resolve({
+            wpm: 109,
+            wpmTrend: 12,
+            totalWords: 24600,
+            wordsTrend: 18,
+            aiFixes: 7,
+            categories: [],
+            streak: { current: 0, longest: 10 },
+            heatmap: [],
+          }),
+      }),
     ) as any;
   });
 
@@ -925,7 +1031,7 @@ describe("HistoryPage", () => {
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve([]),
-      })
+      }),
     ) as any;
   });
 
@@ -1038,7 +1144,10 @@ describe("onboardingReducer", () => {
   });
 
   it("SET_ERROR updates error", () => {
-    const result = onboardingReducer(DEFAULT_ONBOARDING, { type: "SET_ERROR", error: "Something failed" });
+    const result = onboardingReducer(DEFAULT_ONBOARDING, {
+      type: "SET_ERROR",
+      error: "Something failed",
+    });
     expect(result.error).toBe("Something failed");
   });
 
@@ -1101,7 +1210,16 @@ describe("MODEL_CATALOG", () => {
 // ══════════════════════════════════════════════════════════════════
 describe("STTEvent type contract", () => {
   it("defines all required event types", () => {
-    const eventTypes = ["state", "asr_partial", "asr_final", "llm_token", "mic", "llm_start", "llm_end", "info"];
+    const eventTypes = [
+      "state",
+      "asr_partial",
+      "asr_final",
+      "llm_token",
+      "mic",
+      "llm_start",
+      "llm_end",
+      "info",
+    ];
     // This is a type-level check; at runtime we just verify the interface shape
     const sampleEvents: STTEvent[] = [
       { type: "state", state: "listening" },
@@ -1212,32 +1330,63 @@ describe("Accessibility: ARIA attributes", () => {
   it("SettingsPanel has role=dialog", () => {
     renderWithProviders(
       <SettingsPanel
-        settings={{ asrProfile: "parakeet", llmMode: "cleanup", llmProvider: "openrouter", llmModel: "", openrouterApiKey: "", typing: true, clipboard: true, hotwords: "", language: "" }}
+        settings={{
+          asrProfile: "parakeet",
+          llmMode: "cleanup",
+          llmProvider: "openrouter",
+          llmModel: "",
+          openrouterApiKey: "",
+          typing: true,
+          clipboard: true,
+          hotwords: "",
+          language: "",
+        }}
         onSave={() => {}}
         visible={true}
-        onClose={() => {}} />
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
   });
 
   it("MicPermissionModal has role=dialog", () => {
     renderWithProviders(
-      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />
+      <MicPermissionModal visible={true} onOpenConfig={() => {}} onClose={() => {}} />,
     );
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "true");
   });
 
   it("ErrorBanner has role=complementary", () => {
     renderWithProviders(
-      <ErrorBanner errors={[]} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={[]}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByRole("complementary")).toBeInTheDocument();
   });
 
   it("ErrorBanner error items have role=alert", () => {
-    const errors = [{ id: "1", category: "connection" as const, message: "Error occurred", canRetry: false, dismissed: false }];
+    const errors = [
+      {
+        id: "1",
+        category: "connection" as const,
+        message: "Error occurred",
+        canRetry: false,
+        dismissed: false,
+      },
+    ];
     renderWithProviders(
-      <ErrorBanner errors={errors} onDismiss={() => {}} onRetry={() => {}} visible={true} onClose={() => {}} />
+      <ErrorBanner
+        errors={errors}
+        onDismiss={() => {}}
+        onRetry={() => {}}
+        visible={true}
+        onClose={() => {}}
+      />,
     );
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });

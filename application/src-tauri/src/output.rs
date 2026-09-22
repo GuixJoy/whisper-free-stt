@@ -114,4 +114,3 @@ pub fn run_piped_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result
     let status = child.wait()?;
     Ok(status.success())
 }
-

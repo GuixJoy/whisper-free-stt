@@ -22,23 +22,23 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
         aria-pressed={connected}
         className={cn(
           "relative flex items-center justify-center rounded-full transition duration-200",
-          "w-[80px] h-[80px]",
+          "h-[80px] w-[80px]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 focus-visible:ring-offset-2 focus-visible:ring-offset-app-bg",
           isError && [
-            "bg-app-surface-secondary border-2 border-[#EF4444]",
+            "border-2 border-[#EF4444] bg-app-surface-secondary",
             "shadow-[0_0_40px_rgba(239,68,68,0.25)]",
           ],
           isPulsing && [
-            "bg-accent border-2 border-accent",
+            "border-2 border-accent bg-accent",
             "shadow-[0_1px_2px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.08)]",
             "animate-mic-pulse",
           ],
           isRewriting && [
-            "bg-accent-surface border-2 border-accent/40",
+            "border-2 border-accent/40 bg-accent-surface",
             "shadow-[0_1px_2px_rgba(0,0,0,0.06)]",
           ],
           isIdle && [
-            "bg-app-surface-secondary border-2 border-border-hover",
+            "border-2 border-border-hover bg-app-surface-secondary",
             "hover:border-border-hover hover:bg-app-hover",
           ],
         )}
@@ -47,15 +47,25 @@ export default function MicButton({ status, connected, onToggle }: MicButtonProp
         <div
           className={cn(
             "transition-colors duration-200",
-            isPulsing ? "text-white" : isRewriting ? "text-accent" : isError ? "text-white" : "text-text-muted",
+            isPulsing
+              ? "text-white"
+              : isRewriting
+                ? "text-accent"
+                : isError
+                  ? "text-white"
+                  : "text-text-muted",
           )}
         >
           <Mic size={28} strokeWidth={1.5} aria-hidden="true" />
         </div>
       </button>
       {isIdle && (
-        <span className="text-[11px] text-text-muted select-none">
-          Press <kbd className="px-1 py-0.5 bg-border border border-border-hover rounded text-[11px] font-mono">Space</kbd> to start
+        <span className="select-none text-[11px] text-text-muted">
+          Press{" "}
+          <kbd className="rounded border border-border-hover bg-border px-1 py-0.5 font-mono text-[11px]">
+            Space
+          </kbd>{" "}
+          to start
         </span>
       )}
     </div>

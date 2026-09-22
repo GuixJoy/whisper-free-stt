@@ -1,4 +1,6 @@
 mod audio;
+#[cfg(test)]
+mod bench;
 mod compute;
 mod config;
 mod control;
@@ -7,13 +9,11 @@ mod models;
 mod output;
 mod parakeet;
 mod pipeline;
+#[cfg(test)]
+mod tests;
 mod vad;
 mod whisper;
 mod widget;
-#[cfg(test)]
-mod tests;
-#[cfg(test)]
-mod bench;
 
 use crate::config::AppConfig;
 use crate::models::ModelManager;
@@ -527,9 +527,17 @@ async fn import_dictionary_csv(csv_text: String) -> Result<serde_json::Value, Ap
                 continue;
             }
             let phrase = fields[0].trim();
-            let replacement = if fields.len() >= 2 { fields[1].trim() } else { phrase };
+            let replacement = if fields.len() >= 2 {
+                fields[1].trim()
+            } else {
+                phrase
+            };
 
-            if phrase.is_empty() || replacement.is_empty() || phrase.len() > 60 || replacement.len() > 60 {
+            if phrase.is_empty()
+                || replacement.is_empty()
+                || phrase.len() > 60
+                || replacement.len() > 60
+            {
                 skipped += 1;
                 continue;
             }
@@ -1018,9 +1026,7 @@ fn download_model(app: tauri::AppHandle, id: String) -> Result<(), AppError> {
 async fn set_floure_config(update: crate::config::SettingsUpdate) -> Result<(), AppError> {
     let mut config = AppConfig::load();
     config.apply_update(update);
-    config
-        .save()
-        .map_err(|e| AppError::Config(e.to_string()))
+    config.save().map_err(|e| AppError::Config(e.to_string()))
 }
 
 #[tauri::command]
@@ -1209,11 +1215,22 @@ pub fn run() {
             use tauri::tray::TrayIconBuilder;
 
             let show_item = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-            let start_item = MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
+            let start_item =
+                MenuItem::with_id(app, "start", "Start Listening", true, None::<&str>)?;
             let stop_item = MenuItem::with_id(app, "stop", "Stop Listening", true, None::<&str>)?;
-            let toggle_widget_item = MenuItem::with_id(app, "toggle_widget", "Toggle Widget", true, None::<&str>)?;
+            let toggle_widget_item =
+                MenuItem::with_id(app, "toggle_widget", "Toggle Widget", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_item, &start_item, &stop_item, &toggle_widget_item, &quit_item])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &show_item,
+                    &start_item,
+                    &stop_item,
+                    &toggle_widget_item,
+                    &quit_item,
+                ],
+            )?;
 
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())

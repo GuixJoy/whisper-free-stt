@@ -22,7 +22,12 @@ describe("ModelBadge", () => {
   });
 
   it("shows resolved model info when available", () => {
-    const resolved = { profile: "whisper-turbo", model: "large-v3-turbo", backend: "sherpa_onnx", device: "cuda" };
+    const resolved = {
+      profile: "whisper-turbo",
+      model: "large-v3-turbo",
+      backend: "sherpa_onnx",
+      device: "cuda",
+    };
     render(<ModelBadge profile="auto" resolvedModel={resolved} />);
     expect(screen.getByText("Turbo")).toBeDefined();
     expect(screen.getByText("large-v3-turbo")).toBeDefined();
@@ -30,7 +35,12 @@ describe("ModelBadge", () => {
   });
 
   it("shows CPU when device is cpu", () => {
-    const resolved = { profile: "whisper-base", model: "base", backend: "sherpa_onnx", device: "cpu" };
+    const resolved = {
+      profile: "whisper-base",
+      model: "base",
+      backend: "sherpa_onnx",
+      device: "cpu",
+    };
     render(<ModelBadge profile="auto" resolvedModel={resolved} />);
     expect(screen.getByText("CPU")).toBeDefined();
   });

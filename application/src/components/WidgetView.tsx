@@ -73,7 +73,10 @@ function WaveformBars({ level }: { level: number }) {
         const noise1 = Math.sin(t * 5.3 + i * 2.1) * 0.5 + 0.5;
         const noise2 = Math.sin(t * 3.7 + i * 4.3) * 0.5 + 0.5;
         const base = 0.15 + micLevel * 0.4;
-        const amplitude = Math.min(1, base + (noise1 * 0.6 + noise2 * 0.4) * (0.2 + micLevel * 0.6));
+        const amplitude = Math.min(
+          1,
+          base + (noise1 * 0.6 + noise2 * 0.4) * (0.2 + micLevel * 0.6),
+        );
         const barH = Math.max(3, amplitude * maxHeight);
 
         const x = i * (barWidth + gap);
@@ -174,7 +177,7 @@ export default function WidgetView() {
 
   return (
     <div
-      className="select-none w-full h-full flex items-center justify-center relative"
+      className="relative flex h-full w-full select-none items-center justify-center"
       style={{ background: "transparent" }}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -185,7 +188,7 @@ export default function WidgetView() {
         data-tauri-drag-region
         role="toolbar"
         aria-label="Dictation controls"
-        className="relative h-[52px] rounded-[16px] flex items-center gap-1 overflow-hidden px-[4px]"
+        className="relative flex h-[52px] items-center gap-1 overflow-hidden rounded-[16px] px-[4px]"
         style={{
           width: expanded ? 248 : 168,
           transition: "width 200ms ease-out",
@@ -199,8 +202,7 @@ export default function WidgetView() {
             : isError
               ? "1px solid rgba(239,68,68,0.30)"
               : "1px solid rgba(44,37,32,0.10)",
-          boxShadow:
-            "0 8px 24px rgba(44,37,32,0.12), inset 0 1px 0 rgba(255,255,255,0.8)",
+          boxShadow: "0 8px 24px rgba(44,37,32,0.12), inset 0 1px 0 rgba(255,255,255,0.8)",
         }}
       >
         {/* Mic toggle — primary action, always visible */}
@@ -211,13 +213,15 @@ export default function WidgetView() {
           }}
           aria-pressed={connected}
           aria-label={connected ? "Stop transcription" : "Start transcription"}
-          className="relative z-10 w-[44px] h-[44px] shrink-0 rounded-[12px] flex items-center justify-center transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
           style={{
             color: isActive ? "#FFFFFF" : isError ? "#DC2626" : "#6B6560",
-            background: isActive ? "#FF3B56" : isError ? "rgba(239,68,68,0.10)" : "rgba(44,37,32,0.06)",
-            border: isActive
-              ? "1px solid #FF3B56"
-              : "1px solid rgba(44,37,32,0.08)",
+            background: isActive
+              ? "#FF3B56"
+              : isError
+                ? "rgba(239,68,68,0.10)"
+                : "rgba(44,37,32,0.06)",
+            border: isActive ? "1px solid #FF3B56" : "1px solid rgba(44,37,32,0.08)",
           }}
         >
           <Mic size={20} strokeWidth={2} aria-hidden="true" />
@@ -225,7 +229,7 @@ export default function WidgetView() {
 
         {/* Expanded area: waveform + status */}
         <div
-          className="flex items-center gap-2 flex-1 h-full overflow-hidden"
+          className="flex h-full flex-1 items-center gap-2 overflow-hidden"
           style={{
             opacity: expanded ? 1 : 0,
             transform: expanded ? "translateX(0)" : "translateX(-8px)",
@@ -239,11 +243,11 @@ export default function WidgetView() {
           <span
             role="status"
             aria-live="polite"
-            className="inline-flex items-center gap-1.5 text-[12px] font-medium whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px] font-medium"
           >
             <span
               aria-hidden="true"
-              className="h-2 w-2 rounded-full shrink-0"
+              className="h-2 w-2 shrink-0 rounded-full"
               style={{ background: isError ? "#EF4444" : "#FF3B56" }}
             />
             <span className={isError ? "text-red-600" : "text-text-secondary"}>
@@ -259,7 +263,7 @@ export default function WidgetView() {
             handleShowMain();
           }}
           aria-label="Open main window"
-          className="relative z-10 w-[44px] h-[44px] shrink-0 rounded-[12px] flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] text-text-muted transition-colors duration-200 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <Maximize2 size={16} aria-hidden="true" />
         </button>
@@ -271,7 +275,7 @@ export default function WidgetView() {
             handleHide();
           }}
           aria-label="Hide widget"
-          className="relative z-10 w-[44px] h-[44px] shrink-0 rounded-[12px] flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-border transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] text-text-muted transition-colors duration-200 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <X size={16} aria-hidden="true" />
         </button>

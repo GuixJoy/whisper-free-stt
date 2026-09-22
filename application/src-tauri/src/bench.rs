@@ -94,7 +94,11 @@ fn bench_baseline() {
         full.durations.as_ref().map(|t| t.len()).unwrap_or(0)
     );
     assert!(!full.tokens.is_empty());
-    assert!(full.timestamps.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+    assert!(full
+        .timestamps
+        .as_ref()
+        .map(|t| !t.is_empty())
+        .unwrap_or(false));
 
     let mut rows = Vec::new();
     let mut total_audio_s = 0.0;
@@ -130,8 +134,14 @@ fn bench_baseline() {
 
     let mut out = serde_json::json!({"utterances": rows});
     for (key, prof) in [("parakeet", "parakeet"), ("whisper", "whisper")] {
-        let errs: usize = rows.iter().map(|r| r[prof]["errors"].as_u64().unwrap() as usize).sum();
-        let words: usize = rows.iter().map(|r| r["ref_words"].as_u64().unwrap() as usize).sum();
+        let errs: usize = rows
+            .iter()
+            .map(|r| r[prof]["errors"].as_u64().unwrap() as usize)
+            .sum();
+        let words: usize = rows
+            .iter()
+            .map(|r| r["ref_words"].as_u64().unwrap() as usize)
+            .sum();
         let lats: Vec<f64> = rows
             .iter()
             .map(|r| r[prof]["latency_s"].as_f64().unwrap())
@@ -148,7 +158,11 @@ fn bench_baseline() {
         });
     }
     out["audio_min"] = serde_json::json!((total_audio_s / 60.0 * 10.0).round() / 10.0);
-    std::fs::write(dir.join("baseline.json"), serde_json::to_string_pretty(&out).unwrap()).unwrap();
+    std::fs::write(
+        dir.join("baseline.json"),
+        serde_json::to_string_pretty(&out).unwrap(),
+    )
+    .unwrap();
     eprintln!(
         "[bench] parakeet WER={}% p50={}s rtf={} | whisper WER={}% p50={}s rtf={}",
         out["parakeet"]["wer_pct"],
@@ -161,13 +175,23 @@ fn bench_baseline() {
 
     // Spike verification 2: modified_beam_search + hotwords on Parakeet v2-int8.
     let vocab = derive_bpe_vocab(&parakeet_dir).expect("[bench] derive bpe vocab");
-    let beam = ParakeetRecognizer::new_with_decoding(&parakeet_dir, 4, false, "modified_beam_search", Some(&vocab), 2.0)
-        .expect("[bench] beam recognizer creation failed");
+    let beam = ParakeetRecognizer::new_with_decoding(
+        &parakeet_dir,
+        4,
+        false,
+        "modified_beam_search",
+        Some(&vocab),
+        2.0,
+    )
+    .expect("[bench] beam recognizer creation failed");
     let t0 = Instant::now();
     let plain = beam.transcribe(first_wave.samples());
     let beam_lat = t0.elapsed().as_secs_f64();
     let hot = beam.transcribe_with_hotwords(first_wave.samples(), "KALIKO");
-    eprintln!("[bench] beam: plain={:?} hotwords={:?} latency={:.2}s", plain, hot, beam_lat);
+    eprintln!(
+        "[bench] beam: plain={:?} hotwords={:?} latency={:.2}s",
+        plain, hot, beam_lat
+    );
     assert!(!plain.is_empty(), "[bench] beam search returned empty text");
 }
 
@@ -198,7 +222,10 @@ fn bench_hotwords_app_path() {
         full.tokens.len(),
         full.timestamps.as_ref().map(|t| t.len()).unwrap_or(0)
     );
-    assert!(!full.text.is_empty(), "[bench] biased decode returned empty text");
+    assert!(
+        !full.text.is_empty(),
+        "[bench] biased decode returned empty text"
+    );
     // No timestamp assertion: if modified_beam_search omits them the cleanup
     // gate degrades to its text heuristics, which is allowed but worth seeing.
 }

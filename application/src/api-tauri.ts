@@ -76,9 +76,15 @@ export function createTauriApi(): STTApi {
     async spawn() {
       const { listen } = await import("@tauri-apps/api/event");
       const events = [
-        "asr_ready", "asr_partial", "asr_final",
-        "llm_start", "llm_token", "llm_end",
-        "asr_error", "llm_error", "output_error",
+        "asr_ready",
+        "asr_partial",
+        "asr_final",
+        "llm_start",
+        "llm_token",
+        "llm_end",
+        "asr_error",
+        "llm_error",
+        "output_error",
       ];
       for (const eventName of events) {
         const unlisten = await listen<TauriPayload>(eventName, (event) => {

@@ -32,19 +32,21 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
   return (
     <aside
       className={cn(
-        "fixed top-4 right-4 z-50 flex flex-col w-80 max-h-[70vh] rounded-card border border-border overflow-hidden transition duration-300",
-        visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full pointer-events-none",
+        "fixed right-4 top-4 z-50 flex max-h-[70vh] w-80 flex-col overflow-hidden rounded-card border border-border transition duration-300",
+        visible ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-full opacity-0",
         "bg-app-surface shadow-lg",
       )}
       role="complementary"
       aria-label="Error log"
     >
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-        <h2 className="text-balance text-subheading text-text-primary">Errors ({activeErrors.length})</h2>
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <h2 className="text-balance text-subheading text-text-primary">
+          Errors ({activeErrors.length})
+        </h2>
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
-            "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+            "inline-flex h-8 items-center justify-center rounded-button px-3 text-small font-medium transition-colors duration-200",
+            "border border-border bg-app-surface text-text-primary hover:bg-app-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onClose}
@@ -53,53 +55,57 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
           <X size={14} /> Hide
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto overscroll-contain p-3 flex flex-col gap-2">
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto overscroll-contain p-3">
         {activeErrors.length === 0 ? (
-          <p className="text-center text-text-muted text-body py-8">No active errors. System running normally.</p>
+          <p className="py-8 text-center text-body text-text-muted">
+            No active errors. System running normally.
+          </p>
         ) : (
           activeErrors.map((err) => (
-              <div
-                key={err.id}
-                className="animate-panel-in bg-app-surface-secondary rounded-card border border-border overflow-hidden"
-                role="alert"
-              >
-                <div className="flex items-start gap-3 px-3 py-2.5">
-                  <span className={cn("mt-0.5 h-2 w-2 rounded-full shrink-0 bg-accent")} aria-hidden="true" />
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted px-1.5 py-0.5 rounded bg-app-surface border border-border" aria-hidden="true">
-                    {CATEGORY_LABELS[err.category] || "error"}
-                  </span>
-                  <span className="flex-1 text-body text-text-primary">
-                    {err.message}
-                  </span>
+            <div
+              key={err.id}
+              className="animate-panel-in overflow-hidden rounded-card border border-border bg-app-surface-secondary"
+              role="alert"
+            >
+              <div className="flex items-start gap-3 px-3 py-2.5">
+                <span
+                  className={cn("mt-0.5 h-2 w-2 shrink-0 rounded-full bg-accent")}
+                  aria-hidden="true"
+                />
+                <span
+                  className="rounded border border-border bg-app-surface px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-text-muted"
+                  aria-hidden="true"
+                >
+                  {CATEGORY_LABELS[err.category] || "error"}
+                </span>
+                <span className="flex-1 text-body text-text-primary">{err.message}</span>
+                <button
+                  className="flex shrink-0 items-center text-text-muted transition-colors hover:text-text-primary"
+                  onClick={() => onDismiss(err.id)}
+                  aria-label={`Dismiss error: ${err.message}`}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+              {err.retryHint && (
+                <p className="px-3 pb-2 pl-8 text-small text-text-muted">Hint: {err.retryHint}</p>
+              )}
+              {err.canRetry && (
+                <div className="px-3 pb-2.5 pl-8">
                   <button
-                    className="text-text-muted hover:text-text-primary shrink-0 transition-colors flex items-center"
-                    onClick={() => onDismiss(err.id)}
-                    aria-label={`Dismiss error: ${err.message}`}
+                    className={cn(
+                      "inline-flex h-8 items-center justify-center rounded-button px-3 text-small font-medium transition-colors duration-200",
+                      "border border-border bg-app-surface text-text-primary hover:bg-app-hover",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
+                    )}
+                    onClick={() => onRetry(err.id)}
                   >
-                    <X size={15} />
+                    Retry
                   </button>
                 </div>
-                {err.retryHint && (
-                  <p className="px-3 pb-2 pl-8 text-small text-text-muted">
-                    Hint: {err.retryHint}
-                  </p>
-                )}
-                {err.canRetry && (
-                  <div className="px-3 pb-2.5 pl-8">
-                    <button
-                      className={cn(
-                        "inline-flex items-center justify-center rounded-button h-8 px-3 text-small font-medium transition-colors duration-200",
-                        "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
-                      )}
-                      onClick={() => onRetry(err.id)}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))
+              )}
+            </div>
+          ))
         )}
       </div>
     </aside>

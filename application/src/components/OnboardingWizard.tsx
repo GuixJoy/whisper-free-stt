@@ -20,13 +20,13 @@ import { micLevelEmitter } from "../utils/mic-emitter";
 
 function StepIndicator({ step, total }: { step: number; total: number }) {
   return (
-    <div className="flex items-center justify-center gap-2 mb-6">
+    <div className="mb-6 flex items-center justify-center gap-2">
       {Array.from({ length: total }, (_, i) => (
         <div
           key={i}
           className={cn(
             "h-2 w-2 rounded-full transition-colors duration-200",
-            i <= step ? "bg-accent" : "bg-app-surface-secondary border border-border",
+            i <= step ? "bg-accent" : "border border-border bg-app-surface-secondary",
             i < step && "bg-accent/60",
           )}
         />
@@ -42,25 +42,25 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
     <div className="flex flex-col items-center gap-6 text-center">
       <h2 className="text-balance text-heading text-text-primary">System Check</h2>
       <p className="text-body text-text-secondary">Making sure everything is ready…</p>
-      <div className="w-full flex flex-col gap-2">
+      <div className="flex w-full flex-col gap-2">
         {checks.map((check, i) => (
           <div
             key={i}
             className={cn(
-              "flex items-start gap-3 rounded-card px-4 py-3 border",
-              check.status === "pass" && "bg-app-surface border-border",
-              check.status === "warning" && "bg-app-surface border-yellow-500/25",
-              check.status === "pending" && "bg-app-surface border-border",
-              check.status === "fail" && "bg-app-surface border-red-500/20",
+              "flex items-start gap-3 rounded-card border px-4 py-3",
+              check.status === "pass" && "border-border bg-app-surface",
+              check.status === "warning" && "border-yellow-500/25 bg-app-surface",
+              check.status === "pending" && "border-border bg-app-surface",
+              check.status === "fail" && "border-red-500/20 bg-app-surface",
             )}
           >
-            <span className="shrink-0 mt-0.5" aria-hidden="true">
+            <span className="mt-0.5 shrink-0" aria-hidden="true">
               {check.status === "pass" ? (
                 <CircleCheck size={18} className="text-green-600" />
               ) : check.status === "warning" ? (
                 <TriangleAlert size={18} className="text-yellow-700" />
               ) : check.status === "pending" ? (
-                <LoaderCircle size={18} className="text-text-muted animate-spin" />
+                <LoaderCircle size={18} className="animate-spin text-text-muted" />
               ) : (
                 <CircleX size={18} className="text-red-600" />
               )}
@@ -77,8 +77,8 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
         {!allChecked ? (
           <button
             className={cn(
-              "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-              "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+              "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+              "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             )}
             onClick={onNext}
@@ -88,8 +88,8 @@ function Step1SystemCheck({ checks, onNext }: { checks: SystemCheck[]; onNext: (
         ) : (
           <button
             className={cn(
-              "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-              "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+              "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+              "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
               "disabled:pointer-events-none disabled:opacity-50",
             )}
@@ -114,9 +114,11 @@ function Step2ModelDownload({
   onDone: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(
-    new Set(MODEL_CATALOG.filter((m) => m.recommended).map((m) => m.name))
+    new Set(MODEL_CATALOG.filter((m) => m.recommended).map((m) => m.name)),
   );
-  const hasDownloads = Object.values(progress).some((p) => p.status === "done" || p.status === "downloading");
+  const hasDownloads = Object.values(progress).some(
+    (p) => p.status === "done" || p.status === "downloading",
+  );
 
   const toggle = (name: string) => {
     setSelected((prev) => {
@@ -130,25 +132,26 @@ function Step2ModelDownload({
     });
   };
 
-  const totalSize = MODEL_CATALOG
-    .filter((m) => selected.has(m.name))
+  const totalSize = MODEL_CATALOG.filter((m) => selected.has(m.name))
     .reduce((s, m) => s + m.size, "0\u00A0MB")
     .toString();
 
   return (
     <div className="flex flex-col items-center gap-6 text-center">
       <h2 className="text-balance text-heading text-text-primary">Download Models</h2>
-      <p className="text-body text-text-secondary">Choose which speech recognition models to install. Smaller = faster, larger = more accurate.</p>
+      <p className="text-body text-text-secondary">
+        Choose which speech recognition models to install. Smaller = faster, larger = more accurate.
+      </p>
 
-      <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
         {MODEL_CATALOG.map((model) => (
           <label
             key={model.name}
             className={cn(
-              "flex flex-col gap-2 rounded-card border p-4 cursor-pointer transition-colors duration-200 text-left",
+              "flex cursor-pointer flex-col gap-2 rounded-card border p-4 text-left transition-colors duration-200",
               selected.has(model.name)
-                ? "bg-accent-surface border-[rgba(255,59,86,0.15)]"
-                : "bg-app-surface-card border-border hover:border-border-hover",
+                ? "border-[rgba(255,59,86,0.15)] bg-accent-surface"
+                : "border-border bg-app-surface-card hover:border-border-hover",
             )}
           >
             <input
@@ -160,28 +163,45 @@ function Step2ModelDownload({
             />
             <div className="flex items-center justify-between">
               <strong className="text-body text-text-primary">{model.name}</strong>
-              <span className={cn(
-                "inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold",
-                model.recommended
-                  ? "bg-accent-muted border border-accent-muted-border text-accent-active"
-                  : "bg-app-surface border border-border text-text-secondary",
-              )}>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold",
+                  model.recommended
+                    ? "border border-accent-muted-border bg-accent-muted text-accent-active"
+                    : "border border-border bg-app-surface text-text-secondary",
+                )}
+              >
                 {model.profile}
               </span>
             </div>
             <div className="flex items-center gap-3 text-small text-text-muted">
               <span>{model.size}</span>
-              <span className="inline-flex items-center gap-1"><Zap size={11} aria-hidden="true" />{model.speed}</span>
-              <span className="inline-flex items-center gap-1"><Star size={11} aria-hidden="true" />{model.accuracy}</span>
+              <span className="inline-flex items-center gap-1">
+                <Zap size={11} aria-hidden="true" />
+                {model.speed}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Star size={11} aria-hidden="true" />
+                {model.accuracy}
+              </span>
             </div>
             <p className="text-small text-text-secondary">{model.bestFor}</p>
             {progress[model.name] && (
               <div className="flex flex-col gap-1.5">
-                <div className="h-1.5 rounded-full bg-app-surface-secondary overflow-hidden">
-                  <div className="h-full bg-accent rounded-full transition-[width] duration-150" style={{ width: `${progress[model.name].percent}%` }} />
+                <div className="h-1.5 overflow-hidden rounded-full bg-app-surface-secondary">
+                  <div
+                    className="h-full rounded-full bg-accent transition-[width] duration-150"
+                    style={{ width: `${progress[model.name].percent}%` }}
+                  />
                 </div>
-                <span className="text-small text-text-secondary inline-flex items-center gap-1">
-                  {progress[model.name].status === "done" ? (<><Check size={13} aria-hidden="true" /> Done</>) : `${progress[model.name].percent}%`}
+                <span className="inline-flex items-center gap-1 text-small text-text-secondary">
+                  {progress[model.name].status === "done" ? (
+                    <>
+                      <Check size={13} aria-hidden="true" /> Done
+                    </>
+                  ) : (
+                    `${progress[model.name].percent}%`
+                  )}
                 </span>
               </div>
             )}
@@ -192,8 +212,8 @@ function Step2ModelDownload({
       <div className="flex items-center justify-center gap-3">
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
             "disabled:pointer-events-none disabled:opacity-50",
           )}
@@ -204,8 +224,8 @@ function Step2ModelDownload({
         </button>
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "border border-border bg-app-surface text-text-primary hover:bg-app-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
@@ -233,18 +253,18 @@ function Step3MicSetup({
       <h2 className="text-balance text-heading text-text-primary">Microphone Setup</h2>
       <p className="text-body text-text-secondary">Check your mic and adjust settings.</p>
 
-      <div className="w-full flex flex-col items-center gap-4">
-        <div className="w-full h-3 rounded-input bg-app-surface-secondary overflow-hidden border border-border">
+      <div className="flex w-full flex-col items-center gap-4">
+        <div className="h-3 w-full overflow-hidden rounded-input border border-border bg-app-surface-secondary">
           <div
-            className="h-full bg-accent rounded-input transition-[width] duration-75"
+            className="h-full rounded-input bg-accent transition-[width] duration-75"
             style={{ width: `${Math.min(100, micLevel * 300)}%` }}
           />
         </div>
 
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-app-surface border border-border text-text-primary hover:bg-app-hover",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "border border-border bg-app-surface text-text-primary hover:bg-app-hover",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onTest}
@@ -256,8 +276,8 @@ function Step3MicSetup({
       <div className="flex items-center justify-center">
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
@@ -287,34 +307,40 @@ function Step4Permissions({
       <h2 className="text-balance text-heading text-text-primary">Permissions</h2>
       <p className="text-body text-text-secondary">Control where your transcribed text goes.</p>
 
-      <div className="w-full flex flex-col gap-3">
-        <label className="flex items-center justify-between rounded-card bg-app-surface border border-border px-4 py-3 cursor-pointer">
+      <div className="flex w-full flex-col gap-3">
+        <label className="flex cursor-pointer items-center justify-between rounded-card border border-border bg-app-surface px-4 py-3">
           <div className="text-left">
-            <strong className="text-body text-text-primary flex items-center gap-2"><ClipboardList size={16} className="text-text-secondary" />Auto-copy to Clipboard</strong>
+            <strong className="flex items-center gap-2 text-body text-text-primary">
+              <ClipboardList size={16} className="text-text-secondary" />
+              Auto-copy to Clipboard
+            </strong>
           </div>
-          <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-app-surface-secondary border border-border transition-colors">
+          <span className="relative inline-flex h-5 w-9 items-center rounded-full border border-border bg-app-surface-secondary transition-colors">
             <input
               type="checkbox"
               checked={clipboard}
               onChange={(e) => onClipboard(e.target.checked)}
-              className="sr-only peer"
+              className="peer sr-only"
             />
-            <span className="inline-block h-3.5 w-3.5 rounded-full bg-text-muted transition-transform peer-checked:translate-x-4 peer-checked:bg-accent ml-0.5" />
+            <span className="ml-0.5 inline-block h-3.5 w-3.5 rounded-full bg-text-muted transition-transform peer-checked:translate-x-4 peer-checked:bg-accent" />
           </span>
         </label>
 
-        <label className="flex items-center justify-between rounded-card bg-app-surface border border-border px-4 py-3 cursor-pointer">
+        <label className="flex cursor-pointer items-center justify-between rounded-card border border-border bg-app-surface px-4 py-3">
           <div className="text-left">
-            <strong className="text-body text-text-primary flex items-center gap-2"><Keyboard size={16} className="text-text-secondary" />Type into Focused Window</strong>
+            <strong className="flex items-center gap-2 text-body text-text-primary">
+              <Keyboard size={16} className="text-text-secondary" />
+              Type into Focused Window
+            </strong>
           </div>
-          <span className="relative inline-flex h-5 w-9 items-center rounded-full bg-app-surface-secondary border border-border transition-colors">
+          <span className="relative inline-flex h-5 w-9 items-center rounded-full border border-border bg-app-surface-secondary transition-colors">
             <input
               type="checkbox"
               checked={typing}
               onChange={(e) => onTyping(e.target.checked)}
-              className="sr-only peer"
+              className="peer sr-only"
             />
-            <span className="inline-block h-3.5 w-3.5 rounded-full bg-text-muted transition-transform peer-checked:translate-x-4 peer-checked:bg-accent ml-0.5" />
+            <span className="ml-0.5 inline-block h-3.5 w-3.5 rounded-full bg-text-muted transition-transform peer-checked:translate-x-4 peer-checked:bg-accent" />
           </span>
         </label>
       </div>
@@ -322,8 +348,8 @@ function Step4Permissions({
       <div className="flex items-center justify-center">
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onDone}
@@ -338,21 +364,56 @@ function Step4Permissions({
 function Step5Ready({ onFinish }: { onFinish: () => void }) {
   return (
     <div className="flex flex-col items-center gap-6 text-center">
-      <div className="w-16 h-16 rounded-full bg-accent/10 flex items-center justify-center text-accent">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-accent">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" y1="19" x2="12" y2="23" />
+          <line x1="8" y1="23" x2="16" y2="23" />
+        </svg>
       </div>
       <h2 className="text-balance text-heading text-text-primary">You're All Set!</h2>
-      <p className="text-body text-text-secondary">Press <kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary">Space</kbd> to start/stop dictation anytime.</p>
-      <div className="w-full rounded-card bg-app-surface border border-border p-4 flex flex-col gap-2 text-left text-body text-text-secondary">
-        <div><kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary mr-2">Space</kbd> Start / Stop</div>
-        <div><kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary mr-2">Space</kbd> (hold) Talk, release to transcribe</div>
-        <div><kbd className="inline-flex items-center rounded-badge px-2 py-0.5 text-label font-semibold bg-app-surface-secondary border border-border text-text-primary mr-2">Esc</kbd> Cancel current</div>
+      <p className="text-body text-text-secondary">
+        Press{" "}
+        <kbd className="inline-flex items-center rounded-badge border border-border bg-app-surface-secondary px-2 py-0.5 text-label font-semibold text-text-primary">
+          Space
+        </kbd>{" "}
+        to start/stop dictation anytime.
+      </p>
+      <div className="flex w-full flex-col gap-2 rounded-card border border-border bg-app-surface p-4 text-left text-body text-text-secondary">
+        <div>
+          <kbd className="mr-2 inline-flex items-center rounded-badge border border-border bg-app-surface-secondary px-2 py-0.5 text-label font-semibold text-text-primary">
+            Space
+          </kbd>{" "}
+          Start / Stop
+        </div>
+        <div>
+          <kbd className="mr-2 inline-flex items-center rounded-badge border border-border bg-app-surface-secondary px-2 py-0.5 text-label font-semibold text-text-primary">
+            Space
+          </kbd>{" "}
+          (hold) Talk, release to transcribe
+        </div>
+        <div>
+          <kbd className="mr-2 inline-flex items-center rounded-badge border border-border bg-app-surface-secondary px-2 py-0.5 text-label font-semibold text-text-primary">
+            Esc
+          </kbd>{" "}
+          Cancel current
+        </div>
       </div>
       <div className="flex items-center justify-center">
         <button
           className={cn(
-            "inline-flex items-center justify-center rounded-button h-11 px-4 py-2 text-body font-medium transition-colors duration-200",
-            "bg-accent text-white hover:bg-accent-warm shadow-accent-button",
+            "inline-flex h-11 items-center justify-center rounded-button px-4 py-2 text-body font-medium transition-colors duration-200",
+            "bg-accent text-white shadow-accent-button hover:bg-accent-warm",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30",
           )}
           onClick={onFinish}
@@ -369,8 +430,10 @@ interface Props {
 }
 
 export default function OnboardingWizard({ onFinished }: Props) {
-  const { state, dispatch, runSystemChecks, downloadModels, nextStep, finish } = useOnboarding(onFinished);
-  const { step, systemChecks, modelDownloadProgress, clipboardEnabled, typingEnabled, error } = state;
+  const { state, dispatch, runSystemChecks, downloadModels, nextStep, finish } =
+    useOnboarding(onFinished);
+  const { step, systemChecks, modelDownloadProgress, clipboardEnabled, typingEnabled, error } =
+    state;
   const totalSteps = 5;
 
   // Live mic test: reuse the Settings capture path (usePermissions) and the
@@ -380,15 +443,15 @@ export default function OnboardingWizard({ onFinished }: Props) {
   useEffect(() => micLevelEmitter.subscribe(setMicLevel), []);
 
   return (
-    <div className="animate-wizard-in flex flex-col items-center justify-center min-h-screen p-8">
+    <div className="animate-wizard-in flex min-h-screen flex-col items-center justify-center p-8">
       <div className="w-full max-w-lg">
         <StepIndicator step={step} total={totalSteps} />
 
         {error && (
-          <div className="mb-4 flex items-center gap-2 rounded-card bg-red-500/10 border border-red-500/20 px-4 py-3 text-body text-red-600">
+          <div className="mb-4 flex items-center gap-2 rounded-card border border-red-500/20 bg-red-500/10 px-4 py-3 text-body text-red-600">
             <TriangleAlert size={16} className="shrink-0" /> {error}
             <button
-              className="ml-auto text-red-600 hover:text-red-700 transition-colors flex items-center"
+              className="ml-auto flex items-center text-red-600 transition-colors hover:text-red-700"
               onClick={() => dispatch({ type: "CLEAR_ERROR" })}
               aria-label="Dismiss error"
             >
@@ -397,21 +460,25 @@ export default function OnboardingWizard({ onFinished }: Props) {
           </div>
         )}
 
-        <div className="bg-app-surface rounded-card border border-border p-6">
+        <div className="rounded-card border border-border bg-app-surface p-6">
           {/* Keyed by step so the CSS entrance animation replays on change. */}
           <div key={step} className="animate-step-in">
             {step === 0 && (
               <Step1SystemCheck
-                checks={systemChecks.length > 0 ? systemChecks : [
-                  { name: "Running checks…", status: "pending", message: "Scanning system" },
-                ]}
+                checks={
+                  systemChecks.length > 0
+                    ? systemChecks
+                    : [{ name: "Running checks…", status: "pending", message: "Scanning system" }]
+                }
                 onNext={() => runSystemChecks()}
               />
             )}
             {step === 1 && (
               <Step2ModelDownload
                 progress={modelDownloadProgress}
-                onDownload={(models) => { downloadModels(models); }}
+                onDownload={(models) => {
+                  downloadModels(models);
+                }}
                 onDone={() => nextStep()}
               />
             )}
@@ -435,9 +502,7 @@ export default function OnboardingWizard({ onFinished }: Props) {
                 onDone={() => nextStep()}
               />
             )}
-            {step === 4 && (
-              <Step5Ready onFinish={finish} />
-            )}
+            {step === 4 && <Step5Ready onFinish={finish} />}
           </div>
         </div>
       </div>

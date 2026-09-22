@@ -32,12 +32,15 @@ pub fn show_widget(app: AppHandle) -> Result<(), String> {
             // Margins account for macOS Dock / Windows taskbar.
             let x = m_pos.x + m_size.width as i32 - w - 30;
             let y = m_pos.y + m_size.height as i32 - h - 60;
-            let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
+            let _ =
+                window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
         }
         let _ = window.set_always_on_top(true);
     }
 
-    window.show().map_err(|e| format!("Failed to show widget: {e}"))?;
+    window
+        .show()
+        .map_err(|e| format!("Failed to show widget: {e}"))?;
     let _ = app.emit("widget-visibility-changed", true);
     Ok(())
 }

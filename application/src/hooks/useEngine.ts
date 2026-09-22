@@ -11,7 +11,12 @@ type ErrorCategory = AppError["category"];
 interface Options {
   /** Bumped by App when settings are saved; respawns the engine. */
   settingsVersion: number;
-  addError: (category: ErrorCategory, message: string, canRetry?: boolean, retryHint?: string) => void;
+  addError: (
+    category: ErrorCategory,
+    message: string,
+    canRetry?: boolean,
+    retryHint?: string,
+  ) => void;
   dismissErrorsOfCategory: (category: ErrorCategory) => void;
   setToast: (message: string) => void;
 }
@@ -25,11 +30,21 @@ interface Options {
  * captured when they were attached. They are the reason this is not just a
  * bag of state.
  */
-export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, setToast }: Options) {
+export function useEngine({
+  settingsVersion,
+  addError,
+  dismissErrorsOfCategory,
+  setToast,
+}: Options) {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState("idle");
   const [lines, setLines] = useState<TranscriptLine[]>([]);
-  const [resolvedModel, setResolvedModel] = useState<{ profile: string; model: string; backend: string; device: string } | null>(null);
+  const [resolvedModel, setResolvedModel] = useState<{
+    profile: string;
+    model: string;
+    backend: string;
+    device: string;
+  } | null>(null);
   const [pttActive, setPttActive] = useState(false);
 
   const runtimeRef = useRef<STTApi | null>(null);
@@ -71,13 +86,20 @@ export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, 
           try {
             const { emit } = await import("@tauri-apps/api/event");
             await emit("widget-mic-level", level);
-          } catch { /* not in Tauri */ }
+          } catch {
+            /* not in Tauri */
+          }
         })();
       }
       return;
     }
     if (event.type === "asr_ready") {
-      setResolvedModel({ profile: "parakeet", model: "Parakeet TDT", backend: event.backend, device: "cuda" });
+      setResolvedModel({
+        profile: "parakeet",
+        model: "Parakeet TDT",
+        backend: event.backend,
+        device: "cuda",
+      });
       setToast("Engine ready — models loaded");
       return;
     }
@@ -89,7 +111,16 @@ export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, 
         if (last && last.status === "transcribing") {
           return [...prev.slice(0, -1), { ...last, raw: event.text }];
         }
-        return [...prev, { id, raw: event.text, processed: "", status: "transcribing", createdAt: new Date().toISOString() }].slice(-500);
+        return [
+          ...prev,
+          {
+            id,
+            raw: event.text,
+            processed: "",
+            status: "transcribing",
+            createdAt: new Date().toISOString(),
+          },
+        ].slice(-500);
       });
       return;
     }
@@ -97,9 +128,27 @@ export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, 
       setLines((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.status === "transcribing") {
-          return [...prev.slice(0, -1), { ...last, raw: event.text, processed: event.text, status: "transcribing", createdAt: last.createdAt }];
+          return [
+            ...prev.slice(0, -1),
+            {
+              ...last,
+              raw: event.text,
+              processed: event.text,
+              status: "transcribing",
+              createdAt: last.createdAt,
+            },
+          ];
         }
-        return [...prev, { id: nextLocalId.current++, raw: event.text, processed: event.text, status: "transcribing", createdAt: new Date().toISOString() }].slice(-500);
+        return [
+          ...prev,
+          {
+            id: nextLocalId.current++,
+            raw: event.text,
+            processed: event.text,
+            status: "transcribing",
+            createdAt: new Date().toISOString(),
+          },
+        ].slice(-500);
       });
       return;
     }
@@ -118,7 +167,10 @@ export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, 
         const last = prev[prev.length - 1];
         if (last) {
           const updatedProcessed = (last.processed || "") + event.text;
-          return [...prev.slice(0, -1), { ...last, processed: updatedProcessed, status: "rewriting" }];
+          return [
+            ...prev.slice(0, -1),
+            { ...last, processed: updatedProcessed, status: "rewriting" },
+          ];
         }
         return prev;
       });
@@ -148,18 +200,21 @@ export function useEngine({ settingsVersion, addError, dismissErrorsOfCategory, 
     runtimeRef.current = api;
 
     // Spawn backend — loads models, warms ASR, stays idle until PTT
-    api.spawn().then(() => {
-      if (engineGenerationRef.current !== generation) return;
-      console.log("[Engine] Backend ready — waiting for PTT hotkey");
-    }).catch((err) => {
-      // Ignore failures from a superseded engine: a settings change respawns,
-      // and this callback must not clear the newer handle.
-      if (engineGenerationRef.current !== generation) return;
-      const msg = err instanceof Error ? err.message : "Failed to start engine";
-      setToast(msg);
-      addError("connection", msg, true, "Check if stt-engine is installed");
-      runtimeRef.current = null;
-    });
+    api
+      .spawn()
+      .then(() => {
+        if (engineGenerationRef.current !== generation) return;
+        console.log("[Engine] Backend ready — waiting for PTT hotkey");
+      })
+      .catch((err) => {
+        // Ignore failures from a superseded engine: a settings change respawns,
+        // and this callback must not clear the newer handle.
+        if (engineGenerationRef.current !== generation) return;
+        const msg = err instanceof Error ? err.message : "Failed to start engine";
+        setToast(msg);
+        addError("connection", msg, true, "Check if stt-engine is installed");
+        runtimeRef.current = null;
+      });
 
     // Cleanup: kill backend on app unmount or respawn
     return () => {

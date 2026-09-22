@@ -119,7 +119,15 @@ export interface OnboardingState {
   systemChecks: SystemCheck[];
   clipboardEnabled: boolean;
   typingEnabled: boolean;
-  modelDownloadProgress: Record<string, { percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" }>;
+  modelDownloadProgress: Record<
+    string,
+    {
+      percent: number;
+      bytesDownloaded: number;
+      bytesTotal: number;
+      status: "idle" | "downloading" | "done" | "error";
+    }
+  >;
   error: string | null;
 }
 
@@ -129,11 +137,21 @@ export type OnboardingAction =
   | { type: "SET_COMPLETED" }
   | { type: "SET_CLIPBOARD"; enabled: boolean }
   | { type: "SET_TYPING"; enabled: boolean }
-  | { type: "SET_DOWNLOAD_PROGRESS"; name: string; percent: number; bytesDownloaded: number; bytesTotal: number; status: "idle" | "downloading" | "done" | "error" }
+  | {
+      type: "SET_DOWNLOAD_PROGRESS";
+      name: string;
+      percent: number;
+      bytesDownloaded: number;
+      bytesTotal: number;
+      status: "idle" | "downloading" | "done" | "error";
+    }
   | { type: "SET_ERROR"; error: string }
   | { type: "CLEAR_ERROR" };
 
-export function onboardingReducer(state: OnboardingState, action: OnboardingAction): OnboardingState {
+export function onboardingReducer(
+  state: OnboardingState,
+  action: OnboardingAction,
+): OnboardingState {
   switch (action.type) {
     case "NEXT_STEP":
       return { ...state, step: Math.min(state.step + 1, state.totalSteps) };

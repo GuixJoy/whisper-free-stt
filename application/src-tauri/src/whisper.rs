@@ -88,10 +88,7 @@ impl WhisperRecognizer {
         let stream = self.recognizer.create_stream();
         stream.accept_waveform(16000, samples);
         self.recognizer.decode(&stream);
-        stream
-            .get_result()
-            .map(|r| r.text)
-            .unwrap_or_default()
+        stream.get_result().map(|r| r.text).unwrap_or_default()
     }
 }
 

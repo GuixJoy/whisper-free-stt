@@ -9,7 +9,15 @@ function ModelCard({
   onDownload,
   onDelete,
 }: {
-  model: { name: string; backend: string; downloaded: boolean; downloading: boolean; progress: number; error: string | null; sizeBytes: number };
+  model: {
+    name: string;
+    backend: string;
+    downloaded: boolean;
+    downloading: boolean;
+    progress: number;
+    error: string | null;
+    sizeBytes: number;
+  };
   info: { recommended: boolean; size: string; bestFor: string; speed?: string; accuracy?: string };
   onDownload: () => void;
   onDelete: () => void;
@@ -21,10 +29,10 @@ function ModelCard({
       className={cn(
         "flex flex-col gap-3 rounded-card border p-5 transition-colors duration-200",
         model.downloaded
-          ? "bg-[rgba(255,227,229,0.25)] border-[rgba(255,59,86,0.15)]"
+          ? "border-[rgba(255,59,86,0.15)] bg-[rgba(255,227,229,0.25)]"
           : model.downloading
-            ? "bg-app-surface-card border-accent"
-            : "bg-app-surface-card border-border hover:border-border-hover",
+            ? "border-accent bg-app-surface-card"
+            : "border-border bg-app-surface-card hover:border-border-hover",
       )}
     >
       {/* Header */}
@@ -32,7 +40,7 @@ function ModelCard({
         <div className="flex items-center gap-2">
           <strong className="text-[15px] text-text-primary">{model.name}</strong>
           {info.recommended && (
-            <span className="inline-flex items-center rounded-badge px-2 py-0.5 text-[11px] font-semibold bg-accent-muted border border-accent-muted-border text-accent-active">
+            <span className="inline-flex items-center rounded-badge border border-accent-muted-border bg-accent-muted px-2 py-0.5 text-[11px] font-semibold text-accent-active">
               Recommended
             </span>
           )}
@@ -41,8 +49,8 @@ function ModelCard({
           className={cn(
             "inline-flex items-center rounded-badge px-2.5 py-0.5 text-[12px] font-semibold",
             model.backend === "faster_whisper"
-              ? "bg-accent-muted border border-accent-muted-border text-accent-active"
-              : "bg-app-surface border border-border text-text-secondary",
+              ? "border border-accent-muted-border bg-accent-muted text-accent-active"
+              : "border border-border bg-app-surface text-text-secondary",
           )}
         >
           {model.backend === "faster_whisper" ? "GPU" : "CPU"}
@@ -55,7 +63,7 @@ function ModelCard({
         {info.speed && <span>{info.speed}</span>}
         {info.accuracy && <span>{info.accuracy}</span>}
         {model.downloaded && model.sizeBytes > 0 && (
-          <span className="text-green-400 tabular-nums">{formatBytes(model.sizeBytes)}</span>
+          <span className="tabular-nums text-green-400">{formatBytes(model.sizeBytes)}</span>
         )}
       </div>
       <p className="text-[13px] text-text-secondary">{info.bestFor}</p>
@@ -63,13 +71,13 @@ function ModelCard({
       {/* Progress bar (downloading) */}
       {model.downloading && (
         <div className="flex flex-col gap-1.5">
-          <div className="h-2 rounded-full bg-app-surface-secondary overflow-hidden">
+          <div className="h-2 overflow-hidden rounded-full bg-app-surface-secondary">
             <div
-              className="h-full bg-accent rounded-full transition-[width] duration-150"
+              className="h-full rounded-full bg-accent transition-[width] duration-150"
               style={{ width: `${model.progress}%` }}
             />
           </div>
-          <span className="text-[12px] text-text-secondary tabular-nums">
+          <span className="text-[12px] tabular-nums text-text-secondary">
             {model.progress > 0 ? `${model.progress}%` : "Preparing download…"}
           </span>
         </div>
@@ -84,21 +92,21 @@ function ModelCard({
       )}
 
       {/* Status + Actions */}
-      <div className="flex items-center justify-between mt-auto pt-2 border-t border-border">
+      <div className="mt-auto flex items-center justify-between border-t border-border pt-2">
         <div className="flex items-center gap-2">
           {model.downloaded ? (
             <>
               <Check size={14} className="text-green-400" />
-              <span className="text-[13px] text-green-400 font-medium">Downloaded</span>
+              <span className="text-[13px] font-medium text-green-400">Downloaded</span>
             </>
           ) : model.downloading ? (
             <>
-              <Loader2 size={14} className="text-accent animate-spin" />
-              <span className="text-[13px] text-accent font-medium">Downloading</span>
+              <Loader2 size={14} className="animate-spin text-accent" />
+              <span className="text-[13px] font-medium text-accent">Downloading</span>
             </>
           ) : (
             <>
-              <div className="w-3.5 h-3.5 rounded-full border border-text-muted" />
+              <div className="h-3.5 w-3.5 rounded-full border border-text-muted" />
               <span className="text-[13px] text-text-muted">Not downloaded</span>
             </>
           )}
@@ -109,13 +117,16 @@ function ModelCard({
             confirmDelete ? (
               <>
                 <button
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-[12px] font-medium bg-red-500/10 border border-red-500/20 text-red-600 hover:bg-red-500/20 transition-colors"
-                  onClick={() => { onDelete(); setConfirmDelete(false); }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-button border border-red-500/20 bg-red-500/10 px-3 text-[12px] font-medium text-red-600 transition-colors hover:bg-red-500/20"
+                  onClick={() => {
+                    onDelete();
+                    setConfirmDelete(false);
+                  }}
                 >
                   Confirm Delete
                 </button>
                 <button
-                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-[12px] font-medium bg-app-surface border border-border text-text-secondary hover:bg-app-hover transition-colors"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-button border border-border bg-app-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-app-hover"
                   onClick={() => setConfirmDelete(false)}
                 >
                   Cancel
@@ -123,7 +134,7 @@ function ModelCard({
               </>
             ) : (
               <button
-                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-button text-[12px] font-medium bg-app-surface border border-border text-text-secondary hover:bg-app-hover transition-colors"
+                className="inline-flex h-8 items-center gap-1.5 rounded-button border border-border bg-app-surface px-3 text-[12px] font-medium text-text-secondary transition-colors hover:bg-app-hover"
                 onClick={() => setConfirmDelete(true)}
               >
                 <Trash2 size={12} />
@@ -132,7 +143,7 @@ function ModelCard({
             )
           ) : !model.downloading ? (
             <button
-              className="inline-flex items-center gap-1.5 h-8 px-4 rounded-button text-[12px] font-medium bg-accent text-white hover:bg-accent-warm transition-colors shadow-accent-button"
+              className="inline-flex h-8 items-center gap-1.5 rounded-button bg-accent px-4 text-[12px] font-medium text-white shadow-accent-button transition-colors hover:bg-accent-warm"
               onClick={onDownload}
             >
               <Download size={12} />
@@ -170,17 +181,20 @@ export default function ModelsPage() {
   });
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-auto">
+    <div className="flex flex-1 flex-col overflow-auto p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-balance text-[24px] font-semibold text-text-primary leading-tight">Models</h2>
-          <p className="text-[13px] text-text-muted mt-1">
-            Manage speech recognition models. Download, check status, or remove models you no longer need.
+          <h2 className="text-balance text-[24px] font-semibold leading-tight text-text-primary">
+            Models
+          </h2>
+          <p className="mt-1 text-[13px] text-text-muted">
+            Manage speech recognition models. Download, check status, or remove models you no longer
+            need.
           </p>
         </div>
         <button
-          className="inline-flex items-center gap-2 h-9 px-4 rounded-button text-[13px] font-medium bg-app-surface border border-border text-text-primary hover:bg-app-hover transition-colors"
+          className="inline-flex h-9 items-center gap-2 rounded-button border border-border bg-app-surface px-4 text-[13px] font-medium text-text-primary transition-colors hover:bg-app-hover"
           onClick={() => void refreshModels()}
           disabled={loading}
         >
@@ -190,11 +204,12 @@ export default function ModelsPage() {
       </div>
 
       {/* Stats bar */}
-      <div className="flex items-center gap-6 mb-6 px-5 py-3 bg-app-surface rounded-card border border-border">
+      <div className="mb-6 flex items-center gap-6 rounded-card border border-border bg-app-surface px-5 py-3">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-400" />
+          <div className="h-2 w-2 rounded-full bg-green-400" />
           <span className="text-[13px] text-text-secondary">
-            <strong className="text-text-primary">{downloadedCount}</strong> of {totalCount} downloaded
+            <strong className="text-text-primary">{downloadedCount}</strong> of {totalCount}{" "}
+            downloaded
           </span>
         </div>
         <div className="h-4 w-px bg-border-hover" />
@@ -208,19 +223,19 @@ export default function ModelsPage() {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex items-center gap-1 mb-5">
-        {([
+      <div className="mb-5 flex items-center gap-1">
+        {[
           { key: "all" as const, label: "All Models" },
           { key: "downloaded" as const, label: "Downloaded" },
           { key: "available" as const, label: "Available" },
-        ]).map(({ key, label }) => (
+        ].map(({ key, label }) => (
           <button
             key={key}
             className={cn(
-              "h-8 px-4 rounded-badge text-[13px] font-medium transition-colors duration-200",
+              "h-8 rounded-badge px-4 text-[13px] font-medium transition-colors duration-200",
               filter === key
-                ? "bg-accent-surface border border-[rgba(255,59,86,0.15)] text-accent"
-                : "text-text-muted hover:text-text-secondary hover:bg-accent-hover-surface",
+                ? "border border-[rgba(255,59,86,0.15)] bg-accent-surface text-accent"
+                : "text-text-muted hover:bg-accent-hover-surface hover:text-text-secondary",
             )}
             onClick={() => setFilter(key)}
           >
@@ -234,18 +249,19 @@ export default function ModelsPage() {
 
       {/* Error banner */}
       {globalError && (
-        <div className="flex items-center gap-3 mb-5 rounded-card bg-red-500/10 border border-red-500/20 px-4 py-3">
-          <AlertCircle size={16} className="text-red-600 shrink-0" />
+        <div className="mb-5 flex items-center gap-3 rounded-card border border-red-500/20 bg-red-500/10 px-4 py-3">
+          <AlertCircle size={16} className="shrink-0 text-red-600" />
           <span className="text-[13px] text-red-600">{globalError}</span>
         </div>
       )}
 
       {/* No models warning */}
       {downloadedAsrCount === 0 && !loading && (
-        <div className="flex items-center gap-3 mb-5 rounded-card bg-yellow-500/10 border border-yellow-500/25 px-4 py-3">
-          <AlertCircle size={16} className="text-yellow-700 shrink-0" />
+        <div className="mb-5 flex items-center gap-3 rounded-card border border-yellow-500/25 bg-yellow-500/10 px-4 py-3">
+          <AlertCircle size={16} className="shrink-0 text-yellow-700" />
           <span className="text-[13px] text-yellow-700">
-            No speech-recognition models downloaded yet. Download at least one model to start using speech-to-text.
+            No speech-recognition models downloaded yet. Download at least one model to start using
+            speech-to-text.
           </span>
         </div>
       )}
@@ -253,7 +269,7 @@ export default function ModelsPage() {
       {/* Loading state */}
       {loading && (
         <div className="flex items-center justify-center py-16 text-[14px] text-text-muted">
-          <Loader2 size={18} className="animate-spin mr-2" />
+          <Loader2 size={18} className="mr-2 animate-spin" />
           Checking model status…
         </div>
       )}
@@ -264,8 +280,10 @@ export default function ModelsPage() {
           {/* ASR Models */}
           {filteredAsr.length > 0 && (
             <div>
-              <h2 className="text-balance text-[14px] font-medium text-text-primary mb-3">Speech Recognition</h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <h2 className="mb-3 text-balance text-[14px] font-medium text-text-primary">
+                Speech Recognition
+              </h2>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {filteredAsr.map((model) => {
                   const info = getModelInfo(model.name);
                   if (!info) return null;
@@ -286,8 +304,10 @@ export default function ModelsPage() {
           {/* LLM Models */}
           {filteredLlm.length > 0 && (
             <div>
-              <h2 className="text-balance text-[14px] font-medium text-text-primary mb-3">Text Cleanup (LLM)</h2>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <h2 className="mb-3 text-balance text-[14px] font-medium text-text-primary">
+                Text Cleanup (LLM)
+              </h2>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 {filteredLlm.map((model) => {
                   const info = getLlmModelInfo(model.name);
                   if (!info) return null;
@@ -311,9 +331,7 @@ export default function ModelsPage() {
       {!loading && filteredAsr.length === 0 && filteredLlm.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <p className="text-[14px] text-text-muted">
-            {filter === "downloaded"
-              ? "No models downloaded yet."
-              : "All models are downloaded!"}
+            {filter === "downloaded" ? "No models downloaded yet." : "All models are downloaded!"}
           </p>
         </div>
       )}

@@ -13,7 +13,5 @@ if (isWidget) {
 }
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    {isWidget ? <WidgetView /> : <App />}
-  </React.StrictMode>,
+  <React.StrictMode>{isWidget ? <WidgetView /> : <App />}</React.StrictMode>,
 );

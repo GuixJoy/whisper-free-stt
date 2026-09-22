@@ -24,20 +24,28 @@ function App() {
   const [showErrors, setShowErrors] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
   const [view, setView] = useState<AppView>(
-    localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding"
+    localStorage.getItem("onboarding_completed") === "true" ? "main" : "onboarding",
   );
   const [errors, setErrors] = useState<AppError[]>([]);
   const [activeItem, setActiveItem] = useState("Home");
   const [settingsVersion, setSettingsVersion] = useState(0);
-  const [hotkey] = useState(() => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space");
+  const [hotkey] = useState(
+    () => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space",
+  );
 
   const feedRef = useRef<HTMLDivElement | null>(null);
 
-  const addError = useCallback((category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setErrors((prev) => [...prev, { id, category, message, canRetry, retryHint, dismissed: false }]);
-    setShowErrors(true);
-  }, []);
+  const addError = useCallback(
+    (category: AppError["category"], message: string, canRetry = false, retryHint?: string) => {
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setErrors((prev) => [
+        ...prev,
+        { id, category, message, canRetry, retryHint, dismissed: false },
+      ]);
+      setShowErrors(true);
+    },
+    [],
+  );
 
   const dismissError = useCallback((id: string) => {
     setErrors((prev) => prev.map((e) => (e.id === id ? { ...e, dismissed: true } : e)));
@@ -67,11 +75,11 @@ function App() {
   useEffect(() => {
     const setVH = () => {
       const vh = window.innerHeight * 0.01;
-      document.documentElement.style.setProperty('--vh', `${vh}px`);
+      document.documentElement.style.setProperty("--vh", `${vh}px`);
     };
     setVH();
-    window.addEventListener('resize', setVH);
-    return () => window.removeEventListener('resize', setVH);
+    window.addEventListener("resize", setVH);
+    return () => window.removeEventListener("resize", setVH);
   }, []);
 
   useEffect(() => {
@@ -90,9 +98,18 @@ function App() {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const win = getCurrentWindow();
-        const prefix = status === "idle" ? "[·]" : status === "listening" ? "[rec]" : status === "transcribing" ? "[tx]" : "[on]";
+        const prefix =
+          status === "idle"
+            ? "[·]"
+            : status === "listening"
+              ? "[rec]"
+              : status === "transcribing"
+                ? "[tx]"
+                : "[on]";
         await win.setTitle(`${prefix} STT — ${status}`);
-      } catch { /* not in Tauri */ }
+      } catch {
+        /* not in Tauri */
+      }
     })();
   }, [status]);
 
@@ -107,7 +124,13 @@ function App() {
         target.getAttribute("role") === "button" ||
         target.closest('[contenteditable="true"]') !== null ||
         (target as HTMLInputElement).isContentEditable === true;
-      if (e.code === "Space" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA" && !isInteractive) {
+      if (
+        e.code === "Space" &&
+        tag !== "INPUT" &&
+        tag !== "SELECT" &&
+        tag !== "TEXTAREA" &&
+        !isInteractive
+      ) {
         e.preventDefault();
         if (connectedRef.current) stopRef.current();
         else startRef.current(undefined, "SpaceBar");
@@ -135,7 +158,9 @@ function App() {
       try {
         const { emit } = await import("@tauri-apps/api/event");
         await emit("widget-status", status);
-      } catch { /* not in Tauri */ }
+      } catch {
+        /* not in Tauri */
+      }
     })();
   }, [status]);
 
@@ -158,17 +183,27 @@ function App() {
             await win.unminimize();
             await win.show();
             await win.setFocus();
-          } catch { /* not in Tauri */ }
+          } catch {
+            /* not in Tauri */
+          }
         });
         // Widget opened late misses earlier status broadcasts — resend on handshake.
         unlistenReady = await listen("widget-ready", async () => {
           try {
             await emit("widget-status", statusRef.current);
-          } catch { /* not in Tauri */ }
+          } catch {
+            /* not in Tauri */
+          }
         });
-      } catch { /* not in Tauri */ }
+      } catch {
+        /* not in Tauri */
+      }
     })();
-    return () => { unlistenToggle?.(); unlistenShowMain?.(); unlistenReady?.(); };
+    return () => {
+      unlistenToggle?.();
+      unlistenShowMain?.();
+      unlistenReady?.();
+    };
   }, [connectedRef, statusRef, startRef, stopRef]);
 
   // --- Tray actions + global push-to-talk shortcut ---
@@ -185,13 +220,19 @@ function App() {
             stopRef.current();
           }
         });
-      } catch { /* not in Tauri */ }
+      } catch {
+        /* not in Tauri */
+      }
       // Register global shortcut for push-to-talk
       try {
         const { register, unregister } = await import("@tauri-apps/plugin-global-shortcut");
         // Unregister any previous shortcut first (handles StrictMode re-run)
         if (registeredShortcut) {
-          try { await unregister(registeredShortcut); } catch { /* ok */ }
+          try {
+            await unregister(registeredShortcut);
+          } catch {
+            /* ok */
+          }
         }
         const savedHotkey = localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space";
         await register(savedHotkey, (event) => {
@@ -264,7 +305,9 @@ function App() {
         <ErrorBanner
           errors={errors}
           onDismiss={dismissError}
-          onRetry={(id) => { dismissError(id); }}
+          onRetry={(id) => {
+            dismissError(id);
+          }}
           visible={showErrors}
           onClose={() => setShowErrors(false)}
         />
@@ -328,7 +371,11 @@ function App() {
       </AppShell>
 
       {toast && (
-        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 bg-app-surface border border-border rounded-card text-[14px] text-text-primary shadow-lg animate-toast-in">
+        <div
+          role="status"
+          aria-live="polite"
+          className="animate-toast-in fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-card border border-border bg-app-surface px-4 py-2.5 text-[14px] text-text-primary shadow-lg"
+        >
           {toast}
         </div>
       )}

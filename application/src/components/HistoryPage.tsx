@@ -1,5 +1,17 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { Search, Download, Trash2, ArrowLeft, CheckSquare, Square, Calendar, Filter, Star, RefreshCw, TriangleAlert } from "lucide-react";
+import {
+  Search,
+  Download,
+  Trash2,
+  ArrowLeft,
+  CheckSquare,
+  Square,
+  Calendar,
+  Filter,
+  Star,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 import { formatTimestamp } from "@/lib/utils";
 import { historyToCsv, historyToText } from "@/lib/historyExport";
 import { parseAppError } from "@/lib/errors";
@@ -30,7 +42,12 @@ function getDateGroup(iso: string): string {
     const isYesterday = d.toDateString() === yesterday.toDateString();
     if (isToday) return "Today";
     if (isYesterday) return "Yesterday";
-    return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    return d.toLocaleDateString([], {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
   } catch {
     return "Unknown";
   }
@@ -54,17 +71,17 @@ function DeleteConfirm({
     <Dialog
       onClose={onCancel}
       label="Delete Transcripts"
-      className="max-w-[380px] bg-app-surface-dark border-border-hover p-6"
+      className="max-w-[380px] border-border-hover bg-app-surface-dark p-6"
     >
-      <h3 className="text-text-primary text-[16px] font-semibold">
+      <h3 className="text-[16px] font-semibold text-text-primary">
         {one ? "Delete transcript" : `Delete ${count} transcripts`}
       </h3>
-      <p className="text-text-muted text-[14px] mt-2">
+      <p className="mt-2 text-[14px] text-text-muted">
         {one
           ? "This transcript will be removed from your history. This cannot be undone."
           : `These ${count} transcripts will be removed from your history. This cannot be undone.`}
       </p>
-      <div className="flex items-center justify-end gap-2 mt-6">
+      <div className="mt-6 flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
@@ -80,7 +97,6 @@ function DeleteConfirm({
     </Dialog>
   );
 }
-
 
 export default function HistoryPage({ onBack }: Props) {
   const [allRows, setAllRows] = useState<HistoryRow[]>([]);
@@ -108,23 +124,30 @@ export default function HistoryPage({ onBack }: Props) {
     }
   }, []);
 
-  useEffect(() => { loadHistory(); }, [loadHistory]);
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   // Filtered rows
   const filteredRows = useMemo(() => {
     let result = allRows;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(r => r.raw_text.toLowerCase().includes(q) || r.processed_text.toLowerCase().includes(q));
+      result = result.filter(
+        (r) => r.raw_text.toLowerCase().includes(q) || r.processed_text.toLowerCase().includes(q),
+      );
     }
     if (modeFilter !== "all") {
-      result = result.filter(r => r.mode === modeFilter);
+      result = result.filter((r) => r.mode === modeFilter);
     }
     return result;
   }, [allRows, searchQuery, modeFilter]);
 
   // Visible rows (pagination)
-  const visibleRows = useMemo(() => filteredRows.slice(0, visibleCount), [filteredRows, visibleCount]);
+  const visibleRows = useMemo(
+    () => filteredRows.slice(0, visibleCount),
+    [filteredRows, visibleCount],
+  );
   const hasMore = visibleCount < filteredRows.length;
 
   // Date groups
@@ -144,7 +167,7 @@ export default function HistoryPage({ onBack }: Props) {
 
   // Available modes for filter dropdown
   const availableModes = useMemo(() => {
-    const modes = new Set(allRows.map(r => r.mode).filter(Boolean));
+    const modes = new Set(allRows.map((r) => r.mode).filter(Boolean));
     return Array.from(modes).sort();
   }, [allRows]);
 
@@ -188,7 +211,7 @@ export default function HistoryPage({ onBack }: Props) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const favorite = await invoke<number>("toggle_history_favorite", { id });
-      setAllRows((prev) => prev.map((r) => r.id === id ? { ...r, favorite } : r));
+      setAllRows((prev) => prev.map((r) => (r.id === id ? { ...r, favorite } : r)));
     } catch (e) {
       console.error("[history] favorite toggle failed", e);
     }
@@ -204,18 +227,18 @@ export default function HistoryPage({ onBack }: Props) {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    const allVisibleSelected = visibleRows.every(r => selectedIds.has(r.id));
+    const allVisibleSelected = visibleRows.every((r) => selectedIds.has(r.id));
     if (allVisibleSelected) {
       // Deselect only visible rows, preserve hidden selections
-      const visibleIds = new Set(visibleRows.map(r => r.id));
-      setSelectedIds(prev => {
+      const visibleIds = new Set(visibleRows.map((r) => r.id));
+      setSelectedIds((prev) => {
         const next = new Set(prev);
         for (const id of visibleIds) next.delete(id);
         return next;
       });
     } else {
       // Add visible rows to selection
-      setSelectedIds(prev => {
+      setSelectedIds((prev) => {
         const next = new Set(prev);
         for (const r of visibleRows) next.add(r.id);
         return next;
@@ -226,15 +249,22 @@ export default function HistoryPage({ onBack }: Props) {
   const copyText = async (text: string, id: number) => {
     const { copyToClipboard } = await import("@/lib/clipboard");
     const ok = await copyToClipboard(text);
-    if (ok) { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }
+    if (ok) {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} aria-label="Back to home" className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-border transition-colors">
+          <button
+            onClick={onBack}
+            aria-label="Back to home"
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-border"
+          >
             <ArrowLeft size={18} className="text-text-secondary" />
           </button>
           <h2 className="text-balance text-[32px] font-semibold text-text-primary">History</h2>
@@ -246,58 +276,88 @@ export default function HistoryPage({ onBack }: Props) {
           {selectedIds.size > 0 && (
             <button
               onClick={() => setPendingDelete(Array.from(selectedIds))}
-              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-red-500 hover:bg-red-50 transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-[12px] px-4 text-[13px] font-medium text-red-500 transition-colors hover:bg-red-50"
             >
               <Trash2 size={14} /> Delete ({selectedIds.size})
             </button>
           )}
-          <button onClick={() => exportHistory("csv")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors">
+          <button
+            onClick={() => exportHistory("csv")}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[12px] px-4 text-[13px] font-medium text-text-muted transition-colors hover:bg-border hover:text-text-primary"
+          >
             <Download size={14} /> CSV
           </button>
-          <button onClick={() => exportHistory("text")} className="inline-flex items-center gap-1.5 h-9 px-4 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors">
+          <button
+            onClick={() => exportHistory("text")}
+            className="inline-flex h-9 items-center gap-1.5 rounded-[12px] px-4 text-[13px] font-medium text-text-muted transition-colors hover:bg-border hover:text-text-primary"
+          >
             <Download size={14} /> Text
           </button>
-          <button onClick={(e) => { e.preventDefault(); loadHistory(); }} disabled={loading} aria-label="Refresh history" className="flex items-center justify-center w-9 h-9 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors disabled:opacity-50">
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              loadHistory();
+            }}
+            disabled={loading}
+            aria-label="Refresh history"
+            className="flex h-9 w-9 items-center justify-center rounded-[12px] text-[13px] font-medium text-text-muted transition-colors hover:bg-border hover:text-text-primary disabled:opacity-50"
+          >
             {loading ? <RefreshCw size={15} className="animate-spin" /> : <RefreshCw size={15} />}
           </button>
         </div>
       </div>
 
       {/* Search + Filters */}
-      <div className="flex items-center gap-2 mb-4">
-        <Search size={16} className="text-text-muted shrink-0" />
+      <div className="mb-4 flex items-center gap-2">
+        <Search size={16} className="shrink-0 text-text-muted" />
         <input
           type="text"
           name="history-search"
           autoComplete="off"
           value={searchQuery}
-          onChange={(e) => { setSearchQuery(e.target.value); setVisibleCount(PAGE_SIZE); }}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setVisibleCount(PAGE_SIZE);
+          }}
           placeholder="Search transcripts…"
           aria-label="Search transcripts"
-          className="flex-1 h-10 px-4 bg-app-surface-secondary border border-border rounded-[12px] text-[14px] text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent focus:bg-accent-focus-surface"
+          className="h-10 flex-1 rounded-[12px] border border-border bg-app-surface-secondary px-4 text-[14px] text-text-primary placeholder:text-text-muted focus:border-accent focus:bg-accent-focus-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
         />
         {availableModes.length > 0 && (
           <div className="flex items-center gap-1.5">
             <Filter size={14} className="text-text-muted" />
             <select
               value={modeFilter}
-              onChange={(e) => { setModeFilter(e.target.value); setVisibleCount(PAGE_SIZE); }}
+              onChange={(e) => {
+                setModeFilter(e.target.value);
+                setVisibleCount(PAGE_SIZE);
+              }}
               aria-label="Filter by mode"
-              className="h-10 px-3 bg-app-surface-secondary border border-border rounded-[12px] text-[13px] text-text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus:border-accent"
+              className="h-10 rounded-[12px] border border-border bg-app-surface-secondary px-3 text-[13px] text-text-primary focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
             >
               <option value="all">All modes</option>
-              {availableModes.map(m => (
-                <option key={m} value={m}>{m}</option>
+              {availableModes.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
               ))}
             </select>
           </div>
         )}
         {searchQuery && (
-          <button onClick={() => { setSearchQuery(""); setVisibleCount(PAGE_SIZE); }} className="text-text-muted hover:text-text-primary text-[13px]">Clear</button>
+          <button
+            onClick={() => {
+              setSearchQuery("");
+              setVisibleCount(PAGE_SIZE);
+            }}
+            className="text-[13px] text-text-muted hover:text-text-primary"
+          >
+            Clear
+          </button>
         )}
         <button
           onClick={toggleSelectAll}
-          className="flex items-center justify-center w-9 h-9 rounded-[12px] text-text-muted hover:text-text-primary hover:bg-border transition-colors"
+          className="flex h-9 w-9 items-center justify-center rounded-[12px] text-text-muted transition-colors hover:bg-border hover:text-text-primary"
           title={selectedIds.size === visibleRows.length ? "Deselect all" : "Select all"}
           aria-label={selectedIds.size === visibleRows.length ? "Deselect all" : "Select all"}
         >
@@ -305,45 +365,67 @@ export default function HistoryPage({ onBack }: Props) {
         </button>
       </div>
 
-      {error && <div className="mb-4 rounded-[12px] bg-red-500/10 border border-red-500/20 px-4 py-3 text-[14px] text-red-600 flex items-center gap-2"><TriangleAlert size={16} className="shrink-0" /> {error}</div>}
+      {error && (
+        <div className="mb-4 flex items-center gap-2 rounded-[12px] border border-red-500/20 bg-red-500/10 px-4 py-3 text-[14px] text-red-600">
+          <TriangleAlert size={16} className="shrink-0" /> {error}
+        </div>
+      )}
 
       {/* List */}
-      <div className="flex-1 overflow-auto space-y-4">
+      <div className="flex-1 space-y-4 overflow-auto">
         {filteredRows.length === 0 && !loading && (
-          <p className="text-center text-text-muted text-[15px] py-12">No transcripts yet.</p>
+          <p className="py-12 text-center text-[15px] text-text-muted">No transcripts yet.</p>
         )}
         {groupedRows.map((group) => (
           <div key={group.label}>
             {/* Date header */}
-            <div className="flex items-center gap-2 mb-2 sticky top-0 z-10 bg-app-bg py-1">
+            <div className="sticky top-0 z-10 mb-2 flex items-center gap-2 bg-app-bg py-1">
               <Calendar size={12} className="text-text-muted" />
-              <span className="text-[12px] font-semibold text-text-muted uppercase tracking-wide">{group.label}</span>
-              <div className="flex-1 h-px bg-border" />
+              <span className="text-[12px] font-semibold uppercase tracking-wide text-text-muted">
+                {group.label}
+              </span>
+              <div className="h-px flex-1 bg-border" />
               <span className="text-[11px] text-text-muted">{group.rows.length}</span>
             </div>
             {/* Rows */}
             <div className="space-y-2">
               {group.rows.map((row) => (
-                <div key={row.id} className="group bg-app-surface-secondary rounded-[16px] border border-border p-4 flex flex-col gap-2">
+                <div
+                  key={row.id}
+                  className="group flex flex-col gap-2 rounded-[16px] border border-border bg-app-surface-secondary p-4"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => toggleSelect(row.id)}
-                        aria-label={selectedIds.has(row.id) ? "Deselect transcript" : "Select transcript"}
-                        className="text-text-muted hover:text-text-primary transition-colors"
+                        aria-label={
+                          selectedIds.has(row.id) ? "Deselect transcript" : "Select transcript"
+                        }
+                        className="text-text-muted transition-colors hover:text-text-primary"
                       >
-                        {selectedIds.has(row.id) ? <CheckSquare size={16} className="text-accent" /> : <Square size={16} />}
+                        {selectedIds.has(row.id) ? (
+                          <CheckSquare size={16} className="text-accent" />
+                        ) : (
+                          <Square size={16} />
+                        )}
                       </button>
-                      <button onClick={() => toggleFavorite(row.id)} aria-label={row.favorite ? "Remove from favorites" : "Add to favorites"} aria-pressed={!!row.favorite} className={`transition-colors ${row.favorite ? "text-yellow-700" : "text-text-muted hover:text-yellow-700"}`}>
+                      <button
+                        onClick={() => toggleFavorite(row.id)}
+                        aria-label={row.favorite ? "Remove from favorites" : "Add to favorites"}
+                        aria-pressed={!!row.favorite}
+                        className={`transition-colors ${row.favorite ? "text-yellow-700" : "text-text-muted hover:text-yellow-700"}`}
+                      >
                         <Star size={18} fill={row.favorite ? "currentColor" : "none"} />
                       </button>
-                      <span className="inline-flex items-center rounded-[8px] px-2.5 py-0.5 text-[11px] font-semibold bg-accent/10 border border-accent/22 text-accent-active">
+                      <span className="border-accent/22 inline-flex items-center rounded-[8px] border bg-accent/10 px-2.5 py-0.5 text-[11px] font-semibold text-accent-active">
                         {row.mode}
                       </span>
                     </div>
-                    <span className="text-[12px] text-text-muted">{formatTimestamp(row.created_at)}</span>
+                    <span className="text-[12px] text-text-muted">
+                      {formatTimestamp(row.created_at)}
+                    </span>
                   </div>
-                  <div className="text-[15px] text-text-primary whitespace-pre-wrap break-words">
+                  <div className="whitespace-pre-wrap break-words text-[15px] text-text-primary">
                     {row.processed_text && row.processed_text !== row.raw_text ? (
                       <>
                         <span className="text-text-muted">Raw:</span> {row.raw_text}
@@ -354,13 +436,22 @@ export default function HistoryPage({ onBack }: Props) {
                       row.raw_text
                     )}
                   </div>
-                  <div className="flex items-center justify-between pt-1 border-t border-border">
-                    <span className="text-[12px] text-text-muted">{row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s</span>
+                  <div className="flex items-center justify-between border-t border-border pt-1">
+                    <span className="text-[12px] text-text-muted">
+                      {row.language} · {row.model || "default"} · {row.duration_sec?.toFixed(1)}s
+                    </span>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => copyText(row.processed_text || row.raw_text, row.id)} className="inline-flex items-center h-8 px-3 rounded-[10px] text-[12px] font-medium bg-border border border-border text-text-muted hover:text-text-primary transition-colors">
+                      <button
+                        onClick={() => copyText(row.processed_text || row.raw_text, row.id)}
+                        className="inline-flex h-8 items-center rounded-[10px] border border-border bg-border px-3 text-[12px] font-medium text-text-muted transition-colors hover:text-text-primary"
+                      >
                         {copiedId === row.id ? "Copied!" : "Copy"}
                       </button>
-                      <button onClick={() => setPendingDelete([row.id])} aria-label="Delete transcript" className="inline-flex items-center h-8 px-2 rounded-[10px] text-[12px] font-medium text-red-600 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100 focus-visible:opacity-100">
+                      <button
+                        onClick={() => setPendingDelete([row.id])}
+                        aria-label="Delete transcript"
+                        className="inline-flex h-8 items-center rounded-[10px] px-2 text-[12px] font-medium text-red-600 opacity-0 transition-colors hover:bg-red-500/10 focus-visible:opacity-100 group-hover:opacity-100"
+                      >
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -374,7 +465,7 @@ export default function HistoryPage({ onBack }: Props) {
           <div className="flex justify-center py-4">
             <button
               onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
-              className="inline-flex items-center h-10 px-6 rounded-[12px] text-[13px] font-medium text-text-muted hover:text-text-primary hover:bg-border transition-colors"
+              className="inline-flex h-10 items-center rounded-[12px] px-6 text-[13px] font-medium text-text-muted transition-colors hover:bg-border hover:text-text-primary"
             >
               Load more ({filteredRows.length - visibleCount} remaining)
             </button>

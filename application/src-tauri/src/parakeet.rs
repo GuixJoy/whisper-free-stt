@@ -59,7 +59,14 @@ impl ParakeetRecognizer {
         bpe_vocab: Option<&std::path::Path>,
         hotwords_score: f32,
     ) -> Result<Self> {
-        Self::build(model_dir, num_threads, debug, decoding_method, bpe_vocab, hotwords_score)
+        Self::build(
+            model_dir,
+            num_threads,
+            debug,
+            decoding_method,
+            bpe_vocab,
+            hotwords_score,
+        )
     }
 
     fn build(
@@ -85,8 +92,7 @@ impl ParakeetRecognizer {
         config.model_config.debug = debug;
         if decoding_method == "modified_beam_search" {
             config.model_config.modeling_unit = Some("bpe".to_string());
-            config.model_config.bpe_vocab =
-                Some(bpe_vocab.unwrap().to_str().unwrap().to_string());
+            config.model_config.bpe_vocab = Some(bpe_vocab.unwrap().to_str().unwrap().to_string());
             config.hotwords_score = hotwords_score;
         }
 
@@ -103,15 +109,14 @@ impl ParakeetRecognizer {
     /// timestamps the cleanup gate needs); kept for the bench harness.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn transcribe(&self, samples: &[f32]) -> String {
-        self.transcribe_full(samples).map(|r| r.text).unwrap_or_default()
+        self.transcribe_full(samples)
+            .map(|r| r.text)
+            .unwrap_or_default()
     }
 
     /// Full decode result (tokens, per-token timestamps/durations when the
     /// decoder emits them). The selective-cleanup gate consumes this.
-    pub fn transcribe_full(
-        &self,
-        samples: &[f32],
-    ) -> Option<sherpa_onnx::OfflineRecognizerResult> {
+    pub fn transcribe_full(&self, samples: &[f32]) -> Option<sherpa_onnx::OfflineRecognizerResult> {
         let stream = self.recognizer.create_stream();
         stream.accept_waveform(16000, samples);
         self.recognizer.decode(&stream);
@@ -149,7 +154,11 @@ mod tests {
     fn derive_bpe_vocab_builds_then_reuses_cache() {
         let dir = std::env::temp_dir().join(format!("floure-bpe-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("tokens.txt"), "\u{2581}hello 1\n\u{2581}world 2\n\n").unwrap();
+        std::fs::write(
+            dir.join("tokens.txt"),
+            "\u{2581}hello 1\n\u{2581}world 2\n\n",
+        )
+        .unwrap();
 
         let path = derive_bpe_vocab(&dir).unwrap();
         let vocab = std::fs::read_to_string(&path).unwrap();

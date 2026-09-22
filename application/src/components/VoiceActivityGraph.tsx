@@ -61,13 +61,16 @@ export default function VoiceActivityGraph({ data, title, subtitle }: VoiceActiv
   const xStep = (width - padding * 2) / (data.length - 1);
 
   const tooltipX = hoveredIndex !== null ? padding + hoveredIndex * xStep : 0;
-  const tooltipY = hoveredIndex !== null ? height - padding - (data[hoveredIndex].value / maxVal) * (height - padding * 2) : 0;
+  const tooltipY =
+    hoveredIndex !== null
+      ? height - padding - (data[hoveredIndex].value / maxVal) * (height - padding * 2)
+      : 0;
 
   return (
     <div className="flex flex-col">
       {(title || subtitle) && (
         <div className="mb-5">
-          {title && <h3 className="text-[18px] font-semibold text-text-primary mb-1">{title}</h3>}
+          {title && <h3 className="mb-1 text-[18px] font-semibold text-text-primary">{title}</h3>}
           {subtitle && <p className="text-[13px] text-text-muted">{subtitle}</p>}
         </div>
       )}
@@ -75,7 +78,7 @@ export default function VoiceActivityGraph({ data, title, subtitle }: VoiceActiv
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
-        className="w-full h-auto"
+        className="h-auto w-full"
         style={{ maxHeight: "280px" }}
       >
         {/* Grid lines */}

@@ -59,7 +59,8 @@ pub(crate) fn openrouter_api_key() -> Option<String> {
     std::env::var("OPENROUTER_API_KEY").ok()
 }
 
-pub const CLEANUP_PROMPT: &str = "Fix only clear errors in this transcript: remove filler words (um, uh), \
+pub const CLEANUP_PROMPT: &str =
+    "Fix only clear errors in this transcript: remove filler words (um, uh), \
 fix obviously misheard words, add any missing punctuation and capitalization. \
 Preserve technical terms and all other wording. \
 If the transcript is already correct, return it unchanged. \
@@ -70,11 +71,13 @@ pub const BULLET_PROMPT: &str = "Convert the following microphone transcript int
 well-structured bulleted list. Group related points together. \
 Return only the bullet list with no preamble.";
 
-pub const EMAIL_PROMPT: &str = "Rewrite the following microphone transcript as a professional email. \
+pub const EMAIL_PROMPT: &str =
+    "Rewrite the following microphone transcript as a professional email. \
 Add a short subject line in brackets at the top. \
 Return only the email body with no extra preamble.";
 
-pub const COMMIT_PROMPT: &str = "Convert the following microphone transcript into a git commit message. \
+pub const COMMIT_PROMPT: &str =
+    "Convert the following microphone transcript into a git commit message. \
 Use conventional commit format (type: short description). \
 Keep the subject line under 72 characters. \
 Return only the commit message with no preamble.";
@@ -286,8 +289,10 @@ impl LlmCleanup {
         // Without this the model doesn't know where its answer should end
         // and rambles past EOS. `add_assistant=true` appends the assistant
         // header so generation starts as the reply.
-        let chat = vec![LlamaChatMessage::new("user".to_string(), prompt.to_string())
-            .map_err(|e| anyhow::anyhow!("chat message: {}", e))?];
+        let chat = vec![
+            LlamaChatMessage::new("user".to_string(), prompt.to_string())
+                .map_err(|e| anyhow::anyhow!("chat message: {}", e))?,
+        ];
         let formatted = model
             .apply_chat_template(None, &chat, true)
             .map_err(|e| anyhow::anyhow!("chat template: {}", e))?;
@@ -492,7 +497,11 @@ mod tests {
     fn gate_skips_clean_transcript() {
         let ts: Vec<f32> = (0..10).map(|i| i as f32 * 0.3).collect();
         let du = vec![0.2; 10];
-        assert!(!needs_cleanup("The metal forest is in the great domed cavern.", &ts, &du));
+        assert!(!needs_cleanup(
+            "The metal forest is in the great domed cavern.",
+            &ts,
+            &du
+        ));
     }
 
     #[test]
@@ -553,10 +562,7 @@ mod tests {
         );
         assert!(first.is_empty());
         assert!(!buffer.is_empty());
-        let second = drain_sse_buffer(
-            &mut buffer,
-            "lo\"}}]}\n\ndata: [DONE]\n",
-        );
+        let second = drain_sse_buffer(&mut buffer, "lo\"}}]}\n\ndata: [DONE]\n");
         assert_eq!(second, vec!["hello".to_string()]);
         assert!(buffer.is_empty());
     }

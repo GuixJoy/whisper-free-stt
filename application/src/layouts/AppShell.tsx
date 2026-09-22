@@ -37,10 +37,7 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
     return (
       <div
         ref={ref}
-        className={cn(
-          "flex h-screen overflow-hidden relative",
-          className,
-        )}
+        className={cn("relative flex h-screen overflow-hidden", className)}
         style={{ backgroundColor: "#FAF8F5", color: "#2C2520" }}
         {...props}
       >
@@ -59,31 +56,31 @@ export const AppShell = forwardRef<HTMLDivElement, AppShellProps>(
         <Sidebar activeItem={activeItem} onNavigate={onNavigate} />
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden relative z-10">
+        <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
           {/* Title Bar */}
           <div
-            className="flex items-center justify-between h-12 px-4 bg-transparent border-b border-border select-none"
+            className="flex h-12 select-none items-center justify-between border-b border-border bg-transparent px-4"
             onMouseDown={onTitleBarMouseDown}
           >
             <div className="flex-1" />
 
             <div className="flex items-center gap-1">
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-border"
                 onClick={() => win?.minimize()}
                 aria-label="Minimize window"
               >
                 <Minus size={16} className="text-text-secondary" />
               </button>
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-border"
                 onClick={() => win?.toggleMaximize()}
                 aria-label="Maximize or restore window"
               >
                 <Square size={14} className="text-text-secondary" />
               </button>
               <button
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-border"
                 onClick={() => win?.hide()}
                 aria-label="Hide window"
               >

@@ -24,18 +24,18 @@ export default function PttOverlay({ visible }: PttOverlayProps) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+      className="pointer-events-none fixed bottom-8 left-1/2 z-[9999] -translate-x-1/2"
       style={{
         opacity: visible ? 1 : 0,
         transform: `translateX(-50%) translateY(${visible ? "0" : "8px"})`,
         transition: "opacity 200ms ease-out, transform 200ms ease-out",
       }}
     >
-      <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-[#2C2520]/90 backdrop-blur-sm border border-white/10 shadow-lg">
+      <div className="flex items-center gap-2.5 rounded-full border border-white/10 bg-[#2C2520]/90 px-4 py-2.5 shadow-lg backdrop-blur-sm">
         {/* Pulsing mic icon */}
-        <div className="relative flex items-center justify-center w-[28px] h-[28px]">
+        <div className="relative flex h-[28px] w-[28px] items-center justify-center">
           <div
-            className="absolute inset-0 rounded-full bg-accent ptt-pulse"
+            className="ptt-pulse absolute inset-0 rounded-full bg-accent"
             style={{
               animation: visible ? "ptt-pulse 1.5s ease-in-out infinite" : "none",
             }}
@@ -46,14 +46,16 @@ export default function PttOverlay({ visible }: PttOverlayProps) {
         <span className="text-[13px] font-medium text-white/90">Listening…</span>
 
         {/* Waveform dots */}
-        <div className="flex items-center gap-[3px] ml-1">
+        <div className="ml-1 flex items-center gap-[3px]">
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="w-[3px] rounded-full bg-accent ptt-wave"
+              className="ptt-wave w-[3px] rounded-full bg-accent"
               style={{
                 height: "12px",
-                animation: visible ? `ptt-wave 0.8s ease-in-out ${i * 0.15}s infinite alternate` : "none",
+                animation: visible
+                  ? `ptt-wave 0.8s ease-in-out ${i * 0.15}s infinite alternate`
+                  : "none",
               }}
             />
           ))}

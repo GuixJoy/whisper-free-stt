@@ -1,10 +1,33 @@
 import { Zap, Gauge, Rocket, Sparkles } from "lucide-react";
 
-const PROFILE_INFO: Record<string, { label: string; model: string; icon: React.ReactNode; color: string }> = {
-  auto:     { label: "Auto",      model: "Auto-select",       icon: <Sparkles size={12} />, color: "text-text-muted" },
-  parakeet: { label: "Parakeet",  model: "Parakeet TDT",      icon: <Zap size={12} />,      color: "text-success" },
-  "whisper-turbo": { label: "Turbo", model: "large-v3-turbo", icon: <Rocket size={12} />,   color: "text-orange-600" },
-  "whisper-base":  { label: "Base",  model: "base",           icon: <Gauge size={12} />,    color: "text-blue-600" },
+const PROFILE_INFO: Record<
+  string,
+  { label: string; model: string; icon: React.ReactNode; color: string }
+> = {
+  auto: {
+    label: "Auto",
+    model: "Auto-select",
+    icon: <Sparkles size={12} />,
+    color: "text-text-muted",
+  },
+  parakeet: {
+    label: "Parakeet",
+    model: "Parakeet TDT",
+    icon: <Zap size={12} />,
+    color: "text-success",
+  },
+  "whisper-turbo": {
+    label: "Turbo",
+    model: "large-v3-turbo",
+    icon: <Rocket size={12} />,
+    color: "text-orange-600",
+  },
+  "whisper-base": {
+    label: "Base",
+    model: "base",
+    icon: <Gauge size={12} />,
+    color: "text-blue-600",
+  },
 };
 
 interface ModelBadgeProps {
@@ -20,17 +43,19 @@ export default function ModelBadge({ profile, resolvedModel }: ModelBadgeProps) 
   const deviceLabel = resolvedModel?.device === "cuda" ? "GPU" : "CPU";
 
   return (
-    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/60 border border-[rgba(44,37,32,0.06)] backdrop-blur-sm">
-      <span className={info.color} aria-hidden="true">{info.icon}</span>
-      <span className="text-[12px] font-semibold text-text-primary tracking-wide uppercase">
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(44,37,32,0.06)] bg-white/60 px-2.5 py-1 backdrop-blur-sm">
+      <span className={info.color} aria-hidden="true">
+        {info.icon}
+      </span>
+      <span className="text-[12px] font-semibold uppercase tracking-wide text-text-primary">
         {resolvedModel ? (PROFILE_INFO[resolvedProfile]?.label ?? resolvedProfile) : info.label}
       </span>
-      <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
-      <span className="text-[12px] text-text-muted font-medium">{displayName}</span>
+      <span className="h-2.5 w-px bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
+      <span className="text-[12px] font-medium text-text-muted">{displayName}</span>
       {resolvedModel && (
         <>
-          <span className="w-px h-2.5 bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
-          <span className="text-[12px] text-text-muted font-medium">{deviceLabel}</span>
+          <span className="h-2.5 w-px bg-[rgba(44,37,32,0.12)]" aria-hidden="true" />
+          <span className="text-[12px] font-medium text-text-muted">{deviceLabel}</span>
         </>
       )}
     </div>

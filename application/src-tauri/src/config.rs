@@ -314,12 +314,15 @@ mod tests {
             "clipboard_enabled": false
         }))
         .unwrap();
-        assert!(matches!(update.asr_profile, super::AsrProfile::WhisperTurbo));
-        assert!(matches!(update.llm_provider, super::LlmProvider::OpenRouter));
         assert!(matches!(
-            update.llm_mode,
-            crate::llm::LlmMode::BulletList
+            update.asr_profile,
+            super::AsrProfile::WhisperTurbo
         ));
+        assert!(matches!(
+            update.llm_provider,
+            super::LlmProvider::OpenRouter
+        ));
+        assert!(matches!(update.llm_mode, crate::llm::LlmMode::BulletList));
     }
 
     #[test]

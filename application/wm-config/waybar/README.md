@@ -21,12 +21,12 @@ chmod +x ~/.config/waybar/scripts/floure-waybar.sh
 
 ## Behavior
 
-| Action | What happens |
-|---|---|
-| Waybar shows `○ Floure` | Idle — click (or `Super+Space`) to dictate |
-| Waybar shows `● Floure` | Recording — click (or `Super+Space`) to stop |
-| Right-click module | Focus the Floure main window |
-| App not running | Module shows idle with tooltip "Floure not running" |
+| Action                  | What happens                                        |
+| ----------------------- | --------------------------------------------------- |
+| Waybar shows `○ Floure` | Idle — click (or `Super+Space`) to dictate          |
+| Waybar shows `● Floure` | Recording — click (or `Super+Space`) to stop        |
+| Right-click module      | Focus the Floure main window                        |
+| App not running         | Module shows idle with tooltip "Floure not running" |
 
 ## Notes
 
