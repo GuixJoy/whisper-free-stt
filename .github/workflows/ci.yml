@@ -1,6 +1,11 @@
 name: CI
 
 on:
+  # master had no CI at all: the pull_request filter below only matches PRs
+  # into main/UI_dev, while all work lands on master. That is how both
+  # formatters drifted red without anyone noticing.
+  push:
+    branches: [master]
   pull_request:
     branches: [main, UI_dev]
   workflow_dispatch:
