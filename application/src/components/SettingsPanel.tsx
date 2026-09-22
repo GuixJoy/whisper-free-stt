@@ -138,7 +138,10 @@ export default function SettingsPanel({ settings, onSave, visible, onClose }: Pr
                 onChange={(e) => update({ hotwords: e.target.value })}
                 placeholder="e.g. WhisperFlow, Tauri, PyTorch"
               />
-              <p className="text-small text-text-muted">Comma-separated words to boost recognition accuracy.</p>
+              <p className="text-small text-text-muted">
+                Comma-separated words to boost recognition accuracy. Applies to the
+                Parakeet profile; Whisper ignores it.
+              </p>
             </div>
           </div>
 
