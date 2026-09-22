@@ -12,34 +12,6 @@ import React from "react";
 // Mock Tauri internals
 Object.defineProperty(window, "__TAURI_INTERNALS__", { value: undefined, writable: true });
 
-// Mock framer-motion to avoid animation issues in tests
-vi.mock("framer-motion", () => {
-  const createMotionComponent = (tag: string) =>
-    React.forwardRef<HTMLElement, Record<string, unknown>>((props, ref) => React.createElement(tag, { ...props, ref }));
-
-  const motionProxy = new Proxy(
-    {},
-    {
-      get: (_target, prop: string) => {
-        if (prop === "path" || prop === "div" || prop === "span" || prop === "svg" || prop === "circle" || prop === "rect" || prop === "g") {
-          return createMotionComponent(prop);
-        }
-        return createMotionComponent("div");
-      },
-    }
-  );
-
-  return {
-    motion: motionProxy,
-    AnimatePresence: ({ children }: any) => React.createElement(React.Fragment, null, children),
-    useAnimation: () => ({
-      start: vi.fn(() => Promise.resolve()),
-      stop: vi.fn(),
-      set: vi.fn(),
-    }),
-  };
-});
-
 // Mock Tauri APIs
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

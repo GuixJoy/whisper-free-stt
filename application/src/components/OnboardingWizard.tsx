@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   CircleCheck,
   TriangleAlert,
@@ -381,12 +380,7 @@ export default function OnboardingWizard({ onFinished }: Props) {
   useEffect(() => micLevelEmitter.subscribe(setMicLevel), []);
 
   return (
-    <motion.div
-      className="flex flex-col items-center justify-center min-h-screen p-8"
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-    >
+    <div className="animate-wizard-in flex flex-col items-center justify-center min-h-screen p-8">
       <div className="w-full max-w-lg">
         <StepIndicator step={step} total={totalSteps} />
 
@@ -404,58 +398,49 @@ export default function OnboardingWizard({ onFinished }: Props) {
         )}
 
         <div className="bg-app-surface rounded-card border border-border p-6">
-          <AnimatePresence mode="wait">
+          {/* Keyed by step so the CSS entrance animation replays on change. */}
+          <div key={step} className="animate-step-in">
             {step === 0 && (
-              <motion.div key="step0" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step1SystemCheck
-                  checks={systemChecks.length > 0 ? systemChecks : [
-                    { name: "Running checks…", status: "pending", message: "Scanning system" },
-                  ]}
-                  onNext={() => runSystemChecks()}
-                />
-              </motion.div>
+              <Step1SystemCheck
+                checks={systemChecks.length > 0 ? systemChecks : [
+                  { name: "Running checks…", status: "pending", message: "Scanning system" },
+                ]}
+                onNext={() => runSystemChecks()}
+              />
             )}
             {step === 1 && (
-              <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step2ModelDownload
-                  progress={modelDownloadProgress}
-                  onDownload={(models) => { downloadModels(models); }}
-                  onDone={() => nextStep()}
-                />
-              </motion.div>
+              <Step2ModelDownload
+                progress={modelDownloadProgress}
+                onDownload={(models) => { downloadModels(models); }}
+                onDone={() => nextStep()}
+              />
             )}
             {step === 2 && (
-              <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step3MicSetup
-                  micLevel={micLevel}
-                  testing={isCapturingMic}
-                  onTest={isCapturingMic ? stopMic : () => void requestMic()}
-                  onDone={() => {
-                    stopMic();
-                    nextStep();
-                  }}
-                />
-              </motion.div>
+              <Step3MicSetup
+                micLevel={micLevel}
+                testing={isCapturingMic}
+                onTest={isCapturingMic ? stopMic : () => void requestMic()}
+                onDone={() => {
+                  stopMic();
+                  nextStep();
+                }}
+              />
             )}
             {step === 3 && (
-              <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step4Permissions
-                  clipboard={clipboardEnabled}
-                  typing={typingEnabled}
-                  onClipboard={(v) => dispatch({ type: "SET_CLIPBOARD", enabled: v })}
-                  onTyping={(v) => dispatch({ type: "SET_TYPING", enabled: v })}
-                  onDone={() => nextStep()}
-                />
-              </motion.div>
+              <Step4Permissions
+                clipboard={clipboardEnabled}
+                typing={typingEnabled}
+                onClipboard={(v) => dispatch({ type: "SET_CLIPBOARD", enabled: v })}
+                onTyping={(v) => dispatch({ type: "SET_TYPING", enabled: v })}
+                onDone={() => nextStep()}
+              />
             )}
             {step === 4 && (
-              <motion.div key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                <Step5Ready onFinish={finish} />
-              </motion.div>
+              <Step5Ready onFinish={finish} />
             )}
-          </AnimatePresence>
+          </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

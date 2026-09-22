@@ -123,11 +123,33 @@ dialog::backdrop { background: rgba(44,37,32,0.4); }
 }
 .animate-toast-in { animation: toast-in 200ms ease-out; }
 
+/* Entrance animations that replaced framer-motion (OnboardingWizard, ErrorBanner) */
+@keyframes wizard-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-wizard-in { animation: wizard-in 300ms ease-out; }
+
+@keyframes step-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-step-in { animation: step-in 200ms ease-out; }
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-panel-in { animation: panel-in 200ms ease-out; }
+
 /* Reduced motion: still the essential state change, drop the flourish */
 @media (prefers-reduced-motion: reduce) {
   .animate-mic-pulse,
   .animate-breathe,
   .animate-toast-in,
+  .animate-wizard-in,
+  .animate-step-in,
+  .animate-panel-in,
   .animate-spin,
   .animate-pulse,
   .ptt-pulse,

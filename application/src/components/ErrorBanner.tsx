@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -58,15 +57,10 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
         {activeErrors.length === 0 ? (
           <p className="text-center text-text-muted text-body py-8">No active errors. System running normally.</p>
         ) : (
-          <AnimatePresence>
-            {activeErrors.map((err) => (
-              <motion.div
+          activeErrors.map((err) => (
+              <div
                 key={err.id}
-                className="bg-app-surface-secondary rounded-card border border-border overflow-hidden"
-                initial={{ height: 0, opacity: 0, scale: 0.95 }}
-                animate={{ height: "auto", opacity: 1, scale: 1 }}
-                exit={{ height: 0, opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.2 }}
+                className="animate-panel-in bg-app-surface-secondary rounded-card border border-border overflow-hidden"
                 role="alert"
               >
                 <div className="flex items-start gap-3 px-3 py-2.5">
@@ -104,9 +98,8 @@ export default function ErrorSidePanel({ errors, onDismiss, onRetry, visible, on
                     </button>
                   </div>
                 )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
+              </div>
+            ))
         )}
       </div>
     </aside>
