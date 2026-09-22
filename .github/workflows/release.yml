@@ -222,7 +222,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: application
+          # releaseId is only set when resolve-release managed to create the
+          # release. When it is empty, tauri-action has to create it, and that
+          # needs tagName: without it the build succeeds and uploads workflow
+          # artifacts but publishes no release at all, which is what v0.2.0
+          # did. tagName makes the publish step work either way.
           releaseId: ${{ needs.resolve-release.outputs.release_id }}
+          tagName: ${{ needs.resolve-release.outputs.tag }}
+          releaseName: ${{ needs.resolve-release.outputs.tag }}
           args: ${{ matrix.args }}
 
       - name: Upload artifacts
