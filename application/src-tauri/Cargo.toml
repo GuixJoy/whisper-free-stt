@@ -31,7 +31,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 csv = "1"
 dirs-next = "2"
 thiserror = "2"
-sherpa-onnx = "1.13"
+sherpa-onnx = { version = "1.13", default-features = false, features = ["shared"] }
 cpal = "0.18"
 # These four were previously declared under
 # [target.'cfg(target_os = "linux")'.dependencies], but they are not
@@ -49,7 +49,7 @@ tar = "0.4"
 # bundler does not ship them, so the installed .deb/.rpm failed to start with
 # "libllama.so.0: cannot open shared object file". Static linking gives one
 # self-contained binary that runs anywhere.
-llama-cpp-4 = { version = "0.6", default-features = false, features = ["openmp", "mtmd"] }
+llama-cpp-4 = { version = "0.6", default-features = false, features = ["openmp"] }
 
 [features]
 # GPU offload for the local LLM. Opt-in: building it needs a Vulkan toolchain
