@@ -56,6 +56,34 @@ struct CachedEngines {
 
 static ENGINE_CACHE: std::sync::Mutex<Option<CachedEngines>> = std::sync::Mutex::new(None);
 
+/// True while the start-up warm thread is (or may still be) building.
+/// Set first thing in `warm_engines` so a UI query racing thread start
+/// still sees "warming"; cleared on every exit path via the guard.
+static WARMING: AtomicBool = AtomicBool::new(false);
+
+struct WarmGuard;
+
+impl Drop for WarmGuard {
+    fn drop(&mut self) {
+        WARMING.store(false, Ordering::SeqCst);
+    }
+}
+
+pub fn is_warming() -> bool {
+    WARMING.load(Ordering::SeqCst)
+}
+
+/// True when the cache already holds engines for the on-disk config.
+pub fn is_ready() -> bool {
+    let config = AppConfig::load();
+    let key = engine_key(&config);
+    ENGINE_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|c| c.key == key)
+}
+
 fn engine_key(config: &AppConfig) -> String {
     format!(
         "{:?}|{}|{}|{}|{:?}|{}",
@@ -421,6 +449,8 @@ fn build_recognizers(
 /// A press landing mid-warm simply builds its own set; the overlap falls
 /// back gracefully and the next press hits the cache.
 pub fn warm_engines(app: tauri::AppHandle, config: AppConfig) {
+    WARMING.store(true, Ordering::SeqCst);
+    let _guard = WarmGuard;
     let key = engine_key(&config);
     if ENGINE_CACHE
         .lock()

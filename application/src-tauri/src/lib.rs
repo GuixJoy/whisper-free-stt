@@ -978,6 +978,20 @@ fn stop_listening() {
     crate::pipeline::stop_pipeline();
 }
 
+/// Engine warm state for the start-up notice: "warming" while the
+/// background warm thread runs, "ready" once its engines are cached,
+/// "cold" when models are missing (first press downloads instead).
+#[tauri::command]
+fn engine_status() -> &'static str {
+    if crate::pipeline::is_warming() {
+        "warming"
+    } else if crate::pipeline::is_ready() {
+        "ready"
+    } else {
+        "cold"
+    }
+}
+
 #[tauri::command]
 fn check_model_status() -> Result<Vec<ModelStatus>, AppError> {
     let config = AppConfig::load();
@@ -1202,6 +1216,7 @@ pub fn run() {
             set_openrouter_api_key,
             start_listening,
             stop_listening,
+            engine_status,
             widget::show_widget,
             widget::hide_widget,
             widget::toggle_widget

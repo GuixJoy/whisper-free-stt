@@ -220,9 +220,21 @@ export function useEngine({
     // Spawn backend — loads models, warms ASR, stays idle until PTT
     api
       .spawn()
-      .then(() => {
+      .then(async () => {
         if (engineGenerationRef.current !== generation) return;
         console.log("[Engine] Backend ready — waiting for PTT hotkey");
+        // Start-up notice: if the backend is still warming engines, say so
+        // now; the asr_ready toast announces completion.
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          const st = await invoke<string>("engine_status");
+          if (engineGenerationRef.current !== generation) return;
+          if (st === "warming") {
+            setToast("Warming up engines — first launch takes a moment…");
+          }
+        } catch {
+          /* not in Tauri */
+        }
       })
       .catch((err) => {
         // Ignore failures from a superseded engine: a settings change respawns,
