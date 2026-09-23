@@ -61,6 +61,12 @@ vulkan = ["llama-cpp-4/vulkan"]
 [dev-dependencies]
 tempfile = "3"
 
+[target.'cfg(windows)'.dependencies]
+# Native Ctrl+V injection: SendInput needs no message pump and never blocks.
+# (SendKeys.Send has no pump under powershell; SendWait deadlocks on busy
+# windows — both proven broken.)
+windows = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
 [profile.dev]
 opt-level = "s"
 strip = true

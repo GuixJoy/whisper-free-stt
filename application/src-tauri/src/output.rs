@@ -84,23 +84,46 @@ pub fn save_to_history(
 }
 
 pub fn type_windows_paste(text: &str) -> Result<bool> {
-    let escaped = text.replace("'", "''");
-    // NOTE: `Send` (not `SendWait`): SendWait blocks until the focused window
-    // processes the keystroke. If that window is busy/hung/elevated — e.g.
-    // our own window while it awaits stop — the worker wedges forever and
-    // stop-join hangs the app. Fire-and-forget cannot deadlock; ordering
-    // (clipboard set before keys sent) is preserved by sequence.
-    let ps_script = format!(
-        "Add-Type -AssemblyName System.Windows.Forms; \
-         [System.Windows.Forms.Clipboard]::SetText('{}'); \
-         Start-Sleep -Milliseconds 150; \
-         [System.Windows.Forms.SendKeys]::Send('^v')",
-        escaped
-    );
-    let output = Command::new("powershell")
-        .args(["-STA", "-NoProfile", "-Command", &ps_script])
-        .output()?;
-    Ok(output.status.success())
+    // Clipboard first (proven reliable via clip.exe), then Ctrl+V injected
+    // with SendInput. Powershell + SendKeys is out: Send throws without a
+    // message pump, SendWait blocks forever on busy windows.
+    if !run_piped_command(text, "clip.exe", &[])? {
+        return Ok(false);
+    }
+    // Brief beat so the clipboard settles before the keystroke lands.
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    send_ctrl_v()
+}
+
+#[cfg(windows)]
+fn send_ctrl_v() -> Result<bool> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+    fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
+        INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: vk,
+                    wScan: 0,
+                    dwFlags: if up {
+                        KEYEVENTF_KEYUP
+                    } else {
+                        KEYBD_EVENT_FLAGS(0)
+                    },
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        }
+    }
+    let inputs = [
+        key(VK_CONTROL, false),
+        key(VK_V, false),
+        key(VK_V, true),
+        key(VK_CONTROL, true),
+    ];
+    let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
+    Ok(sent == inputs.len() as u32)
 }
 
 pub fn run_piped_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<bool> {
