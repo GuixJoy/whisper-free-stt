@@ -41,10 +41,18 @@ export const SETTINGS_VERSION = 2;
 /// Pure modifier combos (e.g. Ctrl+Alt alone) are not registrable —
 /// the global-shortcut backend requires a main key
 /// (`parse_hotkey` rejects modifier-only strings).
-/// Alt+Space is NOT the default: it is Windows' system-menu chord, so it
-/// pops every focused app's menu and follow-up keys ding off it.
-export const DEFAULT_HOTKEY = "CommandOrControl+Shift+Space";
-const LEGACY_DEFAULT_HOTKEY = "CommandOrControl+Alt+Space";
+/// The main key must not be printable: the OS delivers its auto-repeat to
+/// the focused app while held (Space streams spaces, K streams K's).
+/// Ctrl+Shift+F12 repeats harmlessly. Alt+Space is also out: it is Windows'
+/// system-menu chord and pops every focused app's menu.
+export const DEFAULT_HOTKEY = "CommandOrControl+Shift+F12";
+/// Every past default that turned out broken-by-OS. Holders are moved
+/// forward; anything else is an explicit choice and is never touched.
+const LEGACY_DEFAULTS = [
+  "CommandOrControl+Shift+Space",
+  "CommandOrControl+Alt+Space",
+  "CommandOrControl+Shift+K",
+];
 export const HOTKEY_STORAGE_KEY = "stt-hotkey";
 
 /// Stored hotkey with one-time migration: installs that never chose one
@@ -53,7 +61,7 @@ export const HOTKEY_STORAGE_KEY = "stt-hotkey";
 export function getStoredHotkey(): string {
   if (typeof window === "undefined") return DEFAULT_HOTKEY;
   const saved = localStorage.getItem(HOTKEY_STORAGE_KEY);
-  if (!saved || saved === LEGACY_DEFAULT_HOTKEY) return DEFAULT_HOTKEY;
+  if (!saved || LEGACY_DEFAULTS.includes(saved)) return DEFAULT_HOTKEY;
   return saved;
 }
 

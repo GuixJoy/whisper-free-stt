@@ -14,11 +14,12 @@ interface Props {
 }
 
 const HOTKEY_OPTIONS = [
+  { value: "CommandOrControl+Shift+F12", label: "Ctrl + Shift + F12" },
+  { value: "CommandOrControl+Shift+K", label: "Ctrl + Shift + K" },
   { value: "CommandOrControl+Shift+Space", label: "Ctrl + Shift + Space" },
   { value: "CommandOrControl+Alt+Space", label: "Ctrl + Alt + Space" },
   { value: "Alt+Space", label: "Alt + Space" },
   { value: "Super+Space", label: "Super + Space" },
-  { value: "CommandOrControl+Shift+K", label: "Ctrl + Shift + K" },
 ];
 
 const TOGGLES = [

@@ -8,9 +8,15 @@ describe("getStoredHotkey", () => {
     expect(getStoredHotkey()).toBe(DEFAULT_HOTKEY);
   });
 
-  it("migrates installs still on the legacy default", () => {
-    localStorage.setItem("stt-hotkey", "CommandOrControl+Alt+Space");
-    expect(getStoredHotkey()).toBe("CommandOrControl+Shift+Space");
+  it("migrates installs still on a legacy default", () => {
+    for (const legacy of [
+      "CommandOrControl+Shift+Space",
+      "CommandOrControl+Alt+Space",
+      "CommandOrControl+Shift+K",
+    ]) {
+      localStorage.setItem("stt-hotkey", legacy);
+      expect(getStoredHotkey()).toBe("CommandOrControl+Shift+F12");
+    }
   });
 
   it("never overrides an explicit user choice", () => {
