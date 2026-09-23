@@ -215,6 +215,9 @@ impl LlmProcessor {
         // including the skip and Off paths — so filler removal no longer
         // depends on the model, which is prone to eating real words next to them.
         let cleaned = crate::llm::strip_fillers(&cleaned);
+        // ponytail: the decoder bleeds space runs onto utterance ends; trim
+        // them. Internal newlines (bullet/email modes) are preserved.
+        let cleaned = cleaned.trim().to_string();
 
         if self.config.typing_enabled {
             match type_text(&cleaned) {
@@ -320,18 +323,21 @@ fn transcribe_segment(
         (String::new(), Vec::new(), Vec::new())
     };
     let latency_ms = start.elapsed().as_millis() as u64;
-    eprintln!("[pipeline] transcribed in {latency_ms}ms");
+    eprintln!("[pipeline] transcribed in {latency_ms}ms: {text:?}");
 
-    if !text.is_empty() {
-        let _ = app.emit(
-            "asr_final",
-            serde_json::json!({
-                "text": text,
-                "latency_ms": latency_ms,
-            }),
-        );
-        llm_processor.process(&text, &timestamps, &durations, app);
+    // ponytail: trim-guard, not is_empty — VAD noise segments decode to
+    // whitespace (" "), which must never emit, type, or save as rows.
+    if text.trim().is_empty() {
+        return;
     }
+    let _ = app.emit(
+        "asr_final",
+        serde_json::json!({
+            "text": text,
+            "latency_ms": latency_ms,
+        }),
+    );
+    llm_processor.process(&text, &timestamps, &durations, app);
 }
 
 /// Build ASR recognizers for this config. Returns the pair plus whether the
