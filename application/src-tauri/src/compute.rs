@@ -44,13 +44,11 @@ impl ComputeDevice {
 
 /// Detect the best compute device. Cheap sysfs/process checks only —
 /// no GPU context is created here.
+///
+/// The Vulkan backend is compiled in only with the `vulkan` cargo feature;
+/// without it llama.cpp silently keeps layers on CPU whatever we choose.
 pub fn detect() -> ComputeDevice {
-    // GPU builds exist on Linux only; elsewhere the CPU path is the only
-    // honest answer (llama.cpp silently keeps layers on CPU there).
-    if !cfg!(target_os = "linux") {
-        eprintln!("[compute] GPU offload is currently Linux-only -> CPU path");
-        return ComputeDevice::Cpu;
-    }
+    // Explicit override first — honored on every OS.
     if let Ok(v) = std::env::var("FLOURE_COMPUTE").map(|v| v.to_ascii_lowercase()) {
         match v.as_str() {
             "cpu" => {
@@ -74,13 +72,15 @@ pub fn detect() -> ComputeDevice {
         }
     }
 
+    // nvidia-smi ships with NVIDIA drivers on Windows too, so this probe
+    // works cross-platform. The AMD probe is sysfs-based (Linux-only).
     if has_nvidia_gpu() {
         return ComputeDevice::NvidiaDiscrete;
     }
-    if has_amd_gpu() {
+    if cfg!(target_os = "linux") && has_amd_gpu() {
         return ComputeDevice::AmdGpu;
     }
-    eprintln!("[compute] no discrete/AMD GPU detected -> CPU path");
+    eprintln!("[compute] no usable GPU detected -> CPU path");
     ComputeDevice::Cpu
 }
 
