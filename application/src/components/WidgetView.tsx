@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { isTauri } from "@/lib/utils";
-import { Maximize2, Mic, X } from "lucide-react";
+import { Mic } from "lucide-react";
 import { listen, emit } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 
 type WidgetStatus = "idle" | "listening" | "transcribing" | "rewriting" | "error";
 
@@ -101,9 +100,9 @@ function WaveformBars({ level }: { level: number }) {
 
 const STATUS_LABEL: Record<WidgetStatus, string> = {
   idle: "Idle",
-  listening: "Listening",
-  transcribing: "Transcribing",
-  rewriting: "Rewriting",
+  listening: "Listening…",
+  transcribing: "Transcribing…",
+  rewriting: "Rewriting…",
   error: "Error",
 };
 
@@ -146,31 +145,6 @@ export default function WidgetView() {
     await emit("widget-toggle");
   }, []);
 
-  const handleShowMain = useCallback(async () => {
-    if (!isTauri()) return;
-    await emit("widget-show-main");
-  }, []);
-
-  const handleHide = useCallback(async () => {
-    if (!isTauri()) return;
-    await invoke("hide_widget");
-  }, []);
-
-  useEffect(() => {
-    // The widget is created with `focus: false` (tauri.conf.json) so showing it
-    // never steals focus from the window being dictated into. Consequence:
-    // this listener only fires once the user has clicked the widget (or the
-    // compositor focused it) — Escape is not available while it is unfocused.
-    // The Hide button is the always-available path.
-    const handler = (e: KeyboardEvent) => {
-      if (e.code === "Escape") {
-        handleHide();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [handleHide]);
-
   const isActive = ["listening", "transcribing", "rewriting"].includes(status);
   const isError = status === "error";
   const expanded = isActive || isError;
@@ -179,30 +153,20 @@ export default function WidgetView() {
     <div
       className="relative flex h-full w-full select-none items-center justify-center"
       style={{ background: "transparent" }}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        handleShowMain();
-      }}
     >
       <div
         data-tauri-drag-region
         role="toolbar"
         aria-label="Dictation controls"
-        className="relative flex h-[52px] items-center gap-1 overflow-hidden rounded-[16px] px-[4px]"
+        className="relative flex h-[52px] items-center gap-1 overflow-hidden rounded-[26px] px-[4px]"
         style={{
           width: expanded ? 248 : 168,
           transition: "width 200ms ease-out",
-          background: isActive
-            ? "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,240,242,0.75) 100%)"
-            : isError
-              ? "linear-gradient(135deg, rgba(255,255,255,0.85) 0%, rgba(255,235,235,0.75) 100%)"
-              : "linear-gradient(135deg, rgba(255,255,255,0.80) 0%, rgba(255,255,255,0.60) 100%)",
-          border: isActive
-            ? "1px solid rgba(255,59,86,0.30)"
-            : isError
-              ? "1px solid rgba(239,68,68,0.30)"
-              : "1px solid rgba(44,37,32,0.10)",
-          boxShadow: "0 8px 24px rgba(44,37,32,0.12), inset 0 1px 0 rgba(255,255,255,0.8)",
+          background: "rgba(32,32,32,0.92)",
+          border: isError
+            ? "1px solid rgba(239,68,68,0.45)"
+            : "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}
       >
         {/* Mic toggle — primary action, always visible */}
@@ -213,15 +177,11 @@ export default function WidgetView() {
           }}
           aria-pressed={connected}
           aria-label={connected ? "Stop transcription" : "Start transcription"}
-          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           style={{
-            color: isActive ? "#FFFFFF" : isError ? "#DC2626" : "#6B6560",
-            background: isActive
-              ? "#FF3B56"
-              : isError
-                ? "rgba(239,68,68,0.10)"
-                : "rgba(44,37,32,0.06)",
-            border: isActive ? "1px solid #FF3B56" : "1px solid rgba(44,37,32,0.08)",
+            color: "#FFFFFF",
+            background: isActive ? "#FF3B56" : "rgba(255,255,255,0.14)",
+            border: isActive ? "1px solid #FF3B56" : "1px solid rgba(255,255,255,0.10)",
           }}
         >
           <Mic size={20} strokeWidth={2} aria-hidden="true" />
@@ -250,35 +210,11 @@ export default function WidgetView() {
               className="h-2 w-2 shrink-0 rounded-full"
               style={{ background: isError ? "#EF4444" : "#FF3B56" }}
             />
-            <span className={isError ? "text-red-600" : "text-text-secondary"}>
+            <span className={isError ? "text-red-400" : "text-white/80"}>
               {STATUS_LABEL[status]}
             </span>
           </span>
         </div>
-
-        {/* Open main window */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleShowMain();
-          }}
-          aria-label="Open main window"
-          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] text-text-muted transition-colors duration-200 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-        >
-          <Maximize2 size={16} aria-hidden="true" />
-        </button>
-
-        {/* Hide widget */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            handleHide();
-          }}
-          aria-label="Hide widget"
-          className="relative z-10 flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-[12px] text-text-muted transition-colors duration-200 hover:bg-border hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-        >
-          <X size={16} aria-hidden="true" />
-        </button>
       </div>
     </div>
   );
