@@ -30,9 +30,10 @@ pub fn show_widget(app: AppHandle) -> Result<(), String> {
                 .outer_size()
                 .map(|s| (s.width as i32, s.height as i32))
                 .unwrap_or((264, 64));
-            // Margins account for macOS Dock / Windows taskbar.
-            let x = m_pos.x + m_size.width as i32 - w - 30;
-            let y = m_pos.y + m_size.height as i32 - h - 60;
+            // Bottom-center, just above the taskbar: horizontally centered,
+            // vertically clear of the taskbar (~48px) plus margin.
+            let x = m_pos.x + (m_size.width as i32 - w) / 2;
+            let y = m_pos.y + m_size.height as i32 - h - 80;
             let _ =
                 window.set_position(tauri::Position::Physical(tauri::PhysicalPosition { x, y }));
         }
