@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { STTApi, STTEvent } from "../api";
 import { createTauriApi } from "../api-tauri";
 import { micLevelEmitter } from "../utils/mic-emitter";
+import { playPttStart, playPttStop } from "../lib/ptt-sound";
 import { type RuntimeSettings } from "../lib/settings";
 import type { AppError } from "../components/ErrorBanner";
 import type { TranscriptLine } from "../views/FeedView";
@@ -240,6 +241,7 @@ export function useEngine({
     }
     // Backend handles typing directly — no need for frontend focus restore
     console.log(`[PTT] Start requested — source=${source}`);
+    playPttStart();
     runtimeRef.current.start(); // Sends start_recording to backend
     setConnected(true);
     setPttActive(true);
@@ -251,6 +253,7 @@ export function useEngine({
     isStartingRef.current = false;
     // Backend handles typing directly — no need for frontend type_text
     console.log("[PTT] Stop requested");
+    playPttStop();
     runtimeRef.current.stop(); // Sends stop_recording to backend
     setConnected(false);
     setStatus("idle");

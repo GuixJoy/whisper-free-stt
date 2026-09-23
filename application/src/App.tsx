@@ -16,6 +16,7 @@ import { useEngine } from "./hooks/useEngine";
 import { useHistoryLog } from "./hooks/useHistoryLog";
 import { FeedView, type TranscriptLine } from "./views/FeedView";
 import { categoryForKind } from "./lib/errors";
+import { getStoredHotkey } from "./lib/settings";
 
 function App() {
   const { settings, setSettings, syncError } = useSettings();
@@ -29,9 +30,7 @@ function App() {
   const [errors, setErrors] = useState<AppError[]>([]);
   const [activeItem, setActiveItem] = useState("Home");
   const [settingsVersion, setSettingsVersion] = useState(0);
-  const [hotkey] = useState(
-    () => localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space",
-  );
+  const [hotkey] = useState(() => getStoredHotkey());
 
   const feedRef = useRef<HTMLDivElement | null>(null);
 
@@ -234,7 +233,7 @@ function App() {
             /* ok */
           }
         }
-        const savedHotkey = localStorage.getItem("stt-hotkey") || "CommandOrControl+Shift+Space";
+        const savedHotkey = getStoredHotkey();
         await register(savedHotkey, (event) => {
           if (event.state === "Pressed") {
             if (connectedRef.current) {

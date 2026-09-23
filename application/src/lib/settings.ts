@@ -37,6 +37,24 @@ export const DEFAULT_SETTINGS: RuntimeSettings = {
 export const LOCAL_STORAGE_KEY = "stt-settings";
 export const SETTINGS_VERSION = 2;
 
+/// Default push-to-talk hotkey (hold to talk, release to stop).
+/// Pure modifier combos (e.g. Ctrl+Alt alone) are not registrable —
+/// the global-shortcut backend requires a main key
+/// (`parse_hotkey` rejects modifier-only strings).
+export const DEFAULT_HOTKEY = "CommandOrControl+Alt+Space";
+const LEGACY_DEFAULT_HOTKEY = "CommandOrControl+Shift+Space";
+export const HOTKEY_STORAGE_KEY = "stt-hotkey";
+
+/// Stored hotkey with one-time migration: installs that never chose one
+/// (missing key or still on the old default) move to the new default.
+/// An explicit user choice is never touched.
+export function getStoredHotkey(): string {
+  if (typeof window === "undefined") return DEFAULT_HOTKEY;
+  const saved = localStorage.getItem(HOTKEY_STORAGE_KEY);
+  if (!saved || saved === LEGACY_DEFAULT_HOTKEY) return DEFAULT_HOTKEY;
+  return saved;
+}
+
 const SettingsSchema = z.object({
   asrProfile: z.enum(["parakeet", "whisper-turbo", "whisper-base"]),
   llmMode: z.enum(["cleanup", "off", "bullet_list", "email", "commit_message"]),
