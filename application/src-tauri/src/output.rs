@@ -85,11 +85,16 @@ pub fn save_to_history(
 
 pub fn type_windows_paste(text: &str) -> Result<bool> {
     let escaped = text.replace("'", "''");
+    // NOTE: `Send` (not `SendWait`): SendWait blocks until the focused window
+    // processes the keystroke. If that window is busy/hung/elevated — e.g.
+    // our own window while it awaits stop — the worker wedges forever and
+    // stop-join hangs the app. Fire-and-forget cannot deadlock; ordering
+    // (clipboard set before keys sent) is preserved by sequence.
     let ps_script = format!(
         "Add-Type -AssemblyName System.Windows.Forms; \
          [System.Windows.Forms.Clipboard]::SetText('{}'); \
-         Start-Sleep -Milliseconds 30; \
-         [System.Windows.Forms.SendKeys]::SendWait('^v')",
+         Start-Sleep -Milliseconds 150; \
+         [System.Windows.Forms.SendKeys]::Send('^v')",
         escaped
     );
     let output = Command::new("powershell")
