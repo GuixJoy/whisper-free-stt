@@ -8,8 +8,9 @@ fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok()
 }
 
-/// Show + position the widget window. The only visibility entry point is
-/// `toggle_widget` (plus the tray menu, which calls it).
+/// Show + position the widget window. Visibility entry points: `show_widget`
+/// (PTT auto-show), `hide_widget`, and `toggle_widget` (manual control).
+#[tauri::command]
 pub fn show_widget(app: AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("widget")

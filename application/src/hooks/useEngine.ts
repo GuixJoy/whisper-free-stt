@@ -57,6 +57,10 @@ export function useEngine({
   const connectedRef = useRef(connected);
   const statusRef = useRef(status);
   const lastWidgetMicEmit = useRef(0);
+  // Widget auto-show: set when PTT shows a hidden widget, so stop() only
+  // hides what PTT opened — a manually opened widget is left alone.
+  const widgetVisibleRef = useRef(false);
+  const widgetAutoRef = useRef(false);
   const isStartingRef = useRef(false);
   const startRef = useRef<(overrideSettings?: RuntimeSettings, source?: string) => void>(() => {});
   const stopRef = useRef<() => void>(() => {});
@@ -200,6 +204,19 @@ export function useEngine({
     api.onEvent(applyEvent);
     runtimeRef.current = api;
 
+    // Track widget visibility so PTT stop() only hides a widget PTT opened.
+    let unlistenWidget: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlistenWidget = await listen<boolean>("widget-visibility-changed", (event) => {
+          widgetVisibleRef.current = event.payload;
+        });
+      } catch {
+        /* not in Tauri */
+      }
+    })();
+
     // Spawn backend — loads models, warms ASR, stays idle until PTT
     api
       .spawn()
@@ -220,6 +237,7 @@ export function useEngine({
     // Cleanup: kill backend on app unmount or respawn
     return () => {
       api.kill();
+      unlistenWidget?.();
       // Only clear if we still own the ref — a newer generation may have
       // already replaced it.
       if (runtimeRef.current === api) runtimeRef.current = null;
@@ -242,6 +260,18 @@ export function useEngine({
     // Backend handles typing directly — no need for frontend focus restore
     console.log(`[PTT] Start requested — source=${source}`);
     playPttStart();
+    // Pop the widget globally so recording is visible outside the app.
+    // Only mark auto-show when it was hidden — a manually opened widget
+    // stays under the user's control.
+    if (!widgetVisibleRef.current) {
+      widgetAutoRef.current = true;
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("show_widget");
+      } catch {
+        /* widget is best-effort — never break PTT over it */
+      }
+    }
     runtimeRef.current.start(); // Sends start_recording to backend
     setConnected(true);
     setPttActive(true);
@@ -254,6 +284,17 @@ export function useEngine({
     // Backend handles typing directly — no need for frontend type_text
     console.log("[PTT] Stop requested");
     playPttStop();
+    if (widgetAutoRef.current) {
+      widgetAutoRef.current = false;
+      if (widgetVisibleRef.current) {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("hide_widget");
+        } catch {
+          /* widget is best-effort — never break PTT over it */
+        }
+      }
+    }
     runtimeRef.current.stop(); // Sends stop_recording to backend
     setConnected(false);
     setStatus("idle");

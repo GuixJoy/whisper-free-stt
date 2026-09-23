@@ -12,6 +12,7 @@ interface TauriPayload {
   backend?: string;
   latency_ms?: number;
   error?: string;
+  level?: number;
 }
 
 export function createTauriApi(): STTApi {
@@ -85,9 +86,16 @@ export function createTauriApi(): STTApi {
         "asr_error",
         "llm_error",
         "output_error",
+        "mic_level",
       ];
       for (const eventName of events) {
         const unlisten = await listen<TauriPayload>(eventName, (event) => {
+          if (eventName === "mic_level") {
+            const raw = event.payload;
+            const level = typeof raw === "number" ? raw : (raw?.level ?? 0);
+            emit({ type: "mic", level });
+            return;
+          }
           if (eventName === "asr_error") {
             const msg = event.payload?.error ?? "Unknown ASR error";
             console.error("[asr_error]", msg);

@@ -1202,6 +1202,7 @@ pub fn run() {
             set_openrouter_api_key,
             start_listening,
             stop_listening,
+            widget::show_widget,
             widget::hide_widget,
             widget::toggle_widget
         ])
