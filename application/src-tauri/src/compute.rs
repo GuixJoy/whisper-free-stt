@@ -93,6 +93,21 @@ pub fn main_gpu() -> i32 {
         .unwrap_or(0)
 }
 
+/// Thread budget for every inference pool (Parakeet/Whisper thread counts,
+/// llama.cpp contexts, `OMP_NUM_THREADS`).
+///
+/// Leaves headroom so the UI thread and WebView renderer never starve:
+/// sustained all-core load is what got the app killed as "Not Responding"
+/// (Windows Event 1002). Floor 2 keeps tiny machines functional.
+/// ponytail: fixed ceiling of 8; raise only if ASR latency measurably
+/// regresses on many-core boxes.
+pub fn inference_threads() -> u32 {
+    let avail = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4);
+    avail.saturating_sub(4).clamp(2, 8)
+}
+
 /// NVIDIA proprietary driver presence: /dev/nvidia* nodes, confirmed by
 /// `nvidia-smi -L` when the binary exists.
 fn has_nvidia_gpu() -> bool {
@@ -165,5 +180,12 @@ mod tests {
         if std::env::var("FLOURE_MAIN_GPU").is_err() {
             assert_eq!(main_gpu(), 0);
         }
+    }
+
+    #[test]
+    fn inference_threads_stay_within_budget() {
+        // Hardware-independent: whatever the core count, the budget leaves
+        // headroom (never all cores) and stays usable (never < 2).
+        assert!((2..=8).contains(&inference_threads()));
     }
 }

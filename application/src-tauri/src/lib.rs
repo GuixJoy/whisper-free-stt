@@ -1222,6 +1222,16 @@ pub fn run() {
             widget::toggle_widget
         ])
         .setup(|app| {
+            // Cap OpenMP before any inference thread spawns: the uncapped
+            // pool (one thread per core) starved the renderer and got the
+            // app killed as "Not Responding". An explicit user value wins.
+            if std::env::var("OMP_NUM_THREADS").is_err() {
+                std::env::set_var(
+                    "OMP_NUM_THREADS",
+                    crate::compute::inference_threads().to_string(),
+                );
+            }
+
             // --- Local control channel (Waybar, compositor hotkeys) ---
             // Loopback-only; bind failures are non-fatal (logged in control.rs).
             control::start_control_server(app.handle().clone());

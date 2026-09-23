@@ -334,7 +334,7 @@ impl LlmCleanup {
 
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(512))
-            .with_n_threads(4);
+            .with_n_threads(crate::compute::inference_threads() as i32);
         let mut ctx = model.new_context(backend, ctx_params)?;
         let mut batch = LlamaBatch::new(512, 1);
 

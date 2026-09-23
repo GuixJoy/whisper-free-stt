@@ -392,9 +392,17 @@ fn build_recognizers(
                 // faster and the bench baseline shows it is not less
                 // accurate without hotwords.
                 let built = if config.hotwords.is_empty() {
-                    ParakeetRecognizer::new(&model_dir, 4, false)
+                    ParakeetRecognizer::new(
+                        &model_dir,
+                        crate::compute::inference_threads() as i32,
+                        false,
+                    )
                 } else {
-                    ParakeetRecognizer::new_biased(&model_dir, 4, false)
+                    ParakeetRecognizer::new_biased(
+                        &model_dir,
+                        crate::compute::inference_threads() as i32,
+                        false,
+                    )
                 };
                 match built {
                     Ok(r) => {
@@ -411,7 +419,11 @@ fn build_recognizers(
                 }
             }
             crate::config::AsrProfile::WhisperTurbo | crate::config::AsrProfile::WhisperBase => {
-                match WhisperRecognizer::new(&model_dir, 4, false) {
+                match WhisperRecognizer::new(
+                    &model_dir,
+                    crate::compute::inference_threads() as i32,
+                    false,
+                ) {
                     Ok(mut r) => {
                         if let Err(e) = r.set_language(&config.language) {
                             let _ = app.emit(
