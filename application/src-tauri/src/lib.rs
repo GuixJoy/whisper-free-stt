@@ -1210,6 +1210,15 @@ pub fn run() {
             // Loopback-only; bind failures are non-fatal (logged in control.rs).
             control::start_control_server(app.handle().clone());
 
+            // --- Background engine warm-up: first press must not pay load ---
+            let warm_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                crate::pipeline::warm_engines(
+                    warm_handle,
+                    crate::config::AppConfig::load(),
+                );
+            });
+
             // --- System tray with start/stop menu ---
             use tauri::menu::{Menu, MenuItem};
             use tauri::tray::TrayIconBuilder;

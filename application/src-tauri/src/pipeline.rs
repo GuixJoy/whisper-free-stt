@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::Emitter;
 
-use crate::config::{history_db_path, AppConfig};
+use crate::config::{history_db_path, resolved_llm_model, AppConfig};
 use crate::llm::{LlmBackend, LlmCleanup, LlmMode};
 use crate::models::{download_model, find_model, verify_model, MODEL_MANIFEST};
 use crate::output::{copy_to_clipboard, save_to_history, type_text};
@@ -36,6 +36,57 @@ fn run_is_current(run_id: u64) -> bool {
     PIPELINE_GEN.load(Ordering::SeqCst) == run_id
 }
 
+/// The worker thread handle. `stop_pipeline` joins it so the flush (and the
+/// engine hand-back below) always completes before the next press starts.
+/// Without the join, a rapid re-press overlaps the previous worker: two live
+/// `LlamaBackend`s, and the second `init` fails with
+/// `BackendAlreadyInitialized` (the flag only resets on drop).
+static WORKER: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
+    std::sync::Mutex::new(None);
+
+/// Engines kept warm across PTT presses. Reloading ~1GB of models per press
+/// made tap-to-talk unusable (stop killed the worker before ASR finished),
+/// so the worker takes these on start and returns them on exit.
+struct CachedEngines {
+    key: String,
+    parakeet: Option<ParakeetRecognizer>,
+    whisper: Option<WhisperRecognizer>,
+    llm: Option<LlmCleanup>,
+}
+
+static ENGINE_CACHE: std::sync::Mutex<Option<CachedEngines>> = std::sync::Mutex::new(None);
+
+fn engine_key(config: &AppConfig) -> String {
+    format!(
+        "{:?}|{}|{}|{}|{:?}|{}",
+        config.asr_profile,
+        config.asr_profile.model_id(),
+        config.language,
+        config.hotwords,
+        config.llm_provider,
+        resolved_llm_model(&config.llm_model),
+    )
+}
+
+/// Cache engines for the next press. Never stores an empty set: a failed
+/// build must rebuild next press, not latch the failure.
+fn store_engines(
+    key: String,
+    parakeet: Option<ParakeetRecognizer>,
+    whisper: Option<WhisperRecognizer>,
+    llm: Option<LlmCleanup>,
+) {
+    if parakeet.is_none() && whisper.is_none() {
+        return;
+    }
+    *ENGINE_CACHE.lock().unwrap() = Some(CachedEngines {
+        key,
+        parakeet,
+        whisper,
+        llm,
+    });
+}
+
 pub fn get_running_flag() -> &'static Arc<AtomicBool> {
     PIPELINE_RUNNING.get_or_init(|| Arc::new(AtomicBool::new(false)))
 }
@@ -53,7 +104,7 @@ impl LlmProcessor {
         // Resolve blank ids first: `models/""/file.gguf` collapses to
         // `models/file.gguf` and never matches the downloaded layout, which is
         // why a downloaded model could report "Local LLM model not loaded".
-        let llm_model_id = crate::config::resolved_llm_model(&config.llm_model);
+        let llm_model_id = resolved_llm_model(&config.llm_model);
         let filename = crate::models::find_model(&llm_model_id)
             .and_then(|m| m.filename)
             .unwrap_or("s1-mini-q4_k_m.gguf");
@@ -81,7 +132,15 @@ impl LlmProcessor {
                 None
             }
         };
+        Self::from_cached(config, llm)
+    }
+
+    pub fn from_cached(config: AppConfig, llm: Option<LlmCleanup>) -> Self {
         Self { llm, config }
+    }
+
+    pub fn into_llm(self) -> Option<LlmCleanup> {
+        self.llm
     }
 
     pub fn process(
@@ -217,6 +276,166 @@ impl LlmProcessor {
         let db_path = history_db_path();
         let _ = save_to_history(&cleaned, text, mode.as_str(), "floure", &db_path);
     }
+}
+
+/// Decode one VAD segment and run it through LLM cleanup → typing /
+/// clipboard / history. Shared by the live loop and the stop-flush.
+fn transcribe_segment(
+    segment: &[f32],
+    parakeet: &Option<ParakeetRecognizer>,
+    whisper: &Option<WhisperRecognizer>,
+    hotwords: &str,
+    llm_processor: &mut LlmProcessor,
+    app: &tauri::AppHandle,
+) {
+    let start = Instant::now();
+    eprintln!(
+        "[pipeline] transcribing segment ({} samples)",
+        segment.len()
+    );
+    let (text, timestamps, durations) = if let Some(rec) = parakeet {
+        let decoded = if hotwords.is_empty() {
+            rec.transcribe_full(segment)
+        } else {
+            rec.transcribe_full_with_hotwords(segment, hotwords)
+        };
+        match decoded {
+            Some(r) => (
+                r.text.clone(),
+                r.timestamps.clone().unwrap_or_default(),
+                r.durations.clone().unwrap_or_default(),
+            ),
+            None => (String::new(), Vec::new(), Vec::new()),
+        }
+    } else if let Some(ws) = whisper {
+        (ws.transcribe(segment), Vec::new(), Vec::new())
+    } else {
+        (String::new(), Vec::new(), Vec::new())
+    };
+    let latency_ms = start.elapsed().as_millis() as u64;
+    eprintln!("[pipeline] transcribed in {latency_ms}ms");
+
+    if !text.is_empty() {
+        let _ = app.emit(
+            "asr_final",
+            serde_json::json!({
+                "text": text,
+                "latency_ms": latency_ms,
+            }),
+        );
+        llm_processor.process(&text, &timestamps, &durations, app);
+    }
+}
+
+/// Build ASR recognizers for this config. Returns the pair plus whether the
+/// language check passed (false = wrong-language whisper, caller must abort).
+/// Emits `asr_ready` / `asr_error`, so start-up warm-up announces readiness
+/// through the same channel as a first press.
+fn build_recognizers(
+    config: &AppConfig,
+    app: &tauri::AppHandle,
+) -> (
+    Option<ParakeetRecognizer>,
+    Option<WhisperRecognizer>,
+    bool,
+) {
+    let model_id = config.asr_profile.model_id();
+    let model_dir = config.asr_profile.model_dir(&config.model_dir);
+    let mut parakeet: Option<ParakeetRecognizer> = None;
+    let mut whisper: Option<WhisperRecognizer> = None;
+
+    if verify_model(&config.model_dir, find_model(model_id).unwrap()) {
+        match config.asr_profile {
+            crate::config::AsrProfile::Parakeet => {
+                // No vocabulary means no biasing: greedy search is
+                // faster and the bench baseline shows it is not less
+                // accurate without hotwords.
+                let built = if config.hotwords.is_empty() {
+                    ParakeetRecognizer::new(&model_dir, 4, false)
+                } else {
+                    ParakeetRecognizer::new_biased(&model_dir, 4, false)
+                };
+                match built {
+                    Ok(r) => {
+                        parakeet = Some(r);
+                        let _ = app.emit(
+                            "asr_ready",
+                            serde_json::json!({ "backend": "parakeet" }),
+                        );
+                    }
+                    Err(e) => {
+                        let _ =
+                            app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
+                    }
+                }
+            }
+            crate::config::AsrProfile::WhisperTurbo | crate::config::AsrProfile::WhisperBase => {
+                match WhisperRecognizer::new(&model_dir, 4, false) {
+                    Ok(mut r) => {
+                        if let Err(e) = r.set_language(&config.language) {
+                            let _ = app.emit(
+                                "asr_error",
+                                serde_json::json!({"error": e.to_string()}),
+                            );
+                            // Don't advertise readiness: the recognizer
+                            // would transcribe in the wrong language.
+                            return (None, None, false);
+                        }
+                        whisper = Some(r);
+                        let _ =
+                            app.emit("asr_ready", serde_json::json!({ "backend": "whisper" }));
+                    }
+                    Err(e) => {
+                        let _ =
+                            app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
+                    }
+                }
+            }
+        }
+    } else {
+        let _ = app.emit(
+            "asr_error",
+            serde_json::json!({"error": format!("Model {} not downloaded", model_id)}),
+        );
+    }
+    (parakeet, whisper, true)
+}
+
+/// Preload ASR + LLM engines once at startup so the first press never pays
+/// model-load latency (which pegged the CPU and made the app look hung).
+/// Skips when models are missing (first press downloads as before) or a
+/// press is already active (that press populates the cache instead).
+/// A press landing mid-warm simply builds its own set; the overlap falls
+/// back gracefully and the next press hits the cache.
+pub fn warm_engines(app: tauri::AppHandle, config: AppConfig) {
+    let key = engine_key(&config);
+    if ENGINE_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|c| c.key == key)
+    {
+        return;
+    }
+    if get_running_flag().load(Ordering::SeqCst) {
+        return;
+    }
+    let vad_ok = MODEL_MANIFEST
+        .iter()
+        .find(|m| m.id == "silero-vad")
+        .map(|m| verify_model(&config.model_dir, m))
+        .unwrap_or(false);
+    let asr_ok = find_model(config.asr_profile.model_id())
+        .map(|m| verify_model(&config.model_dir, m))
+        .unwrap_or(false);
+    if !(vad_ok && asr_ok) {
+        return;
+    }
+    eprintln!("[pipeline] warming engines in background");
+    let (parakeet, whisper, _) = build_recognizers(&config, &app);
+    let llm = LlmProcessor::new(config.clone()).into_llm();
+    store_engines(key, parakeet, whisper, llm);
+    eprintln!("[pipeline] engines warm");
 }
 
 pub struct PipelineController {
@@ -392,7 +611,7 @@ impl PipelineController {
 
         let mic_sample_rate = audio.sample_rate;
 
-        std::thread::spawn(move || {
+        let handle = std::thread::spawn(move || {
             let _audio = audio;
 
             let resampler: Option<sherpa_onnx::LinearResampler> = if mic_sample_rate != 16000 {
@@ -401,139 +620,116 @@ impl PipelineController {
                 None
             };
 
+            // Take warm engines when the config matches. On a key mismatch the
+            // old set is dropped first (frees its backend) so the fresh
+            // build below can init without hitting BackendAlreadyInitialized.
+            let key = engine_key(&config_clone);
+            let taken = ENGINE_CACHE.lock().unwrap().take();
+            let fresh = taken.as_ref().map(|c| c.key != key).unwrap_or(true);
+            if !fresh {
+                eprintln!("[pipeline] reusing warm engines");
+            }
+            let (mut parakeet, mut whisper, cached_llm) = match taken {
+                Some(c) if !fresh => (c.parakeet, c.whisper, c.llm),
+                _ => (None, None, None),
+            };
+
             let mut vad = match VoiceActivityDetector::new(&silero_path, 0.5) {
                 Ok(v) => v,
                 Err(e) => {
                     let _ =
                         app_clone.emit("asr_error", serde_json::json!({"error": e.to_string()}));
+                    store_engines(key, parakeet, whisper, cached_llm);
                     return;
                 }
             };
 
-            let model_id = config_clone.asr_profile.model_id();
-            let model_dir = config_clone.asr_profile.model_dir(&config_clone.model_dir);
-
             // Owns LLM cleanup/typing/clipboard/history for this worker thread.
             // Created here (rather than moved from the controller) so inference
-            // stays on the thread that uses it.
-            let mut llm_processor = LlmProcessor::new(config_clone.clone());
+            // stays on the thread that uses it. Reuses the cached model when
+            // the config matches, so repeat presses skip the ~1GB reload.
+            let mut llm_processor = match cached_llm {
+                Some(llm) => LlmProcessor::from_cached(config_clone.clone(), Some(llm)),
+                None => LlmProcessor::new(config_clone.clone()),
+            };
 
-            let mut parakeet: Option<ParakeetRecognizer> = None;
-            let mut whisper: Option<WhisperRecognizer> = None;
-
-            if verify_model(&config_clone.model_dir, find_model(model_id).unwrap()) {
-                match config_clone.asr_profile {
-                    crate::config::AsrProfile::Parakeet => {
-                        // No vocabulary means no biasing: greedy search is
-                        // faster and the bench baseline shows it is not less
-                        // accurate without hotwords.
-                        let built = if config_clone.hotwords.is_empty() {
-                            ParakeetRecognizer::new(&model_dir, 4, false)
-                        } else {
-                            ParakeetRecognizer::new_biased(&model_dir, 4, false)
-                        };
-                        match built {
-                            Ok(r) => {
-                                parakeet = Some(r);
-                                let _ = app_clone.emit(
-                                    "asr_ready",
-                                    serde_json::json!({ "backend": "parakeet" }),
-                                );
-                            }
-                            Err(e) => {
-                                let _ = app_clone
-                                    .emit("asr_error", serde_json::json!({"error": e.to_string()}));
-                            }
-                        }
-                    }
-                    crate::config::AsrProfile::WhisperTurbo
-                    | crate::config::AsrProfile::WhisperBase => {
-                        match WhisperRecognizer::new(&model_dir, 4, false) {
-                            Ok(mut r) => {
-                                if let Err(e) = r.set_language(&config_clone.language) {
-                                    let _ = app_clone.emit(
-                                        "asr_error",
-                                        serde_json::json!({"error": e.to_string()}),
-                                    );
-                                    // Don't advertise readiness: the recognizer
-                                    // would transcribe in the wrong language.
-                                    // Clearing the flag lets the user retry.
-                                    running_clone.store(false, Ordering::SeqCst);
-                                    return;
-                                }
-                                whisper = Some(r);
-                                let _ = app_clone
-                                    .emit("asr_ready", serde_json::json!({ "backend": "whisper" }));
-                            }
-                            Err(e) => {
-                                let _ = app_clone
-                                    .emit("asr_error", serde_json::json!({"error": e.to_string()}));
-                            }
-                        }
-                    }
+            if fresh {
+                let (p, w, lang_ok) = build_recognizers(&config_clone, &app_clone);
+                parakeet = p;
+                whisper = w;
+                if !lang_ok {
+                    running_clone.store(false, Ordering::SeqCst);
+                    return;
                 }
-            } else {
-                let _ = app_clone.emit(
-                    "asr_error",
-                    serde_json::json!({"error": format!("Model {} not downloaded", model_id)}),
-                );
+            } else if let Some(ref mut ws) = whisper {
+                // Warm recognizer: re-check the language (no-op when
+                // unchanged) so a settings change applies without a rebuild.
+                if let Err(e) = ws.set_language(&config_clone.language) {
+                    let _ = app_clone.emit(
+                        "asr_error",
+                        serde_json::json!({"error": e.to_string()}),
+                    );
+                    running_clone.store(false, Ordering::SeqCst);
+                    return;
+                }
             }
 
-            while running_clone.load(Ordering::SeqCst) && run_is_current(run_id) {
+            // Feed one chunk through VAD → ASR → LLM → output.
+            let mut pump = |samples: &[f32]| {
+                let resampled: Vec<f32> = if let Some(ref r) = resampler {
+                    r.resample(samples, false)
+                } else {
+                    samples.to_vec()
+                };
+                vad.feed(&resampled);
+                if let Some(segment) = vad.try_get_segment() {
+                    transcribe_segment(
+                        &segment,
+                        &parakeet,
+                        &whisper,
+                        &config_clone.hotwords,
+                        &mut llm_processor,
+                        &app_clone,
+                    );
+                }
+                vad.reset_after_segment();
+            };
+
+            loop {
+                if !run_is_current(run_id) {
+                    // Superseded by a newer press: exit quietly without
+                    // flushing — the successor owns typing now, and a flush
+                    // here would duplicate text into the focused window.
+                    break;
+                }
                 match rx.recv_timeout(std::time::Duration::from_millis(50)) {
-                    Ok(samples) => {
-                        let resampled: Vec<f32> = if let Some(ref r) = resampler {
-                            r.resample(&samples, false)
-                        } else {
-                            samples
-                        };
-
-                        vad.feed(&resampled);
-
-                        if let Some(segment) = vad.try_get_segment() {
-                            let start = Instant::now();
-                            let (text, timestamps, durations) = if let Some(ref rec) = parakeet {
-                                let decoded = if config_clone.hotwords.is_empty() {
-                                    rec.transcribe_full(&segment)
-                                } else {
-                                    rec.transcribe_full_with_hotwords(
-                                        &segment,
-                                        &config_clone.hotwords,
-                                    )
-                                };
-                                match decoded {
-                                    Some(r) => (
-                                        r.text.clone(),
-                                        r.timestamps.clone().unwrap_or_default(),
-                                        r.durations.clone().unwrap_or_default(),
-                                    ),
-                                    None => (String::new(), Vec::new(), Vec::new()),
-                                }
-                            } else if let Some(ref ws) = whisper {
-                                (ws.transcribe(&segment), Vec::new(), Vec::new())
-                            } else {
-                                (String::new(), Vec::new(), Vec::new())
-                            };
-                            let latency_ms = start.elapsed().as_millis() as u64;
-
-                            if !text.is_empty() {
-                                let _ = app_clone.emit(
-                                    "asr_final",
-                                    serde_json::json!({
-                                        "text": text,
-                                        "latency_ms": latency_ms,
-                                    }),
-                                );
-                                llm_processor.process(&text, &timestamps, &durations, &app_clone);
+                    Ok(samples) => pump(&samples),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        // Flush only for the current run's own stop; a
+                        // superseded run exits silently at the top instead.
+                        if !running_clone.load(Ordering::SeqCst) && run_is_current(run_id) {
+                            // Stopped mid-utterance: drain leftover audio, then
+                            // force-close the trailing segment with silence so
+                            // the last words are still transcribed and typed.
+                            while let Ok(samples) = rx.try_recv() {
+                                pump(&samples);
                             }
-                            vad.reset_after_segment();
+                            pump(&vec![0.0f32; 8000]);
+                            break;
                         }
                     }
-                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }
+
+            // Hand warm engines back for the next press.
+            store_engines(key, parakeet, whisper, llm_processor.into_llm());
         });
+        // Reap any previous worker first: two live workers would overlap
+        // their LLM backends (see WORKER). Normally absent (stop joins).
+        if let Some(old) = WORKER.lock().unwrap().replace(handle) {
+            let _ = old.join();
+        }
 
         Ok(())
     }
@@ -553,6 +749,13 @@ pub fn stop_pipeline() {
     let _ = begin_run();
     if let Some(flag) = PIPELINE_RUNNING.get() {
         flag.store(false, Ordering::SeqCst);
+    }
+    // Join the worker so its stop-flush (transcribe tail → type) and engine
+    // hand-back finish before the next press spawns a new worker.
+    if let Some(handle) = WORKER.lock().unwrap().take() {
+        eprintln!("[pipeline] stop: joining worker");
+        let _ = handle.join();
+        eprintln!("[pipeline] stop: worker joined");
     }
 }
 
