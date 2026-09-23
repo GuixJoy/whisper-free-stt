@@ -104,17 +104,19 @@ impl LlmProcessor {
             eprintln!("[pipeline] cleanup gate: skipped (looks clean)");
             cleaned = text.to_string();
         } else if let Some(llm) = &mut self.llm {
-            // The local context is 512 tokens with a 128-token completion
-            // budget, so clamp pathological transcripts (keep the tail =
-            // most recent speech) instead of failing opaquely in decode.
-            const MAX_TRANSCRIPT_BYTES: usize = 1200;
-            let transcript = if text.len() > MAX_TRANSCRIPT_BYTES {
+            // Clamp to what this backend can actually echo back (keep the tail
+            // = most recent speech) instead of failing opaquely in decode. The
+            // old flat 1200 bytes fit ~180 words, but the local model's
+            // 128-token completion returns only ~95, so long transcripts were
+            // being truncated into deletion errors.
+            let max_bytes = crate::llm::max_transcript_bytes(llm.backend);
+            let transcript = if text.len() > max_bytes {
                 eprintln!(
                     "[pipeline] transcript truncated for LLM ({} -> {} bytes)",
                     text.len(),
-                    MAX_TRANSCRIPT_BYTES
+                    max_bytes
                 );
-                let mut start = text.len() - MAX_TRANSCRIPT_BYTES;
+                let mut start = text.len() - max_bytes;
                 while !text.is_char_boundary(start) {
                     start += 1;
                 }
@@ -149,6 +151,11 @@ impl LlmProcessor {
         } else {
             cleaned = crate::llm::clean_response(text);
         }
+
+        // Fillers come out deterministically, whatever produced `cleaned` —
+        // including the skip and Off paths — so filler removal no longer
+        // depends on the model, which is prone to eating real words next to them.
+        let cleaned = crate::llm::strip_fillers(&cleaned);
 
         if self.config.typing_enabled {
             match type_text(&cleaned) {

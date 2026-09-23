@@ -63,6 +63,10 @@ pub const CLEANUP_PROMPT: &str =
     "Fix only clear errors in this transcript: remove filler words (um, uh), \
 fix obviously misheard words, add any missing punctuation and capitalization. \
 Preserve technical terms and all other wording. \
+Do not add or delete words: the output must contain the same number of words \
+as the input, apart from removed filler words. \
+If a word looks technical or rare, keep it exactly as given; never replace it \
+with a more common word. \
 If the transcript is already correct, return it unchanged. \
 IMPORTANT: Return ONLY the transcript text. \
 Do NOT add any labels, headers, commentary, safety ratings, or explanations.";
@@ -92,6 +96,22 @@ fn mode_instruction(mode: LlmMode) -> &'static str {
     }
 }
 
+/// How many transcript bytes the cleanup pass may feed the model.
+///
+/// The local path is bounded by its own budgets — 512 context tokens and a
+/// 128-token completion, i.e. roughly 95 words that can come back — so clamping
+/// to what the completion budget can echo keeps a cleanup from truncating
+/// mid-sentence, which surfaces as deletion errors (Ma et al. 2023, cited in
+/// `docs/voice-algorithms/cleanup/llm-cleanup-and-disfluency.md`). The cloud
+/// models have room for the larger clamp.
+pub fn max_transcript_bytes(backend: LlmBackend) -> usize {
+    if backend == LlmBackend::Local {
+        512
+    } else {
+        1200
+    }
+}
+
 pub fn build_prompt(transcript: &str, mode: LlmMode) -> String {
     let instruction = mode_instruction(mode);
     if instruction.is_empty() {
@@ -108,8 +128,42 @@ pub fn build_prompt(transcript: &str, mode: LlmMode) -> String {
 /// explicit generative requests. Fires on filler words, repeated
 /// words/bigrams (disfluency/hallucination signature), or alignment
 /// anomalies (long gaps, stuck tokens); everything else passes through.
+/// Filler words. The set matches what OpenAI's official English normalizer
+/// strips before it scores WER (`whisper/normalizers/english.py`), so removing
+/// them costs nothing at eval time — and they are never wanted in typed output.
+const FILLERS: &[&str] = &[
+    "um", "uh", "uhh", "umm", "hmm", "mm", "mhm", "mmm", "ah", "er",
+];
+
+/// Whether a whitespace-delimited token is a filler, ignoring punctuation
+/// attached to it ("Um," and "um" both match).
+fn is_filler(word: &str) -> bool {
+    let core = word
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase();
+    FILLERS.contains(&core.as_str())
+}
+
+/// Strip filler words deterministically, preserving line structure.
+///
+/// Deliberately outside the model: filler removal is most of what the cleanup
+/// prompt asks for, and a model asked to do it has a measured tendency to
+/// delete neighbouring real words along with the fillers (Ma et al. 2023).
+pub fn strip_fillers(text: &str) -> String {
+    text.split('\n')
+        .map(|line| {
+            line.split_whitespace()
+                .filter(|w| !is_filler(w))
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 pub fn needs_cleanup(text: &str, timestamps: &[f32], durations: &[f32]) -> bool {
-    const FILLERS: &[&str] = &["um", "uh", "uhh", "umm", "hmm", "ah", "er"];
     let words: Vec<String> = text
         .split_whitespace()
         .map(|w| {
@@ -492,6 +546,39 @@ fn drain_sse_buffer(buffer: &mut String, chunk_text: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn strip_fillers_drops_fillers_only() {
+        assert_eq!(
+            strip_fillers("um so I think we should ship"),
+            "so I think we should ship"
+        );
+        // Punctuation-attached and mid-line fillers go; everything else stays.
+        assert_eq!(
+            strip_fillers("so, uh, the plan is: ship it"),
+            "so, the plan is: ship it"
+        );
+        assert_eq!(strip_fillers("Um, uh! mhm"), "");
+        assert_eq!(strip_fillers("no fillers here"), "no fillers here");
+        // Real words that merely contain a filler sequence are not fillers.
+        assert_eq!(
+            strip_fillers("hardware and memorandum"),
+            "hardware and memorandum"
+        );
+    }
+
+    #[test]
+    fn local_clamp_matches_the_completion_budget() {
+        assert_eq!(max_transcript_bytes(LlmBackend::Local), 512);
+        assert_eq!(max_transcript_bytes(LlmBackend::OpenRouter), 1200);
+    }
+
+    #[test]
+    fn cleanup_prompt_constrains_word_count() {
+        assert!(CLEANUP_PROMPT.contains("same number of words"));
+        assert!(CLEANUP_PROMPT.contains("never replace it"));
+        assert!(CLEANUP_PROMPT.contains("unchanged"));
+    }
 
     #[test]
     fn gate_skips_clean_transcript() {
