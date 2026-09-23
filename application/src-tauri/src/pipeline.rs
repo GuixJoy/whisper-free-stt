@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 use crate::config::{history_db_path, resolved_llm_model, AppConfig};
@@ -225,10 +225,19 @@ impl LlmProcessor {
                 // with no DISPLAY. Previously indistinguishable from success.
                 Ok(false) => {
                     eprintln!("[pipeline] type_text ran but reported failure");
+                    // ponytail: platform hint only; the tool name differs per
+                    // OS and a wrong hint here already cost a debug round.
+                    let hint = match std::env::consts::OS {
+                        "linux" => "xdotool (X11) or wtype (Wayland)",
+                        "windows" => "PowerShell clipboard+paste",
+                        _ => "the system typing helper",
+                    };
                     let _ = app.emit(
                         "output_error",
                         serde_json::json!({
-                            "error": "Typing the transcript failed. Check that xdotool (X11) or wtype (Wayland) works in this session."
+                            "error": format!(
+                                "Typing the transcript failed. Check that {hint} works in this session."
+                            )
                         }),
                     );
                 }
@@ -238,9 +247,7 @@ impl LlmProcessor {
                     let _ = app.emit(
                         "output_error",
                         serde_json::json!({
-                            "error": format!(
-                                "Could not type the transcript: {e}. Install xdotool (X11) or wtype (Wayland)."
-                            )
+                            "error": format!("Could not type the transcript: {e}.")
                         }),
                     );
                 }
@@ -598,7 +605,14 @@ impl PipelineController {
             match crate::audio::start_capture(mic_name.as_deref(), move |samples: &[f32]| {
                 let _ = tx.send(samples.to_vec());
             }) {
-                Ok(a) => a,
+                Ok(a) => {
+                    eprintln!(
+                        "[pipeline] capturing from {:?} @ {}Hz",
+                        mic_name.as_deref().unwrap_or("<default>"),
+                        a.sample_rate
+                    );
+                    a
+                }
                 Err(e) => {
                     let _ = app_clone.emit(
                         "asr_error",
@@ -674,6 +688,13 @@ impl PipelineController {
                 }
             }
 
+            // Live mic meter for the widget (max ~15Hz). Doubles as proof the
+            // mic delivers signal: flat zero here means a device problem,
+            // not a pipeline problem.
+            let mut last_level = Instant::now()
+                .checked_sub(Duration::from_millis(100))
+                .unwrap_or_else(Instant::now);
+
             // Feed one chunk through VAD → ASR → LLM → output.
             let mut pump = |samples: &[f32]| {
                 let resampled: Vec<f32> = if let Some(ref r) = resampler {
@@ -681,6 +702,14 @@ impl PipelineController {
                 } else {
                     samples.to_vec()
                 };
+                if last_level.elapsed() >= Duration::from_millis(66) {
+                    last_level = Instant::now();
+                    let n = resampled.len().max(1);
+                    let level = (resampled.iter().map(|s| s * s).sum::<f32>() / n as f32)
+                        .sqrt()
+                        .clamp(0.0, 1.0);
+                    let _ = app_clone.emit("mic_level", level);
+                }
                 vad.feed(&resampled);
                 if let Some(segment) = vad.try_get_segment() {
                     transcribe_segment(
@@ -702,22 +731,22 @@ impl PipelineController {
                     // here would duplicate text into the focused window.
                     break;
                 }
+                // Check every iteration, not just on timeout: the mic streams
+                // continuously, so with audio flowing the timeout arm never
+                // fires and a timeout-only check wedges the worker forever.
+                if !running_clone.load(Ordering::SeqCst) {
+                    // Stopped mid-utterance: drain leftover audio, then
+                    // force-close the trailing segment with silence so
+                    // the last words are still transcribed and typed.
+                    while let Ok(samples) = rx.try_recv() {
+                        pump(&samples);
+                    }
+                    pump(&vec![0.0f32; 8000]);
+                    break;
+                }
                 match rx.recv_timeout(std::time::Duration::from_millis(50)) {
                     Ok(samples) => pump(&samples),
-                    Err(mpsc::RecvTimeoutError::Timeout) => {
-                        // Flush only for the current run's own stop; a
-                        // superseded run exits silently at the top instead.
-                        if !running_clone.load(Ordering::SeqCst) && run_is_current(run_id) {
-                            // Stopped mid-utterance: drain leftover audio, then
-                            // force-close the trailing segment with silence so
-                            // the last words are still transcribed and typed.
-                            while let Ok(samples) = rx.try_recv() {
-                                pump(&samples);
-                            }
-                            pump(&vec![0.0f32; 8000]);
-                            break;
-                        }
-                    }
+                    Err(mpsc::RecvTimeoutError::Timeout) => continue,
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
             }

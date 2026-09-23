@@ -52,7 +52,11 @@ impl VoiceActivityDetector {
     }
 
     pub fn reset_after_segment(&mut self) {
-        self.buffer.clear();
+        // Drain only consumed windows. Clearing the whole buffer here
+        // starves the VAD whenever resampled chunks are smaller than the
+        // 512-sample window (e.g. ~160 samples per 10ms chunk from a 48kHz
+        // mic): nothing would ever reach accept_waveform again.
+        self.buffer.drain(..self.offset);
         self.offset = 0;
     }
 }
