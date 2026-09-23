@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Instant;
@@ -15,6 +15,26 @@ use crate::vad::VoiceActivityDetector;
 use crate::whisper::WhisperRecognizer;
 
 static PIPELINE_RUNNING: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+/// Monotonic run id, bumped on every stop and every start.
+///
+/// The worker also polls `PIPELINE_RUNNING`, but that flag alone cannot decide
+/// its fate: `stop_pipeline` clears it and a following `start_pipeline` sets it
+/// straight back to true, so a worker that was still inside `process()` woke up
+/// and kept running alongside its successor — two capture streams, both typing,
+/// which interleaved duplicated text into the focused window. A run may only
+/// continue while its own id is still the newest one, and ids are never reused.
+static PIPELINE_GEN: AtomicU64 = AtomicU64::new(0);
+
+/// Open a new run, invalidating every earlier one.
+fn begin_run() -> u64 {
+    PIPELINE_GEN.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+/// Whether the run started with `run_id` is still the current one.
+fn run_is_current(run_id: u64) -> bool {
+    PIPELINE_GEN.load(Ordering::SeqCst) == run_id
+}
 
 pub fn get_running_flag() -> &'static Arc<AtomicBool> {
     PIPELINE_RUNNING.get_or_init(|| Arc::new(AtomicBool::new(false)))
@@ -331,6 +351,9 @@ impl PipelineController {
         if self.running.swap(true, Ordering::SeqCst) {
             return Err(anyhow::anyhow!("Pipeline already running"));
         }
+        // Claim a run id: this is what a stale worker checks, and a later
+        // start (below) mints a new one, so the old worker never comes back.
+        let run_id = begin_run();
 
         let (tx, rx) = mpsc::channel::<Vec<f32>>();
 
@@ -449,7 +472,7 @@ impl PipelineController {
                 );
             }
 
-            while running_clone.load(Ordering::SeqCst) {
+            while running_clone.load(Ordering::SeqCst) && run_is_current(run_id) {
                 match rx.recv_timeout(std::time::Duration::from_millis(50)) {
                     Ok(samples) => {
                         let resampled: Vec<f32> = if let Some(ref r) = resampler {
@@ -516,7 +539,35 @@ pub fn start_pipeline(app: tauri::AppHandle, config: AppConfig) -> Result<()> {
 }
 
 pub fn stop_pipeline() {
+    // Invalidate the current run *and* clear the flag. Clearing alone was the
+    // bug: the worker re-reads this same flag every loop, so the next start
+    // setting it true again revived a worker that was still finishing the
+    // previous utterance.
+    let _ = begin_run();
     if let Some(flag) = PIPELINE_RUNNING.get() {
         flag.store(false, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod run_id_tests {
+    use super::{begin_run, run_is_current};
+
+    /// The regression this id exists for: a stop then a start must leave the
+    /// old run dead even though the shared flag goes true again afterwards.
+    #[test]
+    fn a_later_run_never_revives_an_earlier_one() {
+        let first = begin_run();
+        assert!(run_is_current(first));
+
+        let _ = begin_run(); // stop_pipeline
+        assert!(!run_is_current(first), "stop must invalidate the run");
+
+        let second = begin_run(); // start_pipeline
+        assert!(
+            !run_is_current(first),
+            "the old run must stay dead after a later start"
+        );
+        assert!(run_is_current(second));
     }
 }
