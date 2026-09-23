@@ -284,6 +284,30 @@ function App() {
     };
   }, [hotkey, connectedRef, startRef, stopRef]);
 
+  // --- Bare Ctrl+Win hold-to-talk (Windows native hook, backend emits) ---
+  // Reuses the same start/stop refs, so overlay, sounds, widget, and guards
+  // apply. Coexists with the registered shortcut; both funnel here.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<string>("ptt-hook", (event) => {
+          if (event.payload === "pressed") {
+            if (!connectedRef.current) startRef.current(undefined, "Hook");
+          } else if (connectedRef.current) {
+            stopRef.current();
+          }
+        });
+      } catch {
+        /* not in Tauri */
+      }
+    })();
+    return () => {
+      unlisten?.();
+    };
+  }, [connectedRef, startRef, stopRef]);
+
   const copyText = async (text: string, label: string) => {
     const { copyToClipboard } = await import("@/lib/clipboard");
     const ok = await copyToClipboard(text);

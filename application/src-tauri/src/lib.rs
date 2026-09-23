@@ -9,6 +9,8 @@ mod models;
 mod output;
 mod parakeet;
 mod pipeline;
+#[cfg(windows)]
+mod ptt_hook;
 #[cfg(test)]
 mod tests;
 mod vad;
@@ -1235,6 +1237,12 @@ pub fn run() {
             // --- Local control channel (Waybar, compositor hotkeys) ---
             // Loopback-only; bind failures are non-fatal (logged in control.rs).
             control::start_control_server(app.handle().clone());
+
+            // --- Bare Ctrl+Win hold-to-talk (Windows only) ---
+            // The global shortcut needs a main key; this hook covers the
+            // pure-modifier chord and reuses the same frontend start/stop.
+            #[cfg(windows)]
+            crate::ptt_hook::start_ptt_hook(app.handle().clone());
 
             // --- Background engine warm-up: first press must not pay load ---
             let warm_handle = app.handle().clone();
