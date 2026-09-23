@@ -41,8 +41,10 @@ export const SETTINGS_VERSION = 2;
 /// Pure modifier combos (e.g. Ctrl+Alt alone) are not registrable —
 /// the global-shortcut backend requires a main key
 /// (`parse_hotkey` rejects modifier-only strings).
-export const DEFAULT_HOTKEY = "CommandOrControl+Alt+Space";
-const LEGACY_DEFAULT_HOTKEY = "CommandOrControl+Shift+Space";
+/// Alt+Space is NOT the default: it is Windows' system-menu chord, so it
+/// pops every focused app's menu and follow-up keys ding off it.
+export const DEFAULT_HOTKEY = "CommandOrControl+Shift+Space";
+const LEGACY_DEFAULT_HOTKEY = "CommandOrControl+Alt+Space";
 export const HOTKEY_STORAGE_KEY = "stt-hotkey";
 
 /// Stored hotkey with one-time migration: installs that never chose one

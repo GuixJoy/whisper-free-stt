@@ -234,8 +234,17 @@ function App() {
           }
         }
         const savedHotkey = getStoredHotkey();
+        // A release schedules stop 300ms out; a re-press inside that window
+        // cancels it and keeps the same session (no restart, no lost tail).
+        let pendingStop: number | null = null;
         await register(savedHotkey, (event) => {
           if (event.state === "Pressed") {
+            if (pendingStop !== null) {
+              window.clearTimeout(pendingStop);
+              pendingStop = null;
+              console.log("[PTT] Re-press — scheduled stop cancelled");
+              return;
+            }
             if (connectedRef.current) {
               console.log("[PTT] Ignored — already recording");
               return;
@@ -251,7 +260,9 @@ function App() {
               return;
             }
             // Wait briefly for in-flight transcription to complete, then stop+commit
-            setTimeout(() => {
+            if (pendingStop !== null) window.clearTimeout(pendingStop);
+            pendingStop = window.setTimeout(() => {
+              pendingStop = null;
               stopRef.current();
             }, 300);
           }

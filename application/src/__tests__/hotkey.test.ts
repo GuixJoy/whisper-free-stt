@@ -9,8 +9,8 @@ describe("getStoredHotkey", () => {
   });
 
   it("migrates installs still on the legacy default", () => {
-    localStorage.setItem("stt-hotkey", "CommandOrControl+Shift+Space");
-    expect(getStoredHotkey()).toBe("CommandOrControl+Alt+Space");
+    localStorage.setItem("stt-hotkey", "CommandOrControl+Alt+Space");
+    expect(getStoredHotkey()).toBe("CommandOrControl+Shift+Space");
   });
 
   it("never overrides an explicit user choice", () => {
