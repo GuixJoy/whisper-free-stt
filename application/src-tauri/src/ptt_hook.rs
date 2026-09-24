@@ -21,6 +21,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 const VK_LCONTROL: u32 = 0xA2;
@@ -64,6 +65,14 @@ unsafe extern "system" fn hook_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) 
                 VK_LWIN | VK_RWIN => {
                     if down {
                         WIN_DOWN.store(true, Ordering::SeqCst);
+                        // Resync before trusting CTRL_DOWN: the hook receives no
+                        // events on the secure desktop (UAC, Ctrl+Alt+Del), so
+                        // a Ctrl released there leaves the flag stuck true —
+                        // and the next *plain* Win tap would then be swallowed
+                        // and start a recording with no Ctrl held.
+                        let ctrl_now =
+                            unsafe { GetAsyncKeyState(VK_CONTROL.0 as i32) } as u16 & 0x8000 != 0;
+                        CTRL_DOWN.store(ctrl_now, Ordering::SeqCst);
                         if CTRL_DOWN.load(Ordering::SeqCst) {
                             // Ctrl already held: consume the Win press so the
                             // OS never enters Win-held state. Track it so the

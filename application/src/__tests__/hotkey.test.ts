@@ -14,9 +14,18 @@ describe("getStoredHotkey", () => {
       "CommandOrControl+Alt+Space",
       "CommandOrControl+Shift+K",
     ]) {
+      // Each case needs the pre-migration state: the migration runs once, so
+      // without this reset only the first legacy value would be migrated.
+      localStorage.clear();
       localStorage.setItem("stt-hotkey", legacy);
-      expect(getStoredHotkey()).toBe("CommandOrControl+Shift+F12");
+      expect(getStoredHotkey()).toBe(DEFAULT_HOTKEY);
     }
+  });
+
+  it("keeps a legacy combo the user picks after the migration ran", () => {
+    getStoredHotkey(); // runs the one-time migration
+    localStorage.setItem("stt-hotkey", "CommandOrControl+Shift+K");
+    expect(getStoredHotkey()).toBe("CommandOrControl+Shift+K");
   });
 
   it("never overrides an explicit user choice", () => {

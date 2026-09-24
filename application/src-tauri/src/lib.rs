@@ -975,9 +975,13 @@ async fn start_listening(app: tauri::AppHandle) -> Result<(), AppError> {
     result.map_err(|e| AppError::Audio(e.to_string()))
 }
 
+/// Joining the worker blocks on whatever ASR/LLM call is in flight, and a
+/// synchronous command runs on the main thread — the UI froze until the
+/// current utterance finished. `async` plus `spawn_blocking` keeps the join
+/// (and its stop-flush) but off the UI thread.
 #[tauri::command]
-fn stop_listening() {
-    crate::pipeline::stop_pipeline();
+async fn stop_listening() {
+    let _ = tauri::async_runtime::spawn_blocking(crate::pipeline::stop_pipeline).await;
 }
 
 /// Engine warm state for the start-up notice: "warming" while the
@@ -1247,10 +1251,7 @@ pub fn run() {
             // --- Background engine warm-up: first press must not pay load ---
             let warm_handle = app.handle().clone();
             std::thread::spawn(move || {
-                crate::pipeline::warm_engines(
-                    warm_handle,
-                    crate::config::AppConfig::load(),
-                );
+                crate::pipeline::warm_engines(warm_handle, crate::config::AppConfig::load());
             });
 
             // --- System tray with start/stop menu ---

@@ -277,12 +277,14 @@ export function useEngine({
     // stays under the user's control.
     if (!widgetVisibleRef.current) {
       widgetAutoRef.current = true;
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("show_widget");
-      } catch {
-        /* widget is best-effort — never break PTT over it */
-      }
+      // Fire-and-forget: awaiting here opens a window where a quick release
+      // sees connected=false, skips the stop, and leaves the mic running
+      // until the next press.
+      void import("@tauri-apps/api/core")
+        .then(({ invoke }) => invoke("show_widget"))
+        .catch(() => {
+          /* widget is best-effort — never break PTT over it */
+        });
     }
     runtimeRef.current.start(); // Sends start_recording to backend
     setConnected(true);
@@ -299,12 +301,13 @@ export function useEngine({
     if (widgetAutoRef.current) {
       widgetAutoRef.current = false;
       if (widgetVisibleRef.current) {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("hide_widget");
-        } catch {
-          /* widget is best-effort — never break PTT over it */
-        }
+        // Fire-and-forget, as in start(): the backend stop must not queue
+        // behind a window call.
+        void import("@tauri-apps/api/core")
+          .then(({ invoke }) => invoke("hide_widget"))
+          .catch(() => {
+            /* widget is best-effort — never break PTT over it */
+          });
       }
     }
     runtimeRef.current.stop(); // Sends stop_recording to backend

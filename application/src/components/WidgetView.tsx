@@ -163,9 +163,7 @@ export default function WidgetView() {
           width: expanded ? 248 : 168,
           transition: "width 200ms ease-out",
           background: "rgba(32,32,32,0.92)",
-          border: isError
-            ? "1px solid rgba(239,68,68,0.45)"
-            : "1px solid rgba(255,255,255,0.08)",
+          border: isError ? "1px solid rgba(239,68,68,0.45)" : "1px solid rgba(255,255,255,0.08)",
           boxShadow: "0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08)",
         }}
       >

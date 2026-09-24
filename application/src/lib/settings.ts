@@ -54,15 +54,26 @@ const LEGACY_DEFAULTS = [
   "CommandOrControl+Shift+K",
 ];
 export const HOTKEY_STORAGE_KEY = "stt-hotkey";
+/// Records that the one-time migration in `getStoredHotkey` has already run.
+const HOTKEY_MIGRATED_KEY = "stt-hotkey-migrated";
 
 /// Stored hotkey with one-time migration: installs that never chose one
 /// (missing key or still on the old default) move to the new default.
-/// An explicit user choice is never touched.
+///
+/// The migration must run **once**, not on every read: all three legacy
+/// defaults are still offered in the panel, so an unconditional check threw
+/// away the user the moment they picked one of them.
 export function getStoredHotkey(): string {
   if (typeof window === "undefined") return DEFAULT_HOTKEY;
   const saved = localStorage.getItem(HOTKEY_STORAGE_KEY);
-  if (!saved || LEGACY_DEFAULTS.includes(saved)) return DEFAULT_HOTKEY;
-  return saved;
+  if (!localStorage.getItem(HOTKEY_MIGRATED_KEY)) {
+    localStorage.setItem(HOTKEY_MIGRATED_KEY, "1");
+    if (!saved || LEGACY_DEFAULTS.includes(saved)) {
+      localStorage.setItem(HOTKEY_STORAGE_KEY, DEFAULT_HOTKEY);
+      return DEFAULT_HOTKEY;
+    }
+  }
+  return saved || DEFAULT_HOTKEY;
 }
 
 const SettingsSchema = z.object({

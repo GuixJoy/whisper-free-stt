@@ -41,8 +41,16 @@ fn run_is_current(run_id: u64) -> bool {
 /// Without the join, a rapid re-press overlaps the previous worker: two live
 /// `LlamaBackend`s, and the second `init` fails with
 /// `BackendAlreadyInitialized` (the flag only resets on drop).
-static WORKER: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> =
-    std::sync::Mutex::new(None);
+static WORKER: std::sync::Mutex<Option<std::thread::JoinHandle<()>>> = std::sync::Mutex::new(None);
+
+/// Serialises the start and stop transitions against each other.
+///
+/// `stop_pipeline` has to clear the flag, let the worker run its stop-flush,
+/// join it, and only then invalidate the run — but a new press landing inside
+/// that window sets the flag back to true, which is precisely the revival
+/// `PIPELINE_GEN` exists to prevent. Holding this lock across both transitions
+/// makes each one atomic with respect to the other.
+static TRANSITION: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Engines kept warm across PTT presses. Reloading ~1GB of models per press
 /// made tap-to-talk unusable (stop killed the worker before ASR finished),
@@ -55,6 +63,13 @@ struct CachedEngines {
 }
 
 static ENGINE_CACHE: std::sync::Mutex<Option<CachedEngines>> = std::sync::Mutex::new(None);
+
+/// llama.cpp's backend init is process-wide and its flag only clears on drop,
+/// so two overlapping builds make the loser fail with
+/// `BackendAlreadyInitialized`. `warm_engines` and a press can both start a
+/// build at once (the warm thread checks the running flag *before* its long
+/// build, not after); this makes them take turns.
+static LLM_BUILD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// True while the start-up warm thread is (or may still be) building.
 /// Set first thing in `warm_engines` so a UI query racing thread start
@@ -251,7 +266,7 @@ impl LlmProcessor {
                     // OS and a wrong hint here already cost a debug round.
                     let hint = match std::env::consts::OS {
                         "linux" => "xdotool (X11) or wtype (Wayland)",
-                        "windows" => "PowerShell clipboard+paste",
+                        "windows" => "clipboard (clip.exe) + Ctrl+V paste",
                         _ => "the system typing helper",
                     };
                     let _ = app.emit(
@@ -366,11 +381,7 @@ fn transcribe_segment(
 fn build_recognizers(
     config: &AppConfig,
     app: &tauri::AppHandle,
-) -> (
-    Option<ParakeetRecognizer>,
-    Option<WhisperRecognizer>,
-    bool,
-) {
+) -> (Option<ParakeetRecognizer>, Option<WhisperRecognizer>, bool) {
     let model_id = config.asr_profile.model_id();
     let model_dir = config.asr_profile.model_dir(&config.model_dir);
     let mut parakeet: Option<ParakeetRecognizer> = None;
@@ -398,14 +409,10 @@ fn build_recognizers(
                 match built {
                     Ok(r) => {
                         parakeet = Some(r);
-                        let _ = app.emit(
-                            "asr_ready",
-                            serde_json::json!({ "backend": "parakeet" }),
-                        );
+                        let _ = app.emit("asr_ready", serde_json::json!({ "backend": "parakeet" }));
                     }
                     Err(e) => {
-                        let _ =
-                            app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
+                        let _ = app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
                     }
                 }
             }
@@ -417,21 +424,17 @@ fn build_recognizers(
                 ) {
                     Ok(mut r) => {
                         if let Err(e) = r.set_language(&config.language) {
-                            let _ = app.emit(
-                                "asr_error",
-                                serde_json::json!({"error": e.to_string()}),
-                            );
+                            let _ =
+                                app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
                             // Don't advertise readiness: the recognizer
                             // would transcribe in the wrong language.
                             return (None, None, false);
                         }
                         whisper = Some(r);
-                        let _ =
-                            app.emit("asr_ready", serde_json::json!({ "backend": "whisper" }));
+                        let _ = app.emit("asr_ready", serde_json::json!({ "backend": "whisper" }));
                     }
                     Err(e) => {
-                        let _ =
-                            app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
+                        let _ = app.emit("asr_error", serde_json::json!({"error": e.to_string()}));
                     }
                 }
             }
@@ -479,7 +482,10 @@ pub fn warm_engines(app: tauri::AppHandle, config: AppConfig) {
     }
     eprintln!("[pipeline] warming engines in background");
     let (parakeet, whisper, _) = build_recognizers(&config, &app);
-    let llm = LlmProcessor::new(config.clone()).into_llm();
+    let llm = {
+        let _build = LLM_BUILD.lock().unwrap_or_else(|e| e.into_inner());
+        LlmProcessor::new(config.clone()).into_llm()
+    };
     store_engines(key, parakeet, whisper, llm);
     eprintln!("[pipeline] engines warm");
 }
@@ -620,6 +626,9 @@ impl PipelineController {
     }
 
     pub fn start(&self) -> Result<()> {
+        // Held for the whole transition and released on every exit path below,
+        // including the error returns.
+        let _transition = TRANSITION.lock().unwrap_or_else(|e| e.into_inner());
         if self.running.swap(true, Ordering::SeqCst) {
             return Err(anyhow::anyhow!("Pipeline already running"));
         }
@@ -676,10 +685,12 @@ impl PipelineController {
             // Take warm engines when the config matches. On a key mismatch the
             // old set is dropped first (frees its backend) so the fresh
             // build below can init without hitting BackendAlreadyInitialized.
-            // ponytail: take-then-build leaves a window where a concurrent
-            // press also builds; stop-join serializes presses so the window
-            // only opens for a press landing mid-warm, which falls back
-            // gracefully (see warm_engines).
+            // ponytail: take-then-build leaves a window where a press landing
+            // mid-warm builds a second ASR set; both stay alive until this
+            // worker hands its engines back, so peak RAM roughly doubles for
+            // that one press. The losable part — the process-wide LLM backend
+            // init — is serialised by LLM_BUILD; the duplicate ASR load is the
+            // accepted ceiling (upgrade path: warm under the same lock).
             let key = engine_key(&config_clone);
             let taken = ENGINE_CACHE.lock().unwrap().take();
             let rebuild = taken.as_ref().map(|c| c.key != key).unwrap_or(true);
@@ -707,7 +718,10 @@ impl PipelineController {
             // the config matches, so repeat presses skip the ~1GB reload.
             let mut llm_processor = match cached_llm {
                 Some(llm) => LlmProcessor::from_cached(config_clone.clone(), Some(llm)),
-                None => LlmProcessor::new(config_clone.clone()),
+                None => {
+                    let _build = LLM_BUILD.lock().unwrap_or_else(|e| e.into_inner());
+                    LlmProcessor::new(config_clone.clone())
+                }
             };
 
             if rebuild {
@@ -722,10 +736,8 @@ impl PipelineController {
                 // Warm recognizer: re-check the language (no-op when
                 // unchanged) so a settings change applies without a rebuild.
                 if let Err(e) = ws.set_language(&config_clone.language) {
-                    let _ = app_clone.emit(
-                        "asr_error",
-                        serde_json::json!({"error": e.to_string()}),
-                    );
+                    let _ =
+                        app_clone.emit("asr_error", serde_json::json!({"error": e.to_string()}));
                     running_clone.store(false, Ordering::SeqCst);
                     return;
                 }
@@ -754,7 +766,10 @@ impl PipelineController {
                     let _ = app_clone.emit("mic_level", level);
                 }
                 vad.feed(&resampled);
-                if let Some(segment) = vad.try_get_segment() {
+                // Drain every queued segment, not just the first one: the
+                // stop path breaks out of the loop right after this, so
+                // anything still queued would be dropped unheard.
+                while let Some(segment) = vad.try_get_segment() {
                     transcribe_segment(
                         &segment,
                         &parakeet,
@@ -784,7 +799,12 @@ impl PipelineController {
                     while let Ok(samples) = rx.try_recv() {
                         pump(&samples);
                     }
-                    pump(&vec![0.0f32; 8000]);
+                    // 0.5s of silence *at the capture rate*. `pump` resamples,
+                    // so a fixed 8000 samples is only 500ms on a 16kHz mic but
+                    // ~167ms on a 48kHz one — under the VAD's 0.25s
+                    // `min_silence_duration`, which left the trailing segment
+                    // open and dropped it here.
+                    pump(&vec![0.0f32; mic_sample_rate as usize / 2]);
                     break;
                 }
                 match rx.recv_timeout(std::time::Duration::from_millis(50)) {
@@ -814,11 +834,14 @@ pub fn start_pipeline(app: tauri::AppHandle, config: AppConfig) -> Result<()> {
 }
 
 pub fn stop_pipeline() {
-    // Invalidate the current run *and* clear the flag. Clearing alone was the
-    // bug: the worker re-reads this same flag every loop, so the next start
-    // setting it true again revived a worker that was still finishing the
-    // previous utterance.
-    let _ = begin_run();
+    // Order matters, and `TRANSITION` is what makes this order safe. The worker
+    // checks its run id *before* the stop flag, so invalidating first sent it
+    // down the superseded branch and it exited without draining — the tail
+    // this stop is supposed to transcribe was dropped every time. Clear → join
+    // → invalidate lets the flush through; the transition lock stops a new
+    // press from setting the flag back to true (reviving this worker) while the
+    // join is in flight, which is the bug `PIPELINE_GEN` was added for.
+    let _transition = TRANSITION.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(flag) = PIPELINE_RUNNING.get() {
         flag.store(false, Ordering::SeqCst);
     }
@@ -829,12 +852,14 @@ pub fn stop_pipeline() {
         let _ = handle.join();
         eprintln!("[pipeline] stop: worker joined");
     }
+    // Only safe to invalidate once the run it belonged to has finished.
+    let _ = begin_run();
 }
 
 #[cfg(test)]
 mod run_id_tests {
     use super::{begin_run, engine_key, run_is_current};
-    use crate::config::{AppConfig, AsrProfile};
+    use crate::config::{AppConfig, AsrProfile, LlmProvider};
 
     /// The regression this id exists for: a stop then a start must leave the
     /// old run dead even though the shared flag goes true again afterwards.
@@ -869,6 +894,12 @@ mod run_id_tests {
         other = base.clone();
         other.asr_profile = AsrProfile::WhisperBase;
         assert_ne!(key, engine_key(&other), "profile must change the key");
+        other = base.clone();
+        other.llm_provider = LlmProvider::OpenRouter;
+        assert_ne!(key, engine_key(&other), "llm provider must change the key");
+        other = base.clone();
+        other.llm_model = "openai/gpt-4o-mini".to_string();
+        assert_ne!(key, engine_key(&other), "llm model must change the key");
         assert_eq!(key, engine_key(&base), "same config must reuse");
     }
 }

@@ -1,14 +1,6 @@
 import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
-import {
-  Home,
-  BarChart3,
-  BookOpen,
-  Clock,
-  SlidersHorizontal,
-  Settings,
-  Cpu,
-} from "lucide-react";
+import { Home, BarChart3, BookOpen, Clock, SlidersHorizontal, Settings, Cpu } from "lucide-react";
 
 interface SidebarItemProps {
   icon: React.ReactNode;

@@ -50,7 +50,7 @@ pub fn copy_to_clipboard(text: &str) -> Result<bool> {
     let (platform, display_server) = detect_platform();
 
     match (platform, display_server) {
-        ("windows", _) => run_piped_command(text, "clip.exe", &[]),
+        ("windows", _) => copy_to_windows_clipboard(text),
         ("linux", "wayland") => run_piped_command(text, "wl-copy", &[]),
         ("linux", "x11") | ("linux", "unknown") => {
             run_piped_command(text, "xclip", &["-selection", "clipboard"])
@@ -87,7 +87,7 @@ pub fn type_windows_paste(text: &str) -> Result<bool> {
     // Clipboard first (proven reliable via clip.exe), then Ctrl+V injected
     // with SendInput. Powershell + SendKeys is out: Send throws without a
     // message pump, SendWait blocks forever on busy windows.
-    if !run_piped_command(text, "clip.exe", &[])? {
+    if !copy_to_windows_clipboard(text)? {
         return Ok(false);
     }
     // Brief beat so the clipboard settles before the keystroke lands.
@@ -96,8 +96,51 @@ pub fn type_windows_paste(text: &str) -> Result<bool> {
     send_ctrl_v()
 }
 
+/// Windows clipboard write, Unicode-safe.
+///
+/// `clip.exe` decodes stdin with the console/OEM code page unless the bytes
+/// are UTF-16 with a BOM, so the raw UTF-8 the Unix arms write pastes "café"
+/// as "cafÃ©" — and the app ships Whisper profiles for exactly those
+/// languages. `CREATE_NO_WINDOW` stops the console window from flashing and
+/// taking focus away from the paste target.
 #[cfg(windows)]
-fn send_ctrl_v() -> Result<bool> {    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+fn copy_to_windows_clipboard(text: &str) -> Result<bool> {
+    use std::io::Write;
+    use std::os::windows::process::CommandExt;
+    use std::process::Stdio;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let mut wide = vec![0xFEFFu16]; // BOM: marks the payload as UTF-16LE
+    wide.extend(text.encode_utf16());
+    let mut bytes = Vec::with_capacity(wide.len() * 2);
+    for unit in wide {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+
+    let mut child = Command::new("clip.exe")
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    if let Some(ref mut stdin) = child.stdin {
+        stdin.write_all(&bytes)?;
+    }
+    Ok(child.wait()?.success())
+}
+
+/// Unreachable in practice: the Windows arms run only when
+/// `std::env::consts::OS == "windows"`. Present so they resolve on every
+/// target, exactly like the `send_ctrl_v` stub.
+#[cfg(not(windows))]
+fn copy_to_windows_clipboard(text: &str) -> Result<bool> {
+    run_piped_command(text, "clip.exe", &[])
+}
+
+#[cfg(windows)]
+fn send_ctrl_v() -> Result<bool> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::*;
     fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
