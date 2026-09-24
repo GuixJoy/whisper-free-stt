@@ -103,28 +103,17 @@ impl LlmProcessor {
             // seconds and unconstrained rewriting regresses good output.
             eprintln!("[pipeline] cleanup gate: skipped (looks clean)");
             cleaned = text.to_string();
-        } else if let Some(llm) = &mut self.llm {
-            // Clamp to what this backend can actually echo back (keep the tail
-            // = most recent speech) instead of failing opaquely in decode. The
-            // old flat 1200 bytes fit ~180 words, but the local model's
-            // 128-token completion returns only ~95, so long transcripts were
-            // being truncated into deletion errors.
-            let max_bytes = crate::llm::max_transcript_bytes(llm.backend);
-            let transcript = if text.len() > max_bytes {
-                eprintln!(
-                    "[pipeline] transcript truncated for LLM ({} -> {} bytes)",
-                    text.len(),
-                    max_bytes
-                );
-                let mut start = text.len() - max_bytes;
-                while !text.is_char_boundary(start) {
-                    start += 1;
-                }
-                &text[start..]
-            } else {
-                text
-            };
-            let prompt = crate::llm::build_prompt(transcript, mode);
+        } else if self
+            .llm
+            .as_ref()
+            .is_some_and(|l| text.len() <= crate::llm::max_transcript_bytes(l.backend))
+        {
+            // Whole or not at all: the model's output *replaces* the entire
+            // transcript, so feeding it a tail-clipped fragment silently drops
+            // everything before the clip — speech the user never sees. Past the
+            // budget, the trailing branch passes the text through untouched.
+            let llm = self.llm.as_mut().expect("checked in the condition above");
+            let prompt = crate::llm::build_prompt(text, mode);
             let _ = app.emit("llm_start", serde_json::json!({}));
 
             let collected = Arc::new(std::sync::Mutex::new(String::new()));
@@ -149,6 +138,8 @@ impl LlmProcessor {
                 cleaned = crate::llm::clean_response(text);
             }
         } else {
+            // No LLM configured, or the transcript is over that backend's
+            // budget — pass it through whole rather than clean a fragment of it.
             cleaned = crate::llm::clean_response(text);
         }
 
