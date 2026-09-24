@@ -676,14 +676,18 @@ impl PipelineController {
             // Take warm engines when the config matches. On a key mismatch the
             // old set is dropped first (frees its backend) so the fresh
             // build below can init without hitting BackendAlreadyInitialized.
+            // ponytail: take-then-build leaves a window where a concurrent
+            // press also builds; stop-join serializes presses so the window
+            // only opens for a press landing mid-warm, which falls back
+            // gracefully (see warm_engines).
             let key = engine_key(&config_clone);
             let taken = ENGINE_CACHE.lock().unwrap().take();
-            let fresh = taken.as_ref().map(|c| c.key != key).unwrap_or(true);
-            if !fresh {
+            let rebuild = taken.as_ref().map(|c| c.key != key).unwrap_or(true);
+            if !rebuild {
                 eprintln!("[pipeline] reusing warm engines");
             }
             let (mut parakeet, mut whisper, cached_llm) = match taken {
-                Some(c) if !fresh => (c.parakeet, c.whisper, c.llm),
+                Some(c) if !rebuild => (c.parakeet, c.whisper, c.llm),
                 _ => (None, None, None),
             };
 
@@ -706,7 +710,7 @@ impl PipelineController {
                 None => LlmProcessor::new(config_clone.clone()),
             };
 
-            if fresh {
+            if rebuild {
                 let (p, w, lang_ok) = build_recognizers(&config_clone, &app_clone);
                 parakeet = p;
                 whisper = w;
@@ -829,7 +833,8 @@ pub fn stop_pipeline() {
 
 #[cfg(test)]
 mod run_id_tests {
-    use super::{begin_run, run_is_current};
+    use super::{begin_run, engine_key, run_is_current};
+    use crate::config::{AppConfig, AsrProfile};
 
     /// The regression this id exists for: a stop then a start must leave the
     /// old run dead even though the shared flag goes true again afterwards.
@@ -847,5 +852,23 @@ mod run_id_tests {
             "the old run must stay dead after a later start"
         );
         assert!(run_is_current(second));
+    }
+
+    /// The warm cache keys on everything that changes the engines: a missed
+    /// field reuses a wrong recognizer/LLM instead of rebuilding.
+    #[test]
+    fn engine_key_covers_profile_language_hotwords_and_llm() {
+        let base = AppConfig::default();
+        let key = engine_key(&base);
+        let mut other = base.clone();
+        other.language = "de".to_string();
+        assert_ne!(key, engine_key(&other), "language must change the key");
+        other = base.clone();
+        other.hotwords = "Floure".to_string();
+        assert_ne!(key, engine_key(&other), "hotwords must change the key");
+        other = base.clone();
+        other.asr_profile = AsrProfile::WhisperBase;
+        assert_ne!(key, engine_key(&other), "profile must change the key");
+        assert_eq!(key, engine_key(&base), "same config must reuse");
     }
 }

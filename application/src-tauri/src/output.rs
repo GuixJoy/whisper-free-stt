@@ -91,13 +91,13 @@ pub fn type_windows_paste(text: &str) -> Result<bool> {
         return Ok(false);
     }
     // Brief beat so the clipboard settles before the keystroke lands.
+    // ponytail: fixed 150ms; no paste-complete signal exists to wait on instead.
     std::thread::sleep(std::time::Duration::from_millis(150));
     send_ctrl_v()
 }
 
 #[cfg(windows)]
-fn send_ctrl_v() -> Result<bool> {
-    use windows::Win32::UI::Input::KeyboardAndMouse::*;
+fn send_ctrl_v() -> Result<bool> {    use windows::Win32::UI::Input::KeyboardAndMouse::*;
     fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
@@ -124,6 +124,14 @@ fn send_ctrl_v() -> Result<bool> {
     ];
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
     Ok(sent == inputs.len() as u32)
+}
+
+/// Non-Windows stub: `type_windows_paste` is only reachable through the
+/// `("windows", _)` match arm, but arms compile on every platform, so the
+/// symbol must exist everywhere to keep Linux/macOS builds green.
+#[cfg(not(windows))]
+fn send_ctrl_v() -> Result<bool> {
+    Err(anyhow::anyhow!("No typing backend available"))
 }
 
 pub fn run_piped_command(text: &str, tool: &str, prefix_args: &[&str]) -> Result<bool> {

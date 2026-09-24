@@ -259,7 +259,9 @@ function App() {
               console.log("[PTT] Not recording — nothing to commit");
               return;
             }
-            // Wait briefly for in-flight transcription to complete, then stop+commit
+            // Wait briefly for in-flight transcription to complete, then stop+commit.
+            // ponytail: fixed 300ms heuristic; no backend "segment fully
+            // typed" signal exists to wait on instead.
             if (pendingStop !== null) window.clearTimeout(pendingStop);
             pendingStop = window.setTimeout(() => {
               pendingStop = null;

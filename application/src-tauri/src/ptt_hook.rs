@@ -15,6 +15,8 @@
 //! same reason (Win+I opening Settings mid-sentence, …); key-ups always
 //! pass so nothing sticks. Ctrl+Alt+Del cannot be swallowed by design
 //! (secure attention sequence) and still works.
+//! ponytail: Alt+Tab and friends are also swallowed mid-hold; per-app
+//! allow-listing if that ever matters (it hasn't — holds last seconds).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
