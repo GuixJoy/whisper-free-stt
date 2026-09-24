@@ -509,7 +509,8 @@ describe("Sidebar", () => {
     expect(screen.getByText("History")).toBeInTheDocument();
     expect(screen.getByText("Config")).toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(screen.getByText("Widget")).toBeInTheDocument();
+    // No Widget toggle: the pill auto-shows on PTT instead.
+    expect(screen.queryByText("Widget")).not.toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 

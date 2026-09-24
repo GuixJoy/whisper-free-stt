@@ -1,5 +1,5 @@
-import { forwardRef, useEffect, useState, useCallback } from "react";
-import { cn, isTauri } from "@/lib/utils";
+import { forwardRef } from "react";
+import { cn } from "@/lib/utils";
 import {
   Home,
   BarChart3,
@@ -7,7 +7,6 @@ import {
   Clock,
   SlidersHorizontal,
   Settings,
-  CircleDot,
   Cpu,
 } from "lucide-react";
 
@@ -52,36 +51,6 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
   ({ className, activeItem = "Home", onNavigate, ...props }, ref) => {
-    const [widgetVisible, setWidgetVisible] = useState(false);
-
-    const toggleWidget = useCallback(async () => {
-      if (!isTauri()) return;
-      try {
-        const { invoke } = await import("@tauri-apps/api/core");
-        const visible = await invoke<boolean>("toggle_widget");
-        setWidgetVisible(visible);
-      } catch (err) {
-        console.error("[Widget] toggle failed:", err);
-      }
-    }, []);
-
-    useEffect(() => {
-      if (!isTauri()) return;
-      let unlisten: (() => void) | undefined;
-      (async () => {
-        try {
-          const { listen } = await import("@tauri-apps/api/event");
-          unlisten = await listen<boolean>("widget-visibility-changed", (event) => {
-            setWidgetVisible(event.payload);
-          });
-        } catch {
-          /* not in Tauri */
-        }
-      })();
-      return () => {
-        unlisten?.();
-      };
-    }, []);
     return (
       <div
         ref={ref}
@@ -151,39 +120,6 @@ export const Sidebar = forwardRef<HTMLDivElement, SidebarProps>(
             active={activeItem === "Models"}
             onClick={() => onNavigate?.("Models")}
           />
-
-          {/* Widget Toggle — feature control, not navigation */}
-          <button
-            onClick={toggleWidget}
-            className={cn(
-              "relative flex h-10 w-full items-center gap-3 rounded-badge px-3 text-left transition-colors duration-200",
-              "text-text-secondary hover:bg-accent-hover-surface",
-            )}
-          >
-            <span className="relative z-10 h-[18px] w-[18px] flex-shrink-0">
-              <CircleDot size={18} />
-            </span>
-            <span className="relative z-10 flex flex-1 items-center gap-2 text-[15px]">
-              Widget
-              {widgetVisible && (
-                <span className="h-[6px] w-[6px] flex-shrink-0 rounded-full bg-green-500" />
-              )}
-            </span>
-            {/* Toggle switch */}
-            <span
-              className={cn(
-                "relative z-10 h-[20px] w-[36px] flex-shrink-0 rounded-full transition-colors duration-200",
-                widgetVisible ? "bg-accent" : "bg-[#D8D8D8]",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-[2px] h-[16px] w-[16px] rounded-full bg-white transition-transform duration-200",
-                  widgetVisible ? "translate-x-[18px]" : "translate-x-[2px]",
-                )}
-              />
-            </span>
-          </button>
         </div>
 
         {/* Upgrade Card */}
