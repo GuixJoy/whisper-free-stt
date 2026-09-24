@@ -96,14 +96,15 @@ fn mode_instruction(mode: LlmMode) -> &'static str {
     }
 }
 
-/// How many transcript bytes the cleanup pass may feed the model.
+/// The longest transcript the cleanup pass will accept; anything longer is
+/// left untouched rather than cleaned.
 ///
 /// The local path is bounded by its own budgets — 512 context tokens and a
-/// 128-token completion, i.e. roughly 95 words that can come back — so clamping
-/// to what the completion budget can echo keeps a cleanup from truncating
-/// mid-sentence, which surfaces as deletion errors (Ma et al. 2023, cited in
-/// `docs/voice-algorithms/cleanup/llm-cleanup-and-disfluency.md`). The cloud
-/// models have room for the larger clamp.
+/// 128-token completion, i.e. roughly 95 words that can come back. Ask it for
+/// more and the completion truncates (deletion errors, Ma et al. 2023), and
+/// because the model's output *replaces* the whole transcript, sending it a
+/// clipped fragment would silently drop the part you clipped. See
+/// `docs/voice-algorithms/cleanup/llm-cleanup-and-disfluency.md` (§5.3).
 pub fn max_transcript_bytes(backend: LlmBackend) -> usize {
     if backend == LlmBackend::Local {
         512
